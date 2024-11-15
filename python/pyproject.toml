@@ -1,0 +1,26 @@
+[project]
+name = "coggo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "ipython",
+    "mypy",
+    "setuptools",
+]
+
+tests = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
