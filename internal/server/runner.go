@@ -297,7 +297,7 @@ func webhook(url string, response PredictionResponse) {
 func (r *Runner) log(line string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !strings.Contains(line, "[COG]") {
+	if !strings.Contains(line, "[cog-file-runner]") {
 		r.logs = append(r.logs, line)
 	}
 	fmt.Println(line)
