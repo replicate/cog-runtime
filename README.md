@@ -16,7 +16,6 @@ Minimalistic rewrite of Cog, the fun parts.
 TODO:
 * Python
   * Test all Python versions
-  * Async log demux
 * Go
   * Output file encoding and upload
   * Webhook interval

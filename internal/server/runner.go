@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -20,8 +21,13 @@ import (
 	"github.com/replicate/coggo/internal/util"
 )
 
+var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
+var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+).json$`)
+var RESPONSE_FMT = "response-%s.json"
+
 type PendingPrediction struct {
 	request PredictionRequest
+	logs    []string
 	c       chan PredictionResponse
 }
 
@@ -134,10 +140,9 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	if req.Webhook == "" {
 		pr.c = make(chan PredictionResponse, 1)
 	}
-	respFile := fmt.Sprintf("response-%s.json", req.Id)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pending[respFile] = pr
+	r.pending[req.Id] = pr
 	return pr.c, nil
 }
 
@@ -228,41 +233,48 @@ func (r *Runner) handleResponses() {
 	log := logger.Sugar()
 	completed := make(map[string]bool)
 	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
-		if pr, ok := r.pending[entry.Name()]; ok {
-			log.Infow("received prediction response", "id", pr.request.Id)
-			var resp PredictionResponse
-			must.Do(r.readJson(entry.Name(), &resp))
+		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
+		if m == nil {
+			continue
+		}
+		pid := m[1]
+		pr, ok := r.pending[pid]
+		if !ok {
+			continue
+		}
+		log.Infow("received prediction response", "id", pr.request.Id)
+		var resp PredictionResponse
+		must.Do(r.readJson(entry.Name(), &resp))
 
-			// Copy request fields because the Python FileRunner does not
-			resp.Id = pr.request.Id
-			resp.Input = pr.request.Input
-			resp.CreatedAt = pr.request.CreatedAt
+		// Copy request fields because the Python FileRunner does not
+		resp.Id = pr.request.Id
+		resp.Input = pr.request.Input
+		resp.CreatedAt = pr.request.CreatedAt
 
-			// FIXME: handle async predictions
-			r.mu.Lock()
-			resp.Logs = r.rotateLogs()
-			r.mu.Unlock()
+		// FIXME: handle async predictions
+		r.mu.Lock()
+		resp.Logs = strings.Join(r.logs, "\n") + "\n"
+		r.mu.Unlock()
 
-			// FIXME: webhook interval
-			if pr.request.Webhook != "" {
-				webhook(pr.request.Webhook, resp)
-			}
-			fmt.Println(resp)
+		// FIXME: webhook interval
+		if pr.request.Webhook != "" {
+			webhook(pr.request.Webhook, resp)
+		}
+		fmt.Println(resp)
 
-			if _, ok := PredictionCompletedStatuses[resp.Status]; ok {
-				completed[entry.Name()] = true
-				log.Infow("prediction completed", "id", pr.request.Id, "status", resp.Status)
-				if pr.c != nil {
-					pr.c <- resp
-				}
+		if _, ok := PredictionCompletedStatuses[resp.Status]; ok {
+			completed[pid] = true
+			log.Infow("prediction completed", "id", pr.request.Id, "status", resp.Status)
+			if pr.c != nil {
+				pr.c <- resp
 			}
 		}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for name, _ := range completed {
-		delete(r.pending, name)
-		must.Do(os.Remove(path.Join(r.workingDir, name)))
+	for pid, _ := range completed {
+		delete(r.pending, pid)
+		must.Do(os.Remove(path.Join(r.workingDir, fmt.Sprintf(RESPONSE_FMT, pid))))
 	}
 }
 
@@ -295,16 +307,25 @@ func webhook(url string, response PredictionResponse) {
 // Log handling
 
 func (r *Runner) log(line string) {
+	log := logger.Sugar()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !strings.Contains(line, "[cog-file-runner]") {
+	if m := LOG_REGEX.FindStringSubmatch(line); m != nil {
+		pid := m[1]
+		msg := m[2]
+		if pr, ok := r.pending[pid]; ok {
+			pr.logs = append(pr.logs, msg)
+		} else {
+			log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
+		}
+	} else if !strings.Contains(line, "[cog-file-runner]") {
 		r.logs = append(r.logs, line)
 	}
 	fmt.Println(line)
 }
 
 func (r *Runner) rotateLogs() string {
-	logs := strings.Join(r.logs, "\n")
+	logs := strings.Join(r.logs, "\n") + "\n"
 	r.logs = make([]string, 0)
 	return logs
 }
