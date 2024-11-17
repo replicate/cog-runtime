@@ -15,18 +15,46 @@ concurrency:
   cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 
 jobs:
-  check:
-    name: Check
+  build-python:
+    name: Build & verify python package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: hynek/build-and-inspect-python-package@v2
+        id: baipp
+    outputs:
+      python-versions: ${{ steps.baipp.outputs.supported_python_classifiers_json_array }}
+
+  check:
+    name: Check with Python ${{ matrix.python-version }}
+    needs: [build-python]
+    runs-on: ubuntu-latest-8-cores
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
+    steps:
+      - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v3
       - run: ./script/check.sh
 
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test with Python ${{ matrix.python-version }}
+    needs: [build-python]
+    runs-on: ubuntu-latest-8-cores
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
     steps:
+      - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v3
       - run: ./script/test.sh
