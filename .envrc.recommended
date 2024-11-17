@@ -1,0 +1,8 @@
+# This file is the recommended base direnv environment which may be sourced from an
+# adjacent `.envrc` with the `source_env` function like this:
+#
+# source_env .envrc.recommended
+
+use asdf
+
+export VIRTUAL_ENV='.venv'
