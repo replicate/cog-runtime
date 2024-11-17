@@ -18,7 +18,7 @@ import (
 
 	"github.com/replicate/go/must"
 
-	"github.com/replicate/coggo/internal/util"
+	"github.com/replicate/cog-runtime/internal/util"
 )
 
 var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)

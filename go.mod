@@ -1,4 +1,4 @@
-module github.com/replicate/coggo
+module github.com/replicate/cog-runtime
 
 go 1.23.3
 
