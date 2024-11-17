@@ -5,7 +5,7 @@ import pathlib
 
 import pytest
 
-from cog.internal.file_runner import FileRunner
+from coglet.file_runner import FileRunner
 
 from .test_file_runner import file_runner, setup_signals
 

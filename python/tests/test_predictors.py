@@ -6,8 +6,8 @@ from typing import List
 
 import pytest
 
-import cog
-from cog.internal import inspector, runner, schemas
+import coglet.api
+from coglet import inspector, runner, schemas
 
 # Test predictors in tests/schemas
 # * run prediction with input/output fixture
@@ -62,13 +62,13 @@ def test_schema(predictor):
     assert schemas.to_json_output(p) == schema['components']['schemas']['Output']
     assert schemas.to_json_schema(p) == schema
 
-    eq = cog.Secret.__eq__
+    eq = coglet.api.Secret.__eq__
     if predictor == 'secrets':
-        cog.Secret.__eq__ = lambda self, other: type(other) is cog.Secret
+        coglet.api.Secret.__eq__ = lambda self, other: type(other) is coglet.api.Secret
 
     assert schemas.from_json_input(schema) == p.inputs
     assert schemas.from_json_output(schema) == p.output
     assert schemas.from_json_schema(module_name, class_name, schema) == p
 
     if predictor == 'secrets':
-        cog.Secret.__eq__ = eq
+        coglet.api.Secret.__eq__ = eq

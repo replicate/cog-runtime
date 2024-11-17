@@ -1,7 +1,7 @@
 from typing import List
 
-from cog import Path, Secret
-from cog.internal import adt, util
+from coglet import adt, util
+from coglet.api import Path, Secret
 
 
 def test_check_cog_type():

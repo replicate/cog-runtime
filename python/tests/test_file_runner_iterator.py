@@ -4,7 +4,7 @@ import pathlib
 import time
 from typing import List, Optional
 
-from cog.internal.file_runner import FileRunner
+from coglet.file_runner import FileRunner
 from tests.test_file_runner import file_runner, setup_signals
 
 

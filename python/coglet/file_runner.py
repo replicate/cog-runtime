@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import contextvars
 import json
@@ -9,7 +8,7 @@ import signal
 import sys
 from typing import Any, Dict, Optional
 
-from cog.internal import inspector, runner, schemas, util
+from coglet import inspector, runner, schemas, util
 
 
 class FileRunner:
@@ -26,16 +25,19 @@ class FileRunner:
 
     def __init__(
         self,
+        *,
         logger: logging.Logger,
         working_dir: str,
         module_name: str,
         class_name: str,
+        ctx_pid: contextvars.ContextVar[Optional[str]],
     ):
         self.logger = logger
         self.working_dir = working_dir
         self.module_name = module_name
         self.class_name = class_name
         self.runner: Optional[runner.Runner] = None
+        self.ctx_pid = ctx_pid
         self.isatty = sys.stdout.isatty()
 
     async def start(self) -> int:
@@ -147,7 +149,7 @@ class FileRunner:
 
     async def _predict(self, pid: str, req: Dict[str, Any]) -> None:
         assert self.runner is not None
-        _ctx_pid.set(pid)
+        self.ctx_pid.set(pid)
         resp: Dict[str, Any] = {
             'started_at': util.now_iso(),
             'status': 'starting',
@@ -193,63 +195,3 @@ class FileRunner:
     def _signal(self, signum: int) -> None:
         if not self.isatty:
             os.kill(os.getppid(), signum)
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    '--working-dir', metavar='DIR', required=True, help='working directory'
-)
-parser.add_argument(
-    '--module-name', metavar='NAME', required=True, help='Python module name'
-)
-parser.add_argument(
-    '--class-name', metavar='NAME', required=True, help='Python class name'
-)
-
-_ctx_pid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    'pid', default=None
-)
-_ctx_newline: contextvars.ContextVar[bool] = contextvars.ContextVar(
-    'newline', default=False
-)
-
-if __name__ == '__main__':
-    logger = logging.getLogger('cog-file-runner')
-    logger.setLevel(logging.INFO)
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(
-        logging.Formatter(
-            '%(asctime)s\t%(levelname)s\t[%(name)s]\t%(filename)s:%(lineno)d\t%(message)s'
-        )
-    )
-    logger.addHandler(handler)
-
-    _stdout_write = sys.stdout.write
-    _stderr_write = sys.stderr.write
-
-    def _ctx_write(write_fn):
-        def _write(s: str) -> int:
-            pid = _ctx_pid.get()
-            if pid is None:
-                return write_fn(s)
-            else:
-                n = 0
-                if _ctx_newline.get():
-                    n += write_fn(f'[pid={pid}] ')
-                if s[-1] == '\n':
-                    _ctx_newline.set(True)
-                    s = s[:-1].replace('\n', f'\n[pid={pid}] ') + '\n'
-                else:
-                    _ctx_newline.set(False)
-                    s = s.replace('\n', f'\n[pid={pid}] ')
-                n += write_fn(s)
-                return n
-
-        return _write
-
-    sys.stdout.write = _ctx_write(_stdout_write)  # type: ignore
-    sys.stderr.write = _ctx_write(_stderr_write)  # type: ignore
-
-    args = parser.parse_args()
-    fr = FileRunner(logger, args.working_dir, args.module_name, args.class_name)
-    sys.exit(asyncio.run(fr.start()))

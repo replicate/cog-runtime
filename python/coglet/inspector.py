@@ -4,8 +4,7 @@ import re
 import typing
 from typing import Callable, Optional
 
-import cog
-from cog.internal import adt, util
+from coglet import adt, api, util
 
 
 def _check_parent(child: type, parent: type) -> bool:
@@ -38,7 +37,7 @@ def _validate_predict(f: Callable) -> None:
 
 
 def _validate_input(
-    name: str, cog_t: adt.Type, is_list: bool, cog_in: cog.Input
+    name: str, cog_t: adt.Type, is_list: bool, cog_in: api.Input
 ) -> None:
     defaults = []
     if cog_in.default is not None:
@@ -102,7 +101,7 @@ def _validate_input(
 
 
 def _input_adt(
-    order: int, name: str, tpe: type, cog_in: Optional[cog.Input]
+    order: int, name: str, tpe: type, cog_in: Optional[api.Input]
 ) -> adt.Input:
     cog_t, is_list = util.check_cog_type(tpe)
     assert cog_t is not None, f'unsupported input type for {name}'
@@ -139,7 +138,7 @@ def _input_adt(
 
 
 def _output_adt(tpe: type) -> adt.Output:
-    if inspect.isclass(tpe) and _check_parent(tpe, cog.BaseModel):
+    if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
         assert tpe.__name__ == 'Output', 'output type must be named Output'
         fields = {}
         for name, t in tpe.__annotations__.items():
@@ -183,7 +182,7 @@ def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
     cls = getattr(module, class_name)
     assert inspect.isclass(cls), f'not a class: {fullname}'
     assert _check_parent(
-        cls, cog.BasePredictor
+        cls, api.BasePredictor
     ), f'predictor {fullname} does not inherit cog.BasePredictor'
 
     assert hasattr(cls, 'setup'), f'setup method not found: {fullname}'

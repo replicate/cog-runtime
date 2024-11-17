@@ -2,7 +2,7 @@ import json
 import os.path
 from typing import Any, Dict, Optional, Union
 
-from cog.internal import adt, util
+from coglet import adt, util
 
 
 def _from_json_type(prop: Dict[str, Any]) -> adt.Type:

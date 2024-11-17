@@ -7,7 +7,7 @@ import sys
 import time
 from typing import Dict, List, Optional
 
-from cog.internal.file_runner import FileRunner
+from coglet.file_runner import FileRunner
 
 
 def setup_signals() -> List[int]:
@@ -28,7 +28,7 @@ def file_runner(
     cmd = [
         sys.executable,
         '-m',
-        'cog.internal.file_runner',
+        'coglet',
         '--working-dir',
         tmp_path,
         '--module-name',

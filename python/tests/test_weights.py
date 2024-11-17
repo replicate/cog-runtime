@@ -2,7 +2,7 @@ import os.path
 
 import pytest
 
-from cog.internal import inspector, runner
+from coglet import inspector, runner
 
 
 @pytest.mark.asyncio
