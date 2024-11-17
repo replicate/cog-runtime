@@ -21,7 +21,7 @@ import (
 	"github.com/replicate/coggo/internal/util"
 )
 
-var logger = logging.New("cog-http-server")
+var logger = logging.New("coggo-server")
 
 type Config struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
@@ -43,12 +43,12 @@ func main() {
 	log := logger.Sugar()
 
 	var cfg Config
-	flags := ff.NewFlagSet("cog-http-server")
+	flags := ff.NewFlagSet("coggo-server")
 	must.Do(flags.AddStruct(&cfg))
 
 	cmd := &ff.Command{
-		Name:  "cog-http-server",
-		Usage: "cog-http-server [FLAGS]",
+		Name:  "coggo-server",
+		Usage: "coggo-server [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
 			if err := cfg.Validate(); err != nil {
@@ -67,7 +67,7 @@ func main() {
 			}
 			workingDir := cfg.WorkingDir
 			if workingDir == "" {
-				workingDir = must.Get(os.MkdirTemp("", "cog-http-server-"))
+				workingDir = must.Get(os.MkdirTemp("", "coggo-server-"))
 			}
 			log.Infow("configuration", "working-dir", workingDir, "module-name", moduleName, "class-name", className)
 
