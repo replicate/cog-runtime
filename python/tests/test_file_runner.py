@@ -3,6 +3,7 @@ import os.path
 import pathlib
 import signal
 import subprocess
+import sys
 import time
 from typing import Dict, List, Optional
 
@@ -25,7 +26,7 @@ def file_runner(
     tmp_path: str, predictor: str, env: Optional[Dict[str, str]] = None
 ) -> subprocess.Popen:
     cmd = [
-        'python3',
+        sys.executable,
         '-m',
         'cog.internal.file_runner',
         '--working-dir',
