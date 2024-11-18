@@ -10,16 +10,31 @@ How is Coggo formed?
 
 ```mermaid
 sequenceDiagram
-    r8->>coggo-server: HTTP
-    activate coggo-server
-    coggo-server->>cog.internal.file_runner: File write
-    activate cog.internal.file_runner
-    cog.internal.file_runner-->>coggo-server: SIGUSR1
-    cog.internal.file_runner-->>coggo-server: SIGHUP
-    coggo-server->>cog.internal.file_runner: File read
-    deactivate cog.internal.file_runner
-    coggo-server->>r8: HTTP
-    deactivate coggo-server
+    participant r8
+    participant server as coggo-server
+    participant runner as cog.internal.file_runner
+    participant predictor as Predictor
+    r8->>server: Boot
+    activate server
+    server->>runner: exec("python3", ...)
+    activate runner
+    runner<<->>predictor: setup()
+    activate predictor
+    runner--)server: SIGHUP (output)
+    runner--)server: SIGUSR1 (ready)
+    server->>runner: read("setup-result.json")
+    r8->>server: GET /health-check
+    r8->>server: POST /predictions
+    server->>runner: write("request-{id}.json")
+    runner--)server: SIGUSR2 (busy)
+    runner<<->>predictor: predict()
+    deactivate predictor
+    runner--)server: SIGHUP (output)
+    runner--)server: SIGUSR1 (ready)
+    server->>runner: read("response-{id}.json")
+    deactivate runner
+    server->>r8: POST /webhook
+    deactivate server
 ```
 
 This sequence is simplified, but the rough idea is that the Replicate platform (`r8`)
