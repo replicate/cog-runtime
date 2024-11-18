@@ -32,7 +32,7 @@ jobs:
   check:
     name: Check with Python ${{ matrix.python-version }}
     needs: [build-python]
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -48,7 +48,7 @@ jobs:
   test:
     name: Test with Python ${{ matrix.python-version }}
     needs: [build-python]
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
