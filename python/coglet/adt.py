@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Iterator, List, Optional, Union
 
-import coglet.api
+from coglet import api
 
 
 class Type(Enum):
@@ -41,8 +41,8 @@ PYTHON_TO_COG = {
     float: Type.FLOAT,
     int: Type.INTEGER,
     str: Type.STRING,
-    coglet.api.Path: Type.PATH,
-    coglet.api.Secret: Type.SECRET,
+    api.Path: Type.PATH,
+    api.Secret: Type.SECRET,
 }
 
 # Cog types to JSON types
@@ -68,7 +68,7 @@ JSON_TO_COG = {
 CONTAINER_TO_COG = {
     list: Kind.LIST,
     typing.get_origin(Iterator): Kind.ITERATOR,
-    coglet.api.ConcatenateIterator: Kind.CONCAT_ITERATOR,
+    api.ConcatenateIterator: Kind.CONCAT_ITERATOR,
 }
 
 
