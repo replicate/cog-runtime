@@ -7,7 +7,7 @@ import sys
 import time
 from typing import Dict, List, Optional
 
-from cog.internal.file_runner import FileRunner
+from coglet import file_runner
 
 
 def setup_signals() -> List[int]:
@@ -16,19 +16,19 @@ def setup_signals() -> List[int]:
     def handler(signum, _):
         signals.append(signum)
 
-    signal.signal(FileRunner.SIG_OUTPUT, handler)
-    signal.signal(FileRunner.SIG_READY, handler)
-    signal.signal(FileRunner.SIG_BUSY, handler)
+    signal.signal(file_runner.FileRunner.SIG_OUTPUT, handler)
+    signal.signal(file_runner.FileRunner.SIG_READY, handler)
+    signal.signal(file_runner.FileRunner.SIG_BUSY, handler)
     return signals
 
 
-def file_runner(
+def run_file_runner(
     tmp_path: str, predictor: str, env: Optional[Dict[str, str]] = None
 ) -> subprocess.Popen:
     cmd = [
         sys.executable,
         '-m',
-        'cog.internal.file_runner',
+        'coglet',
         '--working-dir',
         tmp_path,
         '--module-name',
@@ -46,7 +46,7 @@ def test_file_runner(tmp_path):
 
     env = os.environ.copy()
     env['SETUP_SLEEP'] = '1'
-    p = file_runner(tmp_path, 'sleep', env=env)
+    p = run_file_runner(tmp_path, 'sleep', env=env)
 
     time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -59,7 +59,7 @@ def test_file_runner(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [FileRunner.SIG_READY]
+    assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
     resp_file = os.path.join(tmp_path, 'response-a.json')
@@ -69,14 +69,17 @@ def test_file_runner(tmp_path):
     assert not os.path.exists(resp_file)
     time.sleep(0.1)
     assert not os.path.exists(req_file)
-    assert signals == [FileRunner.SIG_READY, FileRunner.SIG_BUSY]
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+    ]
     time.sleep(1.1)
     assert os.path.exists(resp_file)
     assert signals == [
-        FileRunner.SIG_READY,
-        FileRunner.SIG_BUSY,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
     ]
 
     with open(resp_file, 'r') as f:
@@ -97,7 +100,7 @@ def test_file_runner_setup_failed(tmp_path):
     env = os.environ.copy()
     env['SETUP_SLEEP'] = '1'
     env['SETUP_FAILURE'] = '1'
-    p = file_runner(tmp_path, 'sleep', env=env)
+    p = run_file_runner(tmp_path, 'sleep', env=env)
 
     time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -119,7 +122,7 @@ def test_file_runner_predict_failed(tmp_path):
 
     env = os.environ.copy()
     env['PREDICTION_FAILURE'] = '1'
-    p = file_runner(tmp_path, 'sleep', env=env)
+    p = run_file_runner(tmp_path, 'sleep', env=env)
 
     time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -130,7 +133,7 @@ def test_file_runner_predict_failed(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [FileRunner.SIG_READY]
+    assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
     resp_file = os.path.join(tmp_path, 'response-a.json')
@@ -140,14 +143,17 @@ def test_file_runner_predict_failed(tmp_path):
     assert not os.path.exists(resp_file)
     time.sleep(0.1)
     assert not os.path.exists(req_file)
-    assert signals == [FileRunner.SIG_READY, FileRunner.SIG_BUSY]
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+    ]
     time.sleep(1.1)
     assert os.path.exists(resp_file)
     assert signals == [
-        FileRunner.SIG_READY,
-        FileRunner.SIG_BUSY,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
     ]
 
     with open(resp_file, 'r') as f:

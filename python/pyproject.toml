@@ -1,7 +1,7 @@
 [project]
-name = "coggo"
+name = "coglet"
 version = "0.1.0"
-description = "Add your description here"
+description = "Minimum viable Cog runtime"
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
@@ -31,3 +31,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::ImportWarning",
+]

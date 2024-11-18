@@ -4,13 +4,14 @@ import pathlib
 import time
 from typing import List, Optional
 
-from cog.internal.file_runner import FileRunner
-from tests.test_file_runner import file_runner, setup_signals
+from coglet import file_runner
+
+from .test_file_runner import run_file_runner, setup_signals
 
 
 def test_file_runner_iterator(tmp_path):
     signals = setup_signals()
-    p = file_runner(tmp_path, 'iterator')
+    p = run_file_runner(tmp_path, 'iterator')
 
     time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -21,7 +22,7 @@ def test_file_runner_iterator(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [FileRunner.SIG_READY]
+    assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
     resp_file = os.path.join(tmp_path, 'response-a.json')
@@ -31,14 +32,17 @@ def test_file_runner_iterator(tmp_path):
     assert not os.path.exists(resp_file)
     time.sleep(0.1)
     assert not os.path.exists(req_file)
-    assert signals == [FileRunner.SIG_READY, FileRunner.SIG_BUSY]
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+    ]
     time.sleep(2.1)
     assert os.path.exists(resp_file)
     assert signals == [
-        FileRunner.SIG_READY,
-        FileRunner.SIG_BUSY,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
     ]
 
     with open(resp_file, 'r') as f:
@@ -55,7 +59,7 @@ def test_file_runner_iterator(tmp_path):
 
 def test_file_runner_iterator_webhook(tmp_path):
     signals = setup_signals()
-    p = file_runner(tmp_path, 'iterator')
+    p = run_file_runner(tmp_path, 'iterator')
 
     time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -66,7 +70,7 @@ def test_file_runner_iterator_webhook(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [FileRunner.SIG_READY]
+    assert signals == [file_runner.FileRunner.SIG_READY]
 
     def assert_output(status: str, output: Optional[List[str]]) -> None:
         with open(resp_file, 'r') as f:
@@ -84,27 +88,31 @@ def test_file_runner_iterator_webhook(tmp_path):
     assert not os.path.exists(req_file)
 
     assert_output('starting', None)
-    assert signals == [FileRunner.SIG_READY, FileRunner.SIG_BUSY, FileRunner.SIG_OUTPUT]
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+    ]
 
     time.sleep(1.1)
     assert_output('processing', ['*bar-0*'])
     assert signals == [
-        FileRunner.SIG_READY,
-        FileRunner.SIG_BUSY,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_OUTPUT,
     ]
 
     time.sleep(1.1)
     assert_output('succeeded', ['*bar-0*', '*bar-1*'])
     assert signals == [
-        FileRunner.SIG_READY,
-        FileRunner.SIG_BUSY,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
     ]
 
     stop_file = os.path.join(tmp_path, 'stop')

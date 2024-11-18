@@ -5,9 +5,9 @@ import pathlib
 
 import pytest
 
-from cog.internal.file_runner import FileRunner
+from coglet import file_runner
 
-from .test_file_runner import file_runner, setup_signals
+from .test_file_runner import run_file_runner, setup_signals
 
 
 @pytest.mark.asyncio
@@ -16,7 +16,7 @@ async def test_file_runner_async(tmp_path):
 
     env = os.environ.copy()
     env['SETUP_SLEEP'] = '1'
-    p = file_runner(tmp_path, 'async_sleep', env=env)
+    p = run_file_runner(tmp_path, 'async_sleep', env=env)
 
     await asyncio.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -29,7 +29,7 @@ async def test_file_runner_async(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [FileRunner.SIG_READY]
+    assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
     resp_file = os.path.join(tmp_path, 'response-a.json')
@@ -39,14 +39,17 @@ async def test_file_runner_async(tmp_path):
     assert not os.path.exists(resp_file)
     await asyncio.sleep(0.1)
     assert not os.path.exists(req_file)
-    assert signals == [FileRunner.SIG_READY, FileRunner.SIG_BUSY]
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+    ]
     await asyncio.sleep(1.1)
     assert os.path.exists(resp_file)
     assert signals == [
-        FileRunner.SIG_READY,
-        FileRunner.SIG_BUSY,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
     ]
 
     with open(resp_file, 'r') as f:
@@ -64,7 +67,7 @@ async def test_file_runner_async(tmp_path):
 @pytest.mark.asyncio
 async def test_file_runner_async_parallel(tmp_path):
     signals = setup_signals()
-    p = file_runner(tmp_path, 'async_sleep')
+    p = run_file_runner(tmp_path, 'async_sleep')
 
     await asyncio.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -75,7 +78,7 @@ async def test_file_runner_async_parallel(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [FileRunner.SIG_READY]
+    assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file_a = os.path.join(tmp_path, 'request-a.json')
     req_file_b = os.path.join(tmp_path, 'request-b.json')
@@ -92,16 +95,19 @@ async def test_file_runner_async_parallel(tmp_path):
     await asyncio.sleep(0.1)
     assert not os.path.exists(req_file_a)
     assert not os.path.exists(req_file_b)
-    assert signals == [FileRunner.SIG_READY, FileRunner.SIG_BUSY]
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+    ]
     await asyncio.sleep(1.1)
     assert os.path.exists(resp_file_a)
     assert os.path.exists(resp_file_b)
     assert signals == [
-        FileRunner.SIG_READY,
-        FileRunner.SIG_BUSY,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_OUTPUT,
-        FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
     ]
 
     with open(resp_file_a, 'r') as f:

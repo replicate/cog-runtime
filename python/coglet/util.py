@@ -2,8 +2,7 @@ import typing
 from datetime import datetime, timezone
 from typing import Any, Tuple
 
-import cog
-from cog.internal import adt
+from coglet import adt, api
 
 
 def check_cog_type(tpe: type) -> Tuple[adt.Type, bool]:
@@ -47,9 +46,9 @@ def normalize_value(expected: adt.Type, value: Any) -> Any:
     if expected is adt.Type.FLOAT:
         return float(value)
     elif expected is adt.Type.PATH:
-        return cog.Path(value) if type(value) is str else value
+        return api.Path(value) if type(value) is str else value
     elif expected is adt.Type.SECRET:
-        return cog.Secret(value) if type(value) is str else value
+        return api.Secret(value) if type(value) is str else value
     else:
         return value
 

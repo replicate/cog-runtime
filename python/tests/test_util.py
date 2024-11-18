@@ -1,7 +1,6 @@
 from typing import List
 
-from cog import Path, Secret
-from cog.internal import adt, util
+from coglet import adt, api, util
 
 
 def test_check_cog_type():
@@ -21,10 +20,10 @@ def test_check_value():
     assert not util.check_value(adt.Type.INTEGER, 3.14)
     assert util.check_value(adt.Type.STRING, 'foo')
     assert not util.check_value(adt.Type.STRING, 1)
-    assert util.check_value(adt.Type.PATH, Path('foo'))
+    assert util.check_value(adt.Type.PATH, api.Path('foo'))
     assert util.check_value(adt.Type.PATH, 'foo')
     assert not util.check_value(adt.Type.PATH, 1)
-    assert util.check_value(adt.Type.SECRET, Secret('foo'))
+    assert util.check_value(adt.Type.SECRET, api.Secret('foo'))
     assert util.check_value(adt.Type.SECRET, 'foo')
     assert not util.check_value(adt.Type.SECRET, 1)
 
@@ -37,9 +36,9 @@ def test_json_value():
     assert util.json_value(adt.Type.INTEGER, 3) == 3
     assert util.json_value(adt.Type.STRING, 'foo') == 'foo'
     assert util.json_value(adt.Type.PATH, 'foo.txt') == 'foo.txt'
-    assert util.json_value(adt.Type.PATH, Path('bar.txt')) == 'bar.txt'
+    assert util.json_value(adt.Type.PATH, api.Path('bar.txt')) == 'bar.txt'
     assert util.json_value(adt.Type.SECRET, 'foo') == 'foo'
-    assert util.json_value(adt.Type.SECRET, Secret('bar')) == '**********'
+    assert util.json_value(adt.Type.SECRET, api.Secret('bar')) == '**********'
 
 
 def test_normalize_value():
@@ -49,7 +48,9 @@ def test_normalize_value():
     assert util.normalize_value(adt.Type.FLOAT, 1.2) == 1.2
     assert util.normalize_value(adt.Type.INTEGER, 3) == 3
     assert util.normalize_value(adt.Type.STRING, 'foo') == 'foo'
-    assert util.normalize_value(adt.Type.PATH, 'foo.txt') == Path('foo.txt')
-    assert util.normalize_value(adt.Type.PATH, Path('bar.txt')) == Path('bar.txt')
-    assert util.normalize_value(adt.Type.SECRET, 'foo') == Secret('foo')
-    assert util.normalize_value(adt.Type.SECRET, Secret('bar')) == Secret('bar')
+    assert util.normalize_value(adt.Type.PATH, 'foo.txt') == api.Path('foo.txt')
+    assert util.normalize_value(adt.Type.PATH, api.Path('bar.txt')) == api.Path(
+        'bar.txt'
+    )
+    assert util.normalize_value(adt.Type.SECRET, 'foo') == api.Secret('foo')
+    assert util.normalize_value(adt.Type.SECRET, api.Secret('bar')) == api.Secret('bar')

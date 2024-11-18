@@ -5,8 +5,7 @@ import os.path
 import re
 from typing import Any, AsyncGenerator, Dict
 
-import cog
-from cog.internal import adt, util
+from coglet import adt, api, util
 
 
 def _kwargs(adt_ins: Dict[str, adt.Input], inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -96,8 +95,8 @@ class Runner:
                 kwargs['weights'] = url
                 self.predictor.setup(weights=url)
             elif os.path.exists(path):
-                kwargs['weights'] = cog.Path(path)
-                self.predictor.setup(weights=cog.Path(path))
+                kwargs['weights'] = api.Path(path)
+                self.predictor.setup(weights=api.Path(path))
             else:
                 kwargs['weights'] = None
         if inspect.iscoroutinefunction(self.predictor.setup):
