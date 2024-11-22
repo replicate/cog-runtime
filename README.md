@@ -10,7 +10,7 @@ How is `cog-runtime` formed?
 ```mermaid
 sequenceDiagram
     participant r8
-    participant server as coggo-server
+    participant server as cog-server
     participant runner as coglet
     participant predictor as Predictor
     r8->>server: Boot
