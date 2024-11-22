@@ -45,13 +45,13 @@ that communicates via files and signals.
 
 ## `cog-server`
 
-Go-based HTTP server that known how to spawn and communicate with
+Go-based HTTP server that knows how to spawn and communicate with
 `coglet`.
 
 ## `coglet`
 
 Python-based model runner with zero dependencies outside of the standard library.
-The same in-process API provided by [Cog] is avaaliable, e.g.:
+The same in-process API provided by [Cog] is available, e.g.:
 
 ```python
 from cog import BasePredictor, Input
