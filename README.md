@@ -1,5 +1,8 @@
 # Cog Runtime
 
+> [!CAUTION]
+> This project is **experimental** and should not be handled near open flame.
+
 Alt-core [Cog] runtime implementation.
 
 The original [Cog] seeks to be a great developer tool and also an arguably great
