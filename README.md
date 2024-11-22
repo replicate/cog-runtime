@@ -9,16 +9,31 @@ How is `cog-runtime` formed?
 
 ```mermaid
 sequenceDiagram
-    r8->>cog-server: HTTP
-    activate cog-server
-    cog-server->>coglet: File write
-    activate coglet
-    coglet-->>cog-server: SIGUSR1
-    coglet-->>cog-server: SIGHUP
-    cog-server->>coglet: File read
-    deactivate coglet
-    cog-server->>r8: HTTP
-    deactivate cog-server
+    participant r8
+    participant server as coggo-server
+    participant runner as cog.internal.file_runner
+    participant predictor as Predictor
+    r8->>server: Boot
+    activate server
+    server->>runner: exec("python3", ...)
+    activate runner
+    runner<<->>predictor: setup()
+    activate predictor
+    runner--)server: SIGHUP (output)
+    runner--)server: SIGUSR1 (ready)
+    server->>runner: read("setup-result.json")
+    r8->>server: GET /health-check
+    r8->>server: POST /predictions
+    server->>runner: write("request-{id}.json")
+    runner--)server: SIGUSR2 (busy)
+    runner<<->>predictor: predict()
+    deactivate predictor
+    runner--)server: SIGHUP (output)
+    runner--)server: SIGUSR1 (ready)
+    server->>runner: read("response-{id}.json")
+    deactivate runner
+    server->>r8: POST /webhook
+    deactivate server
 ```
 
 This sequence is simplified, but the rough idea is that the Replicate platform (`r8`)
