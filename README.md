@@ -11,7 +11,7 @@ How is `cog-runtime` formed?
 sequenceDiagram
     participant r8
     participant server as coggo-server
-    participant runner as cog.internal.file_runner
+    participant runner as coglet
     participant predictor as Predictor
     r8->>server: Boot
     activate server
