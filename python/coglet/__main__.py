@@ -8,7 +8,7 @@ from typing import Optional
 from coglet import file_runner
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--working-dir', metavar='DIR', required=True, help='working directory'
