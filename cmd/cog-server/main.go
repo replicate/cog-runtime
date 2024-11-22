@@ -17,11 +17,11 @@ import (
 	"github.com/replicate/go/version"
 	_ "go.uber.org/automaxprocs"
 
-	"github.com/replicate/coggo/internal/server"
-	"github.com/replicate/coggo/internal/util"
+	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/util"
 )
 
-var logger = logging.New("coggo-server")
+var logger = logging.New("cog-server")
 
 type Config struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
@@ -43,12 +43,12 @@ func main() {
 	log := logger.Sugar()
 
 	var cfg Config
-	flags := ff.NewFlagSet("coggo-server")
+	flags := ff.NewFlagSet("cog-server")
 	must.Do(flags.AddStruct(&cfg))
 
 	cmd := &ff.Command{
-		Name:  "coggo-server",
-		Usage: "coggo-server [FLAGS]",
+		Name:  "cog-server",
+		Usage: "cog-server [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
 			if err := cfg.Validate(); err != nil {
@@ -67,7 +67,7 @@ func main() {
 			}
 			workingDir := cfg.WorkingDir
 			if workingDir == "" {
-				workingDir = must.Get(os.MkdirTemp("", "coggo-server-"))
+				workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
 			}
 			log.Infow("configuration", "working-dir", workingDir, "module-name", moduleName, "class-name", className)
 

@@ -1,18 +1,17 @@
-Coggo
-=====
+# Cog Runtime
 
 Alt-core [Cog] runtime implementation.
 
 The original [Cog] seeks to be a great developer tool and also an arguably great
-production runtime. Coggo is focused on being a fantastic production runtime _only_.
+production runtime. Cog runtime is focused on being a fantastic production runtime _only_.
 
-How is Coggo formed?
+How is `cog-runtime` formed?
 
 ```mermaid
 sequenceDiagram
     participant r8
-    participant server as coggo-server
-    participant runner as cog.internal.file_runner
+    participant server as cog-server
+    participant runner as coglet
     participant predictor as Predictor
     r8->>server: Boot
     activate server
@@ -38,15 +37,15 @@ sequenceDiagram
 ```
 
 This sequence is simplified, but the rough idea is that the Replicate platform (`r8`)
-depends on `coggo-server` to provide an HTTP API in front of a `cog.internal.file_runner`
+depends on `cog-server` to provide an HTTP API in front of a `coglet`
 that communicates via files and signals.
 
-## `coggo-server`
+## `cog-server`
 
 Go-based HTTP server that known how to spawn and communicate with
-`cog.internal.file_runner`.
+`coglet`.
 
-## `cog.internal.file_runner`
+## `coglet`
 
 Python-based model runner with zero dependencies outside of the standard library.
 The same in-process API provided by [Cog] is avaaliable, e.g.:
@@ -62,7 +61,7 @@ class MyPredictor(BasePredictor):
 In addition to simple cases like the above, the runner is async by default and supports
 continuous batching.
 
-Communication with the `coggo-server` parent process is managed via input and output files
+Communication with the `cog-server` parent process is managed via input and output files
 and the following signals:
 
 - `SIGUSR1` model is ready
