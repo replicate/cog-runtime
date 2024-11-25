@@ -7,6 +7,9 @@ from coglet.api import (
     Secret,
 )
 
+__version__ = '0.0.8001+coglet'
+__version_tuple__ = (0, 0, 8001, '', 'coglet')
+
 __all__ = [
     'BaseModel',
     'BasePredictor',
@@ -14,4 +17,5 @@ __all__ = [
     'Input',
     'Path',
     'Secret',
+    '__version__',
 ]
