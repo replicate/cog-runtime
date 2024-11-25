@@ -7,8 +7,8 @@ from coglet.api import (
     Secret,
 )
 
-__version__ = '0.11.3+coglet-compat'
-__version_tuple__ = (0, 11, 3, '', 'coglet-compat')
+__version__ = '0.0.8001+coglet'
+__version_tuple__ = (0, 0, 8001, '', 'coglet')
 
 __all__ = [
     'BaseModel',
