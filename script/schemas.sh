@@ -12,7 +12,6 @@ cd "$schemas_dir"
 
 trap "rm -f predict.py" EXIT
 for f in *.py; do
-    [ "$f" != __init__.py ] || continue
     echo "Generating schema for $(basename "$f")"
     cp "$f" predict.py
     uv run --python "$python_version" --with cog python3 -m cog.command.openapi_schema > "$(basename "$f" .py).json"
