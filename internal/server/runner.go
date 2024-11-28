@@ -48,7 +48,7 @@ type Runner struct {
 func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown bool) *Runner {
 	args := []string{
 		"-u",
-		"-m", "cog.internal.file_runner",
+		"-m", "coglet",
 		"--working-dir", workingDir,
 		"--module-name", moduleName,
 		"--class-name", className,
