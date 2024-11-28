@@ -246,6 +246,13 @@ func (r *Runner) handleResponses() {
 		var resp PredictionResponse
 		must.Do(r.readJson(entry.Name(), &resp))
 
+		if o, err := handleOutput(resp.Output); err != nil {
+			log.Errorw("failed to handle output", "id", pr.request.Id, "error", err)
+			resp.Error = err.Error()
+		} else {
+			resp.Output = o
+		}
+
 		// Copy request fields because the Python FileRunner does not
 		resp.Id = pr.request.Id
 		resp.Input = pr.request.Input
