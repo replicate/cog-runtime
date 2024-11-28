@@ -318,7 +318,7 @@ func (r *Runner) log(line string) {
 		} else {
 			log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
 		}
-	} else if !strings.Contains(line, "[cog-file-runner]") {
+	} else if !strings.Contains(line, "[coglet]") {
 		r.logs = append(r.logs, line)
 	}
 	fmt.Println(line)
