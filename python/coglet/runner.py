@@ -60,12 +60,13 @@ def _check_output(adt_out: adt.Output, output: Any) -> Any:
     if adt_out.kind is adt.Kind.SINGLE:
         assert adt_out.type is not None, 'missing output type'
         assert util.check_value(adt_out.type, output), f'incompatible output: {output}'
-        return output
+        return util.normalize_value(adt_out.type, output)
     elif adt_out.kind is adt.Kind.LIST:
         assert adt_out.type is not None, 'missing output type'
         assert type(output) is list, 'output is not list'
-        for x in output:
+        for i, x in enumerate(output):
             assert util.check_value(adt_out.type, x), f'incompatible output: {x}'
+            output[i] = util.normalize_value(adt_out.type, x)
         return output
     elif adt_out.kind == adt.Kind.OBJECT:
         assert adt_out.fields is not None, 'missing output fields'
@@ -73,6 +74,7 @@ def _check_output(adt_out: adt.Output, output: Any) -> Any:
             assert hasattr(output, name), f'missing output field: {name}'
             value = getattr(output, name)
             assert util.check_value(tpe, value), f'incompatible output: {name}={value}'
+            setattr(output, name, util.normalize_value(tpe, value))
         return output
 
 
