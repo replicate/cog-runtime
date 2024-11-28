@@ -22,7 +22,7 @@ class Secret:
     def __str__(self):
         return '**********' if self.secret_value is not None else ''
 
-    def get_secret_value(self):
+    def get_secret_value(self) -> Optional[str]:
         return self.secret_value
 
 
