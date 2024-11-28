@@ -8,7 +8,7 @@ import signal
 import sys
 from typing import Any, Dict, Optional
 
-from coglet import inspector, runner, schemas, util
+from coglet import api, inspector, runner, schemas, util
 
 
 class FileRunner:
@@ -189,9 +189,18 @@ class FileRunner:
     ) -> None:
         resp_path = os.path.join(self.working_dir, self.RESPONSE_FMT.format(pid=pid))
         with open(resp_path, 'w') as f:
-            json.dump(resp, f)
+            json.dump(resp, f, default=output_json)
         self._signal(FileRunner.SIG_OUTPUT)
 
     def _signal(self, signum: int) -> None:
         if not self.isatty:
             os.kill(os.getppid(), signum)
+
+
+def output_json(obj):
+    if type(obj) is api.Path:
+        return f'file://{obj.absolute()}'
+    elif type(obj) is api.Secret:
+        return obj.get_secret_value()
+    else:
+        raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
