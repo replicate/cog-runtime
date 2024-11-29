@@ -39,7 +39,7 @@ type Runner struct {
 	schema                string
 	setupResult           *SetupResult
 	logs                  []string
-	pending               map[string]PendingPrediction
+	pending               map[string]*PendingPrediction
 	awaitExplicitShutdown bool
 	shutdownRequested     bool
 
@@ -59,7 +59,7 @@ func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown b
 		workingDir:            workingDir,
 		cmd:                   *cmd,
 		status:                StatusStarting,
-		pending:               make(map[string]PendingPrediction),
+		pending:               make(map[string]*PendingPrediction),
 		awaitExplicitShutdown: awaitExplicitShutdown,
 	}
 }
@@ -151,7 +151,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pending[req.Id] = pr
+	r.pending[req.Id] = &pr
 	return pr.c, nil
 }
 
@@ -271,9 +271,11 @@ func (r *Runner) handleResponses() {
 		resp.Input = pr.request.Input
 		resp.CreatedAt = pr.request.CreatedAt
 
-		// FIXME: handle async predictions
 		r.mu.Lock()
-		resp.Logs = strings.Join(r.logs, "\n") + "\n"
+		resp.Logs = strings.Join(pr.logs, "\n")
+		if resp.Logs != "" {
+			resp.Logs += "\n"
+		}
 		r.mu.Unlock()
 
 		// FIXME: webhook interval
@@ -344,7 +346,10 @@ func (r *Runner) log(line string) {
 }
 
 func (r *Runner) rotateLogs() string {
-	logs := strings.Join(r.logs, "\n") + "\n"
+	logs := strings.Join(r.logs, "\n")
+	if logs != "" {
+		logs += "\n"
+	}
 	r.logs = make([]string, 0)
 	return logs
 }

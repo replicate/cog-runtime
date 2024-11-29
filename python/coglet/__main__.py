@@ -3,7 +3,7 @@ import asyncio
 import contextvars
 import logging
 import sys
-from typing import Optional
+from typing import Dict, Optional
 
 from coglet import file_runner
 
@@ -20,13 +20,6 @@ def main() -> int:
         '--class-name', metavar='NAME', required=True, help='Python class name'
     )
 
-    _ctx_pid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-        'pid', default=None
-    )
-    _ctx_newline: contextvars.ContextVar[bool] = contextvars.ContextVar(
-        'newline', default=False
-    )
-
     logger = logging.getLogger('coglet')
     logger.setLevel(logging.INFO)
     handler = logging.StreamHandler(sys.stdout)
@@ -37,26 +30,32 @@ def main() -> int:
     )
     logger.addHandler(handler)
 
+    _ctx_pid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+        'pid', default=None
+    )
+
     _stdout_write = sys.stdout.write
     _stderr_write = sys.stderr.write
 
     def _ctx_write(write_fn):
+        buf: Dict[str, str] = {}
+
         def _write(s: str) -> int:
             pid = _ctx_pid.get()
+            prefix = f'[pid={pid}] ' if pid is not None else ''
             if pid is None:
-                return write_fn(s)
+                pid = 'logger'
+            n = 0
+            if s[-1] == '\n':
+                b = buf.pop(pid, '')
+                out = b + s[:-1].replace('\n', f'\n{prefix}') + '\n'
+                n += write_fn(out)
+                buf[pid] = prefix
             else:
-                n = 0
-                if _ctx_newline.get():
-                    n += write_fn(f'[pid={pid}] ')
-                if s[-1] == '\n':
-                    _ctx_newline.set(True)
-                    s = s[:-1].replace('\n', f'\n[pid={pid}] ') + '\n'
-                else:
-                    _ctx_newline.set(False)
-                    s = s.replace('\n', f'\n[pid={pid}] ')
-                n += write_fn(s)
-                return n
+                if pid not in buf:
+                    buf[pid] = prefix
+                buf[pid] += s.replace('\n', f'\n{prefix}')
+            return n
 
         return _write
 

@@ -149,7 +149,7 @@ class FileRunner:
 
     async def _predict(self, pid: str, req: Dict[str, Any]) -> None:
         assert self.runner is not None
-        self.ctx_pid.set(pid)
+
         resp: Dict[str, Any] = {
             'started_at': util.now_iso(),
             'status': 'starting',
@@ -160,6 +160,7 @@ class FileRunner:
             if is_async:
                 self._respond(pid, resp)
 
+            self.ctx_pid.set(pid)
             if self.runner.is_iter():
                 resp['output'] = []
                 async for o in self.runner.predict_iter(req['input']):
@@ -169,6 +170,7 @@ class FileRunner:
                         self._respond(pid, resp)
             else:
                 resp['output'] = await self.runner.predict(req['input'])
+            self.ctx_pid.set(None)
             resp['status'] = 'succeeded'
             self.logger.info('prediction completed: id=%s', pid)
         except asyncio.CancelledError:
@@ -179,6 +181,7 @@ class FileRunner:
             resp['status'] = 'failed'
             self.logger.error('prediction failed: id=%s %s', pid, e)
         finally:
+            self.ctx_pid.set(None)
             resp['completed_at'] = util.now_iso()
         self._respond(pid, resp)
 
