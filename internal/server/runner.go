@@ -267,7 +267,6 @@ func (r *Runner) handleResponses() {
 		if pr.request.Webhook != "" {
 			webhook(pr.request.Webhook, resp)
 		}
-		fmt.Println(resp)
 
 		if _, ok := PredictionCompletedStatuses[resp.Status]; ok {
 			completed[pid] = true
