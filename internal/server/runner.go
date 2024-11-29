@@ -28,6 +28,7 @@ var RESPONSE_FMT = "response-%s.json"
 type PendingPrediction struct {
 	request PredictionRequest
 	logs    []string
+	paths   []string
 	c       chan PredictionResponse
 }
 
@@ -134,9 +135,17 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	}
 
 	log.Infow("received prediction request", "id", req.Id)
+
+	paths := make([]string, 0)
+	input, err := handlePath(req.Input, &paths, base64ToInput)
+	if err != nil {
+		return nil, err
+	}
+	req.Input = input
+
 	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
 	must.Do(os.WriteFile(reqPath, must.Get(json.Marshal(req)), 0644))
-	pr := PendingPrediction{request: req}
+	pr := PendingPrediction{request: req, paths: paths}
 	if req.Webhook == "" {
 		pr.c = make(chan PredictionResponse, 1)
 	}
@@ -246,11 +255,15 @@ func (r *Runner) handleResponses() {
 		var resp PredictionResponse
 		must.Do(r.readJson(entry.Name(), &resp))
 
-		if o, err := handleOutput(resp.Output); err != nil {
+		paths := make([]string, 0)
+		if output, err := handlePath(resp.Output, &paths, outputToBase64); err != nil {
 			log.Errorw("failed to handle output", "id", pr.request.Id, "error", err)
 			resp.Error = err.Error()
 		} else {
-			resp.Output = o
+			resp.Output = output
+		}
+		for _, p := range paths {
+			must.Do(os.Remove(p))
 		}
 
 		// Copy request fields because the Python FileRunner does not
