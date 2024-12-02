@@ -123,9 +123,6 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		return nil, fmt.Errorf("server is defunct")
 	}
 	// We can still queue predictions if status is starting or busy
-	if req.Id == "" {
-		req.Id = util.PredictionId()
-	}
 	if req.CreatedAt == "" {
 		req.CreatedAt = util.NowIso()
 	}

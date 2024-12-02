@@ -192,7 +192,7 @@ func (e *CogTest) asyncPrediction(method string, url string, input map[string]an
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Prefer", "respond-async")
 	resp := must.Get(http.DefaultClient.Do(r))
-	assert.Equal(e.t, http.StatusOK, resp.StatusCode)
+	assert.Equal(e.t, http.StatusAccepted, resp.StatusCode)
 }
 
 func (e *CogTest) Shutdown() {

@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/replicate/cog-runtime/internal/util"
+
 	"github.com/replicate/go/must"
 
 	"github.com/replicate/go/logging"
@@ -73,13 +75,18 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Id = id
 	}
+	if req.Id == "" {
+		req.Id = util.PredictionId()
+	}
 
 	c, err := h.runner.predict(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	if c == nil {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusAccepted)
+		resp := PredictionResponse{Id: req.Id, Status: "starting"}
+		must.Get(w.Write(must.Get(json.Marshal(resp))))
 	} else {
 		resp := <-c
 		w.WriteHeader(http.StatusOK)
