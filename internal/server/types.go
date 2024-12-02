@@ -53,20 +53,20 @@ type SetupResult struct {
 }
 
 type PredictionRequest struct {
-	Input     interface{} `json:"input"`
-	Id        string      `json:"id"`
-	CreatedAt string      `json:"created_at"`
-	Webhook   string      `json:"webhook,omitempty"`
+	Input     any    `json:"input"`
+	Id        string `json:"id"`
+	CreatedAt string `json:"created_at"`
+	Webhook   string `json:"webhook,omitempty"`
 }
 
 type PredictionResponse struct {
-	Input       interface{} `json:"input"`
-	Output      interface{} `json:"output"`
-	Id          string      `json:"id"`
-	CreatedAt   string      `json:"created_at"`
-	StartedAt   string      `json:"started_at"`
-	CompletedAt string      `json:"completed_at"`
-	Logs        string      `json:"logs,omitempty"`
-	Error       string      `json:"error,omitempty"`
-	Status      string      `json:"status,omitempty"`
+	Input       any    `json:"input"`
+	Output      any    `json:"output"`
+	Id          string `json:"id"`
+	CreatedAt   string `json:"created_at"`
+	StartedAt   string `json:"started_at"`
+	CompletedAt string `json:"completed_at"`
+	Logs        string `json:"logs,omitempty"`
+	Error       string `json:"error,omitempty"`
+	Status      string `json:"status,omitempty"`
 }
