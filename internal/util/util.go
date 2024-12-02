@@ -50,3 +50,11 @@ func NowIso() string {
 	// Python: datetime.now(tz=timezone.utc).isoformat()
 	return time.Now().UTC().Format("2006-01-02T15:04:05.999999-07:00")
 }
+
+func JoinLogs(logs []string) string {
+	r := strings.Join(logs, "\n")
+	if r != "" {
+		r += "\n"
+	}
+	return r
+}
