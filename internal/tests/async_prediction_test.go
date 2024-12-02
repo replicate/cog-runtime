@@ -114,7 +114,7 @@ func TestAsyncPredictionFailure(t *testing.T) {
 
 func TestAsyncPredictionCrash(t *testing.T) {
 	e := NewCogTest(t, "sleep")
-	e.AppendArgs("--await-explicit-shutdown")
+	e.AppendArgs("--await-explicit-shutdown=true")
 	e.AppendEnvs("PREDICTION_CRASH=1")
 	assert.NoError(t, e.Start())
 	e.StartWebhook()

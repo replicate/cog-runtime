@@ -27,7 +27,7 @@ func TestSetupSucceeded(t *testing.T) {
 
 func TestSetupFailure(t *testing.T) {
 	e := NewCogTest(t, "sleep")
-	e.AppendArgs("--await-explicit-shutdown")
+	e.AppendArgs("--await-explicit-shutdown=true")
 	e.AppendEnvs("SETUP_FAILURE=1")
 	assert.NoError(t, e.Start())
 
@@ -42,7 +42,7 @@ func TestSetupFailure(t *testing.T) {
 
 func TestSetupCrash(t *testing.T) {
 	e := NewCogTest(t, "sleep")
-	e.AppendArgs("--await-explicit-shutdown")
+	e.AppendArgs("--await-explicit-shutdown=true")
 	e.AppendEnvs("SETUP_CRASH=1")
 	assert.NoError(t, e.Start())
 
