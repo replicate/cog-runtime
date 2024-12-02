@@ -166,6 +166,21 @@ func (r *Runner) wait() {
 	if err != nil {
 		logs := r.rotateLogs()
 		log.Errorw("python runner excited with error", "pid", r.cmd.Process.Pid, "error", err, "logs", logs)
+		for pid, pr := range r.pending {
+			resp := PredictionResponse{
+				Input:     pr.request.Input,
+				Id:        pid,
+				CreatedAt: pr.request.CreatedAt,
+				// Runner crashed without writing a response JSON, so we don't actually know
+				StartedAt:   pr.request.CreatedAt,
+				CompletedAt: util.NowIso(),
+				Logs:        util.JoinLogs(pr.logs),
+				// Not per prediction logs, but could be useful nonetheless
+				Error:  logs,
+				Status: "failed",
+			}
+			sendResponse(pr, resp)
+		}
 		if r.status == StatusStarting {
 			r.status = StatusSetupFailed
 			r.setupResult.CompletedAt = util.NowIso()
@@ -240,7 +255,7 @@ func (r *Runner) updateSetupResult() {
 
 func (r *Runner) handleResponses() {
 	log := logger.Sugar()
-	completed := make(map[string]bool)
+	pids := make(map[string]bool)
 	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
 		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
 		if m == nil {
@@ -272,30 +287,22 @@ func (r *Runner) handleResponses() {
 		resp.CreatedAt = pr.request.CreatedAt
 
 		r.mu.Lock()
-		resp.Logs = strings.Join(pr.logs, "\n")
-		if resp.Logs != "" {
-			resp.Logs += "\n"
-		}
+		resp.Logs = util.JoinLogs(pr.logs)
 		r.mu.Unlock()
 
-		// FIXME: webhook interval
-		if pr.request.Webhook != "" {
-			webhook(pr.request.Webhook, resp)
-		}
-
-		if _, ok := PredictionCompletedStatuses[resp.Status]; ok {
-			completed[pid] = true
+		completed := sendResponse(pr, resp)
+		if completed {
 			log.Infow("prediction completed", "id", pr.request.Id, "status", resp.Status)
-			if pr.c != nil {
-				pr.c <- resp
-			}
 		}
+		pids[pid] = completed
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for pid, _ := range completed {
-		delete(r.pending, pid)
-		must.Do(os.Remove(path.Join(r.workingDir, fmt.Sprintf(RESPONSE_FMT, pid))))
+	for pid, completed := range pids {
+		if completed {
+			delete(r.pending, pid)
+			must.Do(os.Remove(path.Join(r.workingDir, fmt.Sprintf(RESPONSE_FMT, pid))))
+		}
 	}
 }
 
@@ -310,8 +317,22 @@ func (r *Runner) readJson(filename string, v any) error {
 	return json.Unmarshal(bs, v)
 }
 
+func sendResponse(pr *PendingPrediction, resp PredictionResponse) bool {
+	_, completed := PredictionCompletedStatuses[resp.Status]
+	if pr.request.Webhook != "" {
+		// Async prediction
+		// FIXME: webhook interval
+		webhook(pr.request.Webhook, resp)
+	} else if pr.c != nil && completed {
+		// Blocking prediction
+		pr.c <- resp
+	}
+	return completed
+}
+
 func webhook(url string, response PredictionResponse) {
 	log := logger.Sugar()
+	log.Infow("sending webhook", "url", url, "response", response)
 	body := bytes.NewBuffer(must.Get(json.Marshal(response)))
 	req := must.Get(http.NewRequest("POST", url, body))
 	req.Header.Add("Content-Type", "application/json")
@@ -346,10 +367,7 @@ func (r *Runner) log(line string) {
 }
 
 func (r *Runner) rotateLogs() string {
-	logs := strings.Join(r.logs, "\n")
-	if logs != "" {
-		logs += "\n"
-	}
+	logs := util.JoinLogs(r.logs)
 	r.logs = make([]string, 0)
 	return logs
 }
