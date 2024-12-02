@@ -19,10 +19,7 @@ if [ -z "${PYTHON:-}" ]; then
     export LOG_FORMAT=development
     export PATH="$base_dir/python/.venv/bin:$PATH"
     export PYTHONPATH="$base_dir/python"
-    rm -rf tmp
-    mkdir -p tmp
     go run cmd/cog-server/main.go \
-        --working-dir tmp \
         --module-name "tests.runners.$module" \
         --class-name Predictor \
         "$@"
