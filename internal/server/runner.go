@@ -26,10 +26,36 @@ var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+).json$`)
 var RESPONSE_FMT = "response-%s.json"
 
 type PendingPrediction struct {
-	request PredictionRequest
-	logs    []string
-	paths   []string
-	c       chan PredictionResponse
+	request  PredictionRequest
+	response PredictionResponse
+	paths    []string
+	logs     []string
+	c        chan PredictionResponse
+}
+
+func (pr *PendingPrediction) sendWebhook() {
+	if pr.request.Webhook == "" {
+		return
+	}
+	log := logger.Sugar()
+	log.Infow("sending webhook", "url", pr.request.Webhook, "response", pr.response)
+	body := bytes.NewBuffer(must.Get(json.Marshal(pr.response)))
+	req := must.Get(http.NewRequest("POST", pr.request.Webhook, body))
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Errorw("failed to send webhook", "error", err)
+	} else if resp.StatusCode != 200 {
+		body := string(must.Get(io.ReadAll(resp.Body)))
+		log.Errorw("failed to send webhook", "code", resp.StatusCode, "body", body)
+	}
+}
+
+func (pr *PendingPrediction) sendResponse() {
+	if pr.c == nil {
+		return
+	}
+	pr.c <- pr.response
 }
 
 type Runner struct {
@@ -142,7 +168,16 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 
 	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
 	must.Do(os.WriteFile(reqPath, must.Get(json.Marshal(req)), 0644))
-	pr := PendingPrediction{request: req, paths: paths}
+	resp := PredictionResponse{
+		Input:     req.Input,
+		Id:        req.Id,
+		CreatedAt: req.CreatedAt,
+	}
+	pr := PendingPrediction{
+		request:  req,
+		response: resp,
+		paths:    paths,
+	}
 	if req.Webhook == "" {
 		pr.c = make(chan PredictionResponse, 1)
 	}
@@ -161,28 +196,25 @@ func (r *Runner) wait() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err != nil {
-		logs := r.rotateLogs()
-		log.Errorw("python runner excited with error", "pid", r.cmd.Process.Pid, "error", err, "logs", logs)
-		for pid, pr := range r.pending {
-			resp := PredictionResponse{
-				Input:     pr.request.Input,
-				Id:        pid,
-				CreatedAt: pr.request.CreatedAt,
-				// Runner crashed without writing a response JSON, so we don't actually know
-				StartedAt:   pr.request.CreatedAt,
-				CompletedAt: util.NowIso(),
-				Logs:        util.JoinLogs(pr.logs),
-				// Not per prediction logs, but could be useful nonetheless
-				Error:  logs,
-				Status: "failed",
+		runnerLogs := r.rotateLogs()
+		log.Errorw("python runner excited with error", "pid", r.cmd.Process.Pid, "error", err, "logs", runnerLogs)
+		for _, pr := range r.pending {
+			now := util.NowIso()
+			if pr.response.StartedAt == "" {
+				pr.response.StartedAt = now
 			}
-			sendResponse(pr, resp)
+			pr.response.CompletedAt = now
+			pr.response.Logs = util.JoinLogs(pr.logs)
+			pr.response.Error = runnerLogs
+			pr.response.Status = "failed"
+			pr.sendWebhook()
+			pr.sendResponse()
 		}
 		if r.status == StatusStarting {
 			r.status = StatusSetupFailed
 			r.setupResult.CompletedAt = util.NowIso()
 			r.setupResult.Status = "failed"
-			r.setupResult.Logs = logs
+			r.setupResult.Logs = runnerLogs
 		} else {
 			r.status = StatusDefunct
 		}
@@ -252,7 +284,7 @@ func (r *Runner) updateSetupResult() {
 
 func (r *Runner) handleResponses() {
 	log := logger.Sugar()
-	pids := make(map[string]bool)
+	completed := make(map[string]bool)
 	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
 		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
 		if m == nil {
@@ -264,42 +296,38 @@ func (r *Runner) handleResponses() {
 			continue
 		}
 		log.Infow("received prediction response", "id", pr.request.Id)
-		var resp PredictionResponse
-		must.Do(r.readJson(entry.Name(), &resp))
+		must.Do(r.readJson(entry.Name(), &pr.response))
 
 		paths := make([]string, 0)
-		if output, err := handlePath(resp.Output, &paths, outputToBase64); err != nil {
+		if output, err := handlePath(pr.response.Output, &paths, outputToBase64); err != nil {
 			log.Errorw("failed to handle output", "id", pr.request.Id, "error", err)
-			resp.Error = err.Error()
+			pr.response.Error = err.Error()
 		} else {
-			resp.Output = output
+			pr.response.Output = output
 		}
 		for _, p := range paths {
 			must.Do(os.Remove(p))
 		}
 
-		// Copy request fields because the Python FileRunner does not
-		resp.Id = pr.request.Id
-		resp.Input = pr.request.Input
-		resp.CreatedAt = pr.request.CreatedAt
-
 		r.mu.Lock()
-		resp.Logs = util.JoinLogs(pr.logs)
+		pr.response.Logs = util.JoinLogs(pr.logs)
 		r.mu.Unlock()
 
-		completed := sendResponse(pr, resp)
-		if completed {
-			log.Infow("prediction completed", "id", pr.request.Id, "status", resp.Status)
+		if pr.response.Status == "starting" {
+			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
+			pr.sendWebhook()
+		} else if _, ok := PredictionCompletedStatuses[pr.response.Status]; ok {
+			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
+			pr.sendWebhook()
+			pr.sendResponse()
+			completed[pid] = true
 		}
-		pids[pid] = completed
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for pid, completed := range pids {
-		if completed {
-			delete(r.pending, pid)
-			must.Do(os.Remove(path.Join(r.workingDir, fmt.Sprintf(RESPONSE_FMT, pid))))
-		}
+	for pid, _ := range completed {
+		delete(r.pending, pid)
+		must.Do(os.Remove(path.Join(r.workingDir, fmt.Sprintf(RESPONSE_FMT, pid))))
 	}
 }
 
@@ -312,34 +340,6 @@ func (r *Runner) readJson(filename string, v any) error {
 		return err
 	}
 	return json.Unmarshal(bs, v)
-}
-
-func sendResponse(pr *PendingPrediction, resp PredictionResponse) bool {
-	_, completed := PredictionCompletedStatuses[resp.Status]
-	if pr.request.Webhook != "" {
-		// Async prediction
-		// FIXME: webhook interval
-		webhook(pr.request.Webhook, resp)
-	} else if pr.c != nil && completed {
-		// Blocking prediction
-		pr.c <- resp
-	}
-	return completed
-}
-
-func webhook(url string, response PredictionResponse) {
-	log := logger.Sugar()
-	log.Infow("sending webhook", "url", url, "response", response)
-	body := bytes.NewBuffer(must.Get(json.Marshal(response)))
-	req := must.Get(http.NewRequest("POST", url, body))
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Errorw("failed to send webhook", "error", err)
-	} else if resp.StatusCode != 200 {
-		body := string(must.Get(io.ReadAll(resp.Body)))
-		log.Errorw("failed to send webhook", "code", resp.StatusCode, "body", body)
-	}
 }
 
 ////////////////////
