@@ -170,18 +170,19 @@ class FileRunner:
                         self._respond(pid, resp)
             else:
                 resp['output'] = await self.runner.predict(req['input'])
-            self.ctx_pid.set(None)
             resp['status'] = 'succeeded'
+            self.ctx_pid.set(None)
             self.logger.info('prediction completed: id=%s', pid)
         except asyncio.CancelledError:
             resp['status'] = 'canceled'
+            self.ctx_pid.set(None)
             self.logger.error('prediction canceled: id=%s', pid)
         except Exception as e:
             resp['error'] = str(e)
             resp['status'] = 'failed'
+            self.ctx_pid.set(None)
             self.logger.error('prediction failed: id=%s %s', pid, e)
         finally:
-            self.ctx_pid.set(None)
             resp['completed_at'] = util.now_iso()
         self._respond(pid, resp)
 
