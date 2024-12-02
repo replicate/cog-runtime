@@ -12,7 +12,7 @@ import (
 
 var BASE64_REGEX = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 
-func handlePath(output interface{}, paths *[]string, fn func(string, *[]string) (string, error)) (interface{}, error) {
+func handlePath(output any, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
 	if x, ok := output.(string); ok {
 		return fn(x, paths)
 	} else if xs, ok := output.([]string); ok {
@@ -24,7 +24,7 @@ func handlePath(output interface{}, paths *[]string, fn func(string, *[]string) 
 			xs[i] = o
 		}
 		return xs, nil
-	} else if m, ok := output.(map[string]interface{}); ok {
+	} else if m, ok := output.(map[string]any); ok {
 		for key, value := range m {
 			if s, ok := value.(string); ok {
 				o, err := fn(s, paths)
