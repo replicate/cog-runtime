@@ -11,4 +11,4 @@ go test ./...
 
 cd "$base_dir/python"
 uv sync --all-extras
-.venv/bin/pytest
+.venv/bin/pytest -n auto
