@@ -69,7 +69,12 @@ func main() {
 			if workingDir == "" {
 				workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
 			}
-			log.Infow("configuration", "working-dir", workingDir, "module-name", moduleName, "class-name", className)
+			log.Infow("configuration",
+				"working-dir", workingDir,
+				"module-name", moduleName,
+				"class-name", className,
+				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
+			)
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting HTTP server", "addr", addr)
