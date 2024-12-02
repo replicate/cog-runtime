@@ -18,7 +18,7 @@ base_dir="$(git rev-parse --show-toplevel)"
 if [ -z "${PYTHON:-}" ]; then
     export LOG_FORMAT=development
     export PATH="$base_dir/python/.venv/bin:$PATH"
-    export PYTHONPATH="$base_dir/python/coglet/_compat:$base_dir/python"
+    export PYTHONPATH="$base_dir/python"
     rm -rf tmp
     mkdir -p tmp
     go run cmd/cog-server/main.go \
