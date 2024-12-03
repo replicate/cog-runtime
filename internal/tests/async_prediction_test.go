@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/replicate/cog-runtime/internal/server"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,8 +16,8 @@ func TestAsyncPredictionSucceeded(t *testing.T) {
 	e.StartWebhook()
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
 	for {
@@ -29,11 +31,11 @@ func TestAsyncPredictionSucceeded(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/webhook", r.Path)
 	}
-	assert.Equal(t, "starting", wr[0].Response.Status)
+	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
 	assert.Equal(t, nil, wr[0].Response.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
 
-	assert.Equal(t, "succeeded", wr[1].Response.Status)
+	assert.Equal(t, server.PredictionSucceeded, wr[1].Response.Status)
 	assert.Equal(t, "*bar*", wr[1].Response.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", wr[1].Response.Logs)
 
@@ -47,8 +49,8 @@ func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 	e.StartWebhook()
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	e.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
 	for {
@@ -63,12 +65,12 @@ func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 		assert.Equal(t, "/webhook", r.Path)
 	}
 
-	assert.Equal(t, "starting", wr[0].Response.Status)
+	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
 	assert.Equal(t, nil, wr[0].Response.Output)
 	assert.Equal(t, "p01", wr[0].Response.Id)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
 
-	assert.Equal(t, "succeeded", wr[1].Response.Status)
+	assert.Equal(t, server.PredictionSucceeded, wr[1].Response.Status)
 	assert.Equal(t, "*bar*", wr[1].Response.Output)
 	assert.Equal(t, "p01", wr[1].Response.Id)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", wr[1].Response.Logs)
@@ -84,8 +86,8 @@ func TestAsyncPredictionFailure(t *testing.T) {
 	e.StartWebhook()
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
 	for {
@@ -100,11 +102,11 @@ func TestAsyncPredictionFailure(t *testing.T) {
 		assert.Equal(t, "/webhook", r.Path)
 	}
 
-	assert.Equal(t, "starting", wr[0].Response.Status)
+	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
 	assert.Equal(t, nil, wr[0].Response.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
 
-	assert.Equal(t, "failed", wr[1].Response.Status)
+	assert.Equal(t, server.PredictionFailed, wr[1].Response.Status)
 	assert.Equal(t, nil, wr[1].Response.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction failed\n", wr[1].Response.Logs)
 
@@ -120,8 +122,8 @@ func TestAsyncPredictionCrash(t *testing.T) {
 	e.StartWebhook()
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
 	for {
@@ -136,11 +138,11 @@ func TestAsyncPredictionCrash(t *testing.T) {
 		assert.Equal(t, "/webhook", r.Path)
 	}
 
-	assert.Equal(t, "starting", wr[0].Response.Status)
+	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
 	assert.Equal(t, nil, wr[0].Response.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
 
-	assert.Equal(t, "failed", wr[1].Response.Status)
+	assert.Equal(t, server.PredictionFailed, wr[1].Response.Status)
 	assert.Equal(t, nil, wr[1].Response.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction crashed\n", wr[1].Response.Logs)
 
