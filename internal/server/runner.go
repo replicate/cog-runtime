@@ -259,12 +259,9 @@ func (r *Runner) updateWebhooks() {
 			if pr.request.Webhook == "" {
 				continue
 			}
-			if _, ok := PredictionPendingStatuses[pr.response.Status]; !ok {
+			if pr.response.Status != PredictionProcessing {
+				// We send webhook immediately for all other statuses
 				continue
-			}
-			// Python runner does not signal processing for blocking predict
-			if pr.response.Status == PredictionStarting {
-				pr.response.Status = PredictionProcessing
 			}
 			pr.sendWebhook()
 		}
@@ -319,6 +316,8 @@ func (r *Runner) handleResponses() {
 		}
 		log.Infow("received prediction response", "id", pr.request.Id)
 		must.Do(r.readJson(entry.Name(), &pr.response))
+		// Delete response immediately to avoid duplicates
+		must.Do(os.Remove(path.Join(r.workingDir, entry.Name())))
 
 		paths := make([]string, 0)
 		if output, err := handlePath(pr.response.Output, &paths, outputToBase64); err != nil {
@@ -331,13 +330,12 @@ func (r *Runner) handleResponses() {
 			must.Do(os.Remove(p))
 		}
 
-		r.mu.Lock()
-		pr.response.Logs = util.JoinLogs(pr.logs)
-		r.mu.Unlock()
-
 		if pr.response.Status == PredictionStarting {
 			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendWebhook()
+			// Only async and iterator predict writes new response per output item with status = "processing"
+			// For blocking or non-iterator cases, set it here immediately after sending "starting" webhook
+			pr.response.Status = PredictionProcessing
 		} else if _, ok := PredictionCompletedStatuses[pr.response.Status]; ok {
 			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendWebhook()
@@ -349,7 +347,6 @@ func (r *Runner) handleResponses() {
 	defer r.mu.Unlock()
 	for pid, _ := range completed {
 		delete(r.pending, pid)
-		must.Do(os.Remove(path.Join(r.workingDir, fmt.Sprintf(RESPONSE_FMT, pid))))
 	}
 }
 
@@ -376,6 +373,7 @@ func (r *Runner) log(line string) {
 		msg := m[2]
 		if pr, ok := r.pending[pid]; ok {
 			pr.logs = append(pr.logs, msg)
+			pr.response.Logs = util.JoinLogs(pr.logs)
 		} else {
 			log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
 		}

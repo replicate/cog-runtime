@@ -51,11 +51,6 @@ const (
 	PredictionFailed     PredictionStatus = "failed"
 )
 
-var PredictionPendingStatuses = map[PredictionStatus]bool{
-	PredictionStarting:   true,
-	PredictionProcessing: true,
-}
-
 var PredictionCompletedStatuses = map[PredictionStatus]bool{
 	PredictionSucceeded: true,
 	PredictionCanceled:  true,
