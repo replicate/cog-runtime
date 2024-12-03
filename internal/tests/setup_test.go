@@ -1,9 +1,10 @@
 package tests
 
 import (
-	"github.com/replicate/cog-runtime/internal/server"
 	"net/http"
 	"testing"
+
+	"github.com/replicate/cog-runtime/internal/server"
 
 	"github.com/replicate/go/must"
 
