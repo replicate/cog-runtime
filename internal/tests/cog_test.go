@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -37,6 +38,7 @@ type WebhookRequest struct {
 }
 
 type WebhookHandler struct {
+	mu              sync.Mutex
 	webhookRequests []WebhookRequest
 }
 
@@ -50,6 +52,8 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	log := logger.Sugar()
 	log.Infow("webhook", "request", req)
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.webhookRequests = append(h.webhookRequests, req)
 }
 
@@ -177,15 +181,15 @@ func (e *CogTest) prediction(method string, url string, input map[string]any) se
 	return pr
 }
 
-func (e *CogTest) AsyncPrediction(input map[string]any) {
-	e.asyncPrediction(http.MethodPost, e.Url("/predictions"), input)
+func (e *CogTest) AsyncPrediction(input map[string]any) string {
+	return e.asyncPrediction(http.MethodPost, e.Url("/predictions"), input)
 }
 
-func (e *CogTest) AsyncPredictionWithId(pid string, input map[string]any) {
-	e.asyncPrediction(http.MethodPut, e.Url(fmt.Sprintf("/predictions/%s", pid)), input)
+func (e *CogTest) AsyncPredictionWithId(pid string, input map[string]any) string {
+	return e.asyncPrediction(http.MethodPut, e.Url(fmt.Sprintf("/predictions/%s", pid)), input)
 }
 
-func (e *CogTest) asyncPrediction(method string, url string, input map[string]any) {
+func (e *CogTest) asyncPrediction(method string, url string, input map[string]any) string {
 	req := server.PredictionRequest{Input: input, Webhook: fmt.Sprintf("http://localhost:%d/webhook", e.webhookPort)}
 	data := bytes.NewReader(must.Get(json.Marshal(req)))
 	r := must.Get(http.NewRequest(method, url, data))
@@ -193,6 +197,9 @@ func (e *CogTest) asyncPrediction(method string, url string, input map[string]an
 	r.Header.Set("Prefer", "respond-async")
 	resp := must.Get(http.DefaultClient.Do(r))
 	assert.Equal(e.t, http.StatusAccepted, resp.StatusCode)
+	var pr server.PredictionResponse
+	must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &pr))
+	return pr.Id
 }
 
 func (e *CogTest) Shutdown() {
