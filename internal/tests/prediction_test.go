@@ -3,6 +3,8 @@ package tests
 import (
 	"testing"
 
+	"github.com/replicate/cog-runtime/internal/server"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -11,11 +13,11 @@ func TestPredictionSucceeded(t *testing.T) {
 	assert.NoError(t, e.Start())
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	resp := e.Prediction(map[string]any{"i": 1, "s": "bar"})
-	assert.Equal(t, "succeeded", resp.Status)
+	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
 
@@ -28,11 +30,11 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	assert.NoError(t, e.Start())
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	resp := e.PredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
-	assert.Equal(t, "succeeded", resp.Status)
+	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
 	assert.Equal(t, "p01", resp.Id)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
@@ -47,11 +49,11 @@ func TestPredictionFailure(t *testing.T) {
 	assert.NoError(t, e.Start())
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	resp := e.Prediction(map[string]any{"i": 1, "s": "bar"})
-	assert.Equal(t, "failed", resp.Status)
+	assert.Equal(t, server.PredictionFailed, resp.Status)
 	assert.Equal(t, nil, resp.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction failed\n", resp.Logs)
 
@@ -66,11 +68,11 @@ func TestPredictionCrash(t *testing.T) {
 	assert.NoError(t, e.Start())
 
 	hc := e.WaitForSetup()
-	assert.Equal(t, "READY", hc.Status)
-	assert.Equal(t, "succeeded", hc.Setup.Status)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	resp := e.Prediction(map[string]any{"i": 1, "s": "bar"})
-	assert.Equal(t, "failed", resp.Status)
+	assert.Equal(t, server.PredictionFailed, resp.Status)
 	assert.Equal(t, nil, resp.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction crashed\n", resp.Logs)
 	assert.Equal(t, "DEFUNCT", e.HealthCheck().Status)

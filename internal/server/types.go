@@ -30,14 +30,31 @@ func (s Status) String() string {
 	}
 }
 
+type SetupStatus string
+
+const (
+	SetupSucceeded SetupStatus = "succeeded"
+	SetupFailed    SetupStatus = "failed"
+)
+
 const SigOutput = syscall.SIGHUP
 const SigReady = syscall.SIGUSR1
 const SigBusy = syscall.SIGUSR2
 
-var PredictionCompletedStatuses = map[string]bool{
-	"succeeded": true,
-	"failed":    true,
-	"canceled":  true,
+type PredictionStatus string
+
+const (
+	PredictionStarting   PredictionStatus = "starting"
+	PredictionProcessing PredictionStatus = "processing"
+	PredictionSucceeded  PredictionStatus = "succeeded"
+	PredictionCanceled   PredictionStatus = "canceled"
+	PredictionFailed     PredictionStatus = "failed"
+)
+
+var PredictionCompletedStatuses = map[PredictionStatus]bool{
+	PredictionSucceeded: true,
+	PredictionCanceled:  true,
+	PredictionFailed:    true,
 }
 
 type HealthCheck struct {
@@ -46,10 +63,10 @@ type HealthCheck struct {
 }
 
 type SetupResult struct {
-	StartedAt   string `json:"started_at"`
-	CompletedAt string `json:"completed_at"`
-	Status      string `json:"status"`
-	Logs        string `json:"logs,omitempty"`
+	StartedAt   string      `json:"started_at"`
+	CompletedAt string      `json:"completed_at"`
+	Status      SetupStatus `json:"status"`
+	Logs        string      `json:"logs,omitempty"`
 }
 
 type PredictionRequest struct {
@@ -60,13 +77,13 @@ type PredictionRequest struct {
 }
 
 type PredictionResponse struct {
-	Input       any    `json:"input"`
-	Output      any    `json:"output"`
-	Id          string `json:"id"`
-	CreatedAt   string `json:"created_at"`
-	StartedAt   string `json:"started_at"`
-	CompletedAt string `json:"completed_at"`
-	Logs        string `json:"logs,omitempty"`
-	Error       string `json:"error,omitempty"`
-	Status      string `json:"status,omitempty"`
+	Input       any              `json:"input"`
+	Output      any              `json:"output"`
+	Id          string           `json:"id"`
+	CreatedAt   string           `json:"created_at"`
+	StartedAt   string           `json:"started_at"`
+	CompletedAt string           `json:"completed_at"`
+	Logs        string           `json:"logs,omitempty"`
+	Error       string           `json:"error,omitempty"`
+	Status      PredictionStatus `json:"status,omitempty"`
 }

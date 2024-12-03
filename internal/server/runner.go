@@ -206,14 +206,14 @@ func (r *Runner) wait() {
 			pr.response.CompletedAt = now
 			pr.response.Logs = util.JoinLogs(pr.logs)
 			pr.response.Error = runnerLogs
-			pr.response.Status = "failed"
+			pr.response.Status = PredictionFailed
 			pr.sendWebhook()
 			pr.sendResponse()
 		}
 		if r.status == StatusStarting {
 			r.status = StatusSetupFailed
 			r.setupResult.CompletedAt = util.NowIso()
-			r.setupResult.Status = "failed"
+			r.setupResult.Status = SetupFailed
 			r.setupResult.Logs = runnerLogs
 		} else {
 			r.status = StatusDefunct
@@ -267,10 +267,10 @@ func (r *Runner) updateSetupResult() {
 	log.Infow("updating setup result")
 	var setupResult SetupResult
 	must.Do(r.readJson("setup_result.json", &setupResult))
-	if setupResult.Status == "succeeded" {
+	if setupResult.Status == SetupSucceeded {
 		log.Infow("setup succeeded")
 		r.status = StatusReady
-	} else if setupResult.Status == "failed" {
+	} else if setupResult.Status == SetupFailed {
 		log.Errorw("setup failed")
 		r.status = StatusSetupFailed
 	} else {
@@ -313,7 +313,7 @@ func (r *Runner) handleResponses() {
 		pr.response.Logs = util.JoinLogs(pr.logs)
 		r.mu.Unlock()
 
-		if pr.response.Status == "starting" {
+		if pr.response.Status == PredictionStarting {
 			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendWebhook()
 		} else if _, ok := PredictionCompletedStatuses[pr.response.Status]; ok {
