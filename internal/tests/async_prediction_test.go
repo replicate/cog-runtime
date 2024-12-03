@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -9,6 +10,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+func assertResponse(
+	t *testing.T,
+	response server.PredictionResponse,
+	status server.PredictionStatus,
+	output any,
+	logs string) {
+	assert.Equal(t, status, response.Status)
+	assert.Equal(t, output, response.Output)
+	assert.Equal(t, logs, response.Logs)
+}
 
 func TestAsyncPredictionSucceeded(t *testing.T) {
 	e := NewCogTest(t, "sleep")
@@ -21,7 +33,7 @@ func TestAsyncPredictionSucceeded(t *testing.T) {
 
 	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
 	for {
-		if len(e.WebhookRequests()) == 2 {
+		if len(e.WebhookRequests()) == 4 {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -31,13 +43,11 @@ func TestAsyncPredictionSucceeded(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/webhook", r.Path)
 	}
-	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
-	assert.Equal(t, nil, wr[0].Response.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
-
-	assert.Equal(t, server.PredictionSucceeded, wr[1].Response.Status)
-	assert.Equal(t, "*bar*", wr[1].Response.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", wr[1].Response.Logs)
+	logs := "starting prediction\nprediction in progress 1/1\n"
+	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[3].Response, server.PredictionSucceeded, "*bar*", fmt.Sprintf("%scompleted prediction\n", logs))
 
 	e.Shutdown()
 	assert.NoError(t, e.Cleanup())
@@ -54,7 +64,7 @@ func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 
 	e.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
 	for {
-		if len(e.WebhookRequests()) == 2 {
+		if len(e.WebhookRequests()) == 4 {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -64,16 +74,11 @@ func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/webhook", r.Path)
 	}
-
-	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
-	assert.Equal(t, nil, wr[0].Response.Output)
-	assert.Equal(t, "p01", wr[0].Response.Id)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
-
-	assert.Equal(t, server.PredictionSucceeded, wr[1].Response.Status)
-	assert.Equal(t, "*bar*", wr[1].Response.Output)
-	assert.Equal(t, "p01", wr[1].Response.Id)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", wr[1].Response.Logs)
+	logs := "starting prediction\nprediction in progress 1/1\n"
+	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[3].Response, server.PredictionSucceeded, "*bar*", fmt.Sprintf("%scompleted prediction\n", logs))
 
 	e.Shutdown()
 	assert.NoError(t, e.Cleanup())
@@ -91,7 +96,7 @@ func TestAsyncPredictionFailure(t *testing.T) {
 
 	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
 	for {
-		if len(e.WebhookRequests()) == 2 {
+		if len(e.WebhookRequests()) == 4 {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -101,14 +106,11 @@ func TestAsyncPredictionFailure(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/webhook", r.Path)
 	}
-
-	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
-	assert.Equal(t, nil, wr[0].Response.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
-
-	assert.Equal(t, server.PredictionFailed, wr[1].Response.Status)
-	assert.Equal(t, nil, wr[1].Response.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction failed\n", wr[1].Response.Logs)
+	logs := "starting prediction\nprediction in progress 1/1\n"
+	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[3].Response, server.PredictionFailed, nil, fmt.Sprintf("%sprediction failed\n", logs))
 
 	e.Shutdown()
 	assert.NoError(t, e.Cleanup())
@@ -127,24 +129,24 @@ func TestAsyncPredictionCrash(t *testing.T) {
 
 	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
 	for {
-		if len(e.WebhookRequests()) == 2 {
+		if len(e.WebhookRequests()) == 4 {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	wr := e.WebhookRequests()
-	for _, r := range wr {
+	for i, r := range wr {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/webhook", r.Path)
+		if i == 0 {
+
+		}
 	}
-
-	assert.Equal(t, server.PredictionStarting, wr[0].Response.Status)
-	assert.Equal(t, nil, wr[0].Response.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\n", wr[0].Response.Logs)
-
-	assert.Equal(t, server.PredictionFailed, wr[1].Response.Status)
-	assert.Equal(t, nil, wr[1].Response.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction crashed\n", wr[1].Response.Logs)
+	logs := "starting prediction\nprediction in progress 1/1\n"
+	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[3].Response, server.PredictionFailed, nil, fmt.Sprintf("%sprediction crashed\n", logs))
 
 	assert.Equal(t, "DEFUNCT", e.HealthCheck().Status)
 

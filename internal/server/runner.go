@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/replicate/go/must"
 
@@ -66,6 +67,7 @@ type Runner struct {
 	setupResult           *SetupResult
 	logs                  []string
 	pending               map[string]*PendingPrediction
+	ticker                *time.Ticker
 	awaitExplicitShutdown bool
 	shutdownRequested     bool
 
@@ -86,6 +88,7 @@ func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown b
 		cmd:                   *cmd,
 		status:                StatusStarting,
 		pending:               make(map[string]*PendingPrediction),
+		ticker:                time.NewTicker(500 * time.Millisecond),
 		awaitExplicitShutdown: awaitExplicitShutdown,
 	}
 }
@@ -109,6 +112,7 @@ func (r *Runner) Start() error {
 	close(cmdStart)
 	go r.wait()
 	go r.handleSignals()
+	go r.updateWebhooks()
 	return nil
 }
 
@@ -193,6 +197,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 func (r *Runner) wait() {
 	log := logger.Sugar()
 	err := r.cmd.Wait()
+	r.ticker.Stop()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err != nil {
@@ -245,6 +250,24 @@ func (r *Runner) handleSignals() {
 		} else if s == SigBusy {
 			log.Info("runner is busy")
 			r.status = StatusBusy
+		}
+	}
+}
+
+func (r *Runner) updateWebhooks() {
+	for range r.ticker.C {
+		for _, pr := range r.pending {
+			if pr.request.Webhook == "" {
+				continue
+			}
+			if _, ok := PredictionPendingStatuses[pr.response.Status]; !ok {
+				continue
+			}
+			// Python runner does not signal processing for blocking predict
+			if pr.response.Status == PredictionStarting {
+				pr.response.Status = PredictionProcessing
+			}
+			pr.sendWebhook()
 		}
 	}
 }
