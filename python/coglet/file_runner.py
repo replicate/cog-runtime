@@ -14,7 +14,7 @@ from coglet import api, inspector, runner, schemas, util
 class FileRunner:
     CANCEL_RE = re.compile(r'^cancel-(?P<pid>\S+).json$')
     REQUEST_RE = re.compile(r'^request-(?P<pid>\S+).json$')
-    RESPONSE_FMT = 'response-{pid}.json'
+    RESPONSE_FMT = 'response-{pid}-{epoch:05d}.json'
 
     # Signal parent to scan output
     SIG_OUTPUT = signal.SIGHUP
@@ -156,18 +156,21 @@ class FileRunner:
         }
         # Write partial response, e.g. starting, processing, if webhook is set
         is_async = 'webhook' in req
+        epoch = 0
         try:
             if is_async:
-                self._respond(pid, resp)
+                self._respond(pid, epoch, resp)
+                epoch += 1
 
             self.ctx_pid.set(pid)
             if self.runner.is_iter():
                 resp['output'] = []
+                resp['status'] = 'processing'
                 async for o in self.runner.predict_iter(req['input']):
                     resp['output'].append(o)
-                    resp['status'] = 'processing'
                     if is_async:
-                        self._respond(pid, resp)
+                        self._respond(pid, epoch, resp)
+                        epoch += 1
             else:
                 resp['output'] = await self.runner.predict(req['input'])
             resp['status'] = 'succeeded'
@@ -184,14 +187,18 @@ class FileRunner:
             self.logger.error('prediction failed: id=%s %s', pid, e)
         finally:
             resp['completed_at'] = util.now_iso()
-        self._respond(pid, resp)
+        self._respond(pid, epoch, resp)
+        epoch += 1
 
     def _respond(
         self,
         pid: str,
+        epoch: int,
         resp: Dict[str, Any],
     ) -> None:
-        resp_path = os.path.join(self.working_dir, self.RESPONSE_FMT.format(pid=pid))
+        resp_path = os.path.join(
+            self.working_dir, self.RESPONSE_FMT.format(pid=pid, epoch=epoch)
+        )
         with open(resp_path, 'w') as f:
             json.dump(resp, f, default=output_json)
         self._signal(FileRunner.SIG_OUTPUT)

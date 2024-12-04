@@ -23,7 +23,7 @@ import (
 )
 
 var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
-var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+).json$`)
+var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
 
 type PendingPrediction struct {
 	request     PredictionRequest
@@ -198,8 +198,6 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 func (r *Runner) wait() {
 	log := logger.Sugar()
 	err := r.cmd.Wait()
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if err != nil {
 		runnerLogs := r.rotateLogs()
 		log.Errorw("python runner excited with error", "pid", r.cmd.Process.Pid, "error", err, "logs", runnerLogs)
@@ -271,6 +269,8 @@ func (r *Runner) updateSetupResult() {
 	log.Infow("updating setup result")
 	var setupResult SetupResult
 	must.Do(r.readJson("setup_result.json", &setupResult))
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if setupResult.Status == SetupSucceeded {
 		log.Infow("setup succeeded")
 		r.status = StatusReady
@@ -280,8 +280,6 @@ func (r *Runner) updateSetupResult() {
 	} else {
 		panic(fmt.Sprintf("invalid setup status: %s", r.setupResult.Status))
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	setupResult.Logs = r.rotateLogs()
 	r.setupResult = &setupResult
 }

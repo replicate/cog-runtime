@@ -32,7 +32,7 @@ async def test_file_runner_async(tmp_path):
     assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
-    resp_file = os.path.join(tmp_path, 'response-a.json')
+    resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
     assert os.path.exists(req_file)
@@ -82,8 +82,8 @@ async def test_file_runner_async_parallel(tmp_path):
 
     req_file_a = os.path.join(tmp_path, 'request-a.json')
     req_file_b = os.path.join(tmp_path, 'request-b.json')
-    resp_file_a = os.path.join(tmp_path, 'response-a.json')
-    resp_file_b = os.path.join(tmp_path, 'response-b.json')
+    resp_file_a = os.path.join(tmp_path, 'response-a-00000.json')
+    resp_file_b = os.path.join(tmp_path, 'response-b-00000.json')
     with open(req_file_a, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
     with open(req_file_b, 'w') as f:

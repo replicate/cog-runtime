@@ -1,11 +1,10 @@
 import time
-from typing import Iterator
 
-from cog import BasePredictor
+from cog import BasePredictor, ConcatenateIterator
 
 
 class Predictor(BasePredictor):
-    def predict(self, i: int, s: str) -> Iterator[str]:
+    def predict(self, i: int, s: str) -> ConcatenateIterator[str]:
         print('starting prediction')
         for x in range(i):
             print(f'prediction in progress {x+1}/{i}')

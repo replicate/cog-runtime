@@ -62,7 +62,7 @@ def test_file_runner(tmp_path):
     assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
-    resp_file = os.path.join(tmp_path, 'response-a.json')
+    resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
     assert os.path.exists(req_file)
@@ -136,7 +136,7 @@ def test_file_runner_predict_failed(tmp_path):
     assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
-    resp_file = os.path.join(tmp_path, 'response-a.json')
+    resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
     assert os.path.exists(req_file)
