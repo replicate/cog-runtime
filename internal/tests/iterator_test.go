@@ -1,9 +1,7 @@
 package tests
 
 import (
-	"net/http"
 	"testing"
-	"time"
 
 	"github.com/replicate/cog-runtime/internal/server"
 
@@ -11,67 +9,47 @@ import (
 )
 
 func TestPredictionIteratorSucceeded(t *testing.T) {
-	e := NewCogTest(t, "iterator")
-	assert.NoError(t, e.Start())
-	e.StartWebhook()
+	ct := NewCogTest(t, "iterator")
+	assert.NoError(t, ct.Start())
+	ct.StartWebhook()
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	e.AsyncPrediction(map[string]any{"i": 2, "s": "bar"})
-	for {
-		if len(e.WebhookRequests()) == 4 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	wr := e.WebhookRequests()
-	for _, r := range wr {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/webhook", r.Path)
-	}
+	ct.AsyncPrediction(map[string]any{"i": 2, "s": "bar"})
+	wr := ct.WaitForWebhookResponses()
 	logs := "starting prediction\nprediction in progress 1/2\n"
-	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[0], server.PredictionStarting, nil, logs)
 	logs += "prediction in progress 2/2\n"
-	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[1], server.PredictionProcessing, nil, logs)
 	logs += "completed prediction\n"
-	assertResponse(t, wr[2].Response, server.PredictionProcessing, []any{"*bar-0*"}, logs)
-	assertResponse(t, wr[3].Response, server.PredictionSucceeded, []any{"*bar-0*", "*bar-1*"}, logs)
+	assertResponse(t, wr[2], server.PredictionProcessing, []any{"*bar-0*"}, logs)
+	assertResponse(t, wr[3], server.PredictionSucceeded, []any{"*bar-0*", "*bar-1*"}, logs)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionConcatenateIteratorSucceeded(t *testing.T) {
-	e := NewCogTest(t, "concat_iterator")
-	assert.NoError(t, e.Start())
-	e.StartWebhook()
+	ct := NewCogTest(t, "concat_iterator")
+	assert.NoError(t, ct.Start())
+	ct.StartWebhook()
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	e.AsyncPrediction(map[string]any{"i": 2, "s": "bar"})
-	for {
-		if len(e.WebhookRequests()) == 4 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	wr := e.WebhookRequests()
-	for _, r := range wr {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/webhook", r.Path)
-	}
+	ct.AsyncPrediction(map[string]any{"i": 2, "s": "bar"})
+	wr := ct.WaitForWebhookResponses()
 	logs := "starting prediction\nprediction in progress 1/2\n"
-	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[0], server.PredictionStarting, nil, logs)
 	logs += "prediction in progress 2/2\n"
-	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[1], server.PredictionProcessing, nil, logs)
 	logs += "completed prediction\n"
-	assertResponse(t, wr[2].Response, server.PredictionProcessing, []any{"*bar-0*"}, logs)
-	assertResponse(t, wr[3].Response, server.PredictionSucceeded, []any{"*bar-0*", "*bar-1*"}, logs)
+	assertResponse(t, wr[2], server.PredictionProcessing, []any{"*bar-0*"}, logs)
+	assertResponse(t, wr[3], server.PredictionSucceeded, []any{"*bar-0*", "*bar-1*"}, logs)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }

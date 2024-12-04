@@ -1,9 +1,7 @@
 package tests
 
 import (
-	"net/http"
 	"testing"
-	"time"
 
 	"github.com/replicate/cog-runtime/internal/server"
 
@@ -22,133 +20,90 @@ func assertResponse(
 }
 
 func TestAsyncPredictionSucceeded(t *testing.T) {
-	e := NewCogTest(t, "sleep")
-	assert.NoError(t, e.Start())
-	e.StartWebhook()
+	ct := NewCogTest(t, "sleep")
+	assert.NoError(t, ct.Start())
+	ct.StartWebhook()
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	for {
-		if len(e.WebhookRequests()) == 3 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	wr := e.WebhookRequests()
-	for _, r := range wr {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/webhook", r.Path)
-	}
+	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
+	wr := ct.WaitForWebhookResponses()
 	logs := "starting prediction\nprediction in progress 1/1\n"
-	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[0], server.PredictionStarting, nil, logs)
 	logs += "completed prediction\n"
-	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
-	assertResponse(t, wr[2].Response, server.PredictionSucceeded, "*bar*", logs)
+	assertResponse(t, wr[1], server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2], server.PredictionSucceeded, "*bar*", logs)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
-	e := NewCogTest(t, "sleep")
-	assert.NoError(t, e.Start())
-	e.StartWebhook()
+	ct := NewCogTest(t, "sleep")
+	assert.NoError(t, ct.Start())
+	ct.StartWebhook()
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	e.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
-	for {
-		if len(e.WebhookRequests()) == 3 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	wr := e.WebhookRequests()
-	for _, r := range wr {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/webhook", r.Path)
-	}
+	ct.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
+	wr := ct.WaitForWebhookResponses()
 	logs := "starting prediction\nprediction in progress 1/1\n"
-	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[0], server.PredictionStarting, nil, logs)
 	logs += "completed prediction\n"
-	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
-	assertResponse(t, wr[2].Response, server.PredictionSucceeded, "*bar*", logs)
+	assertResponse(t, wr[1], server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2], server.PredictionSucceeded, "*bar*", logs)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionFailure(t *testing.T) {
-	e := NewCogTest(t, "sleep")
-	e.AppendEnvs("PREDICTION_FAILURE=1")
-	assert.NoError(t, e.Start())
-	e.StartWebhook()
+	ct := NewCogTest(t, "sleep")
+	ct.AppendEnvs("PREDICTION_FAILURE=1")
+	assert.NoError(t, ct.Start())
+	ct.StartWebhook()
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	for {
-		if len(e.WebhookRequests()) == 3 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	wr := e.WebhookRequests()
-	for _, r := range wr {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/webhook", r.Path)
-	}
+	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
+	wr := ct.WaitForWebhookResponses()
 	logs := "starting prediction\nprediction in progress 1/1\n"
-	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[0], server.PredictionStarting, nil, logs)
 	logs += "prediction failed\n"
-	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
-	assertResponse(t, wr[2].Response, server.PredictionFailed, nil, logs)
+	assertResponse(t, wr[1], server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2], server.PredictionFailed, nil, logs)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionCrash(t *testing.T) {
-	e := NewCogTest(t, "sleep")
-	e.AppendArgs("--await-explicit-shutdown=true")
-	e.AppendEnvs("PREDICTION_CRASH=1")
-	assert.NoError(t, e.Start())
-	e.StartWebhook()
+	ct := NewCogTest(t, "sleep")
+	ct.AppendArgs("--await-explicit-shutdown=true")
+	ct.AppendEnvs("PREDICTION_CRASH=1")
+	assert.NoError(t, ct.Start())
+	ct.StartWebhook()
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	e.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	for {
-		if len(e.WebhookRequests()) == 3 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	wr := e.WebhookRequests()
-	for i, r := range wr {
-		assert.Equal(t, http.MethodPost, r.Method)
-		assert.Equal(t, "/webhook", r.Path)
-		if i == 0 {
-
-		}
-	}
+	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
+	wr := ct.WaitForWebhookResponses()
 	logs := "starting prediction\nprediction in progress 1/1\n"
-	assertResponse(t, wr[0].Response, server.PredictionStarting, nil, logs)
+	assertResponse(t, wr[0], server.PredictionStarting, nil, logs)
 	logs += "prediction crashed\n"
-	assertResponse(t, wr[1].Response, server.PredictionProcessing, nil, logs)
-	assertResponse(t, wr[2].Response, server.PredictionFailed, nil, logs)
+	assertResponse(t, wr[1], server.PredictionProcessing, nil, logs)
+	assertResponse(t, wr[2], server.PredictionFailed, nil, logs)
 
-	assert.Equal(t, "DEFUNCT", e.HealthCheck().Status)
+	assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
