@@ -25,7 +25,7 @@ def test_file_runner_iterator(tmp_path):
     assert signals == [file_runner.FileRunner.SIG_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
-    resp_file = os.path.join(tmp_path, 'response-a.json')
+    resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 2, 's': 'bar'}}, f)
     assert os.path.exists(req_file)
@@ -79,7 +79,7 @@ def test_file_runner_iterator_webhook(tmp_path):
         assert resp.get('output') == output
 
     req_file = os.path.join(tmp_path, 'request-a.json')
-    resp_file = os.path.join(tmp_path, 'response-a.json')
+    resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 2, 's': 'bar'}, 'webhook': 'http://api'}, f)
     assert os.path.exists(req_file)
@@ -95,6 +95,7 @@ def test_file_runner_iterator_webhook(tmp_path):
     ]
 
     time.sleep(1.1)
+    resp_file = os.path.join(tmp_path, 'response-a-00001.json')
     assert_output('processing', ['*bar-0*'])
     assert signals == [
         file_runner.FileRunner.SIG_READY,
@@ -104,6 +105,9 @@ def test_file_runner_iterator_webhook(tmp_path):
     ]
 
     time.sleep(1.1)
+    resp_file = os.path.join(tmp_path, 'response-a-00002.json')
+    assert_output('processing', ['*bar-0*', '*bar-1*'])
+    resp_file = os.path.join(tmp_path, 'response-a-00003.json')
     assert_output('succeeded', ['*bar-0*', '*bar-1*'])
     assert signals == [
         file_runner.FileRunner.SIG_READY,
