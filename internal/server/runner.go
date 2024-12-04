@@ -26,16 +26,22 @@ var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
 var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+).json$`)
 
 type PendingPrediction struct {
-	request  PredictionRequest
-	response PredictionResponse
-	paths    []string
-	logs     []string
-	c        chan PredictionResponse
+	request     PredictionRequest
+	response    PredictionResponse
+	lastUpdated time.Time
+	paths       []string
+	c           chan PredictionResponse
 }
 
 func (pr *PendingPrediction) sendWebhook() {
 	if pr.request.Webhook == "" {
 		return
+	}
+	if pr.response.Status == PredictionProcessing {
+		if time.Since(pr.lastUpdated) < 500*time.Millisecond {
+			return
+		}
+		pr.lastUpdated = time.Now()
 	}
 	log := logger.Sugar()
 	log.Infow("sending webhook", "url", pr.request.Webhook, "response", pr.response)
@@ -66,7 +72,6 @@ type Runner struct {
 	setupResult           *SetupResult
 	logs                  []string
 	pending               map[string]*PendingPrediction
-	ticker                *time.Ticker
 	awaitExplicitShutdown bool
 	shutdownRequested     bool
 
@@ -87,7 +92,6 @@ func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown b
 		cmd:                   *cmd,
 		status:                StatusStarting,
 		pending:               make(map[string]*PendingPrediction),
-		ticker:                time.NewTicker(500 * time.Millisecond),
 		awaitExplicitShutdown: awaitExplicitShutdown,
 	}
 }
@@ -111,7 +115,6 @@ func (r *Runner) Start() error {
 	close(cmdStart)
 	go r.wait()
 	go r.handleSignals()
-	go r.updateWebhooks()
 	return nil
 }
 
@@ -195,7 +198,6 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 func (r *Runner) wait() {
 	log := logger.Sugar()
 	err := r.cmd.Wait()
-	r.ticker.Stop()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err != nil {
@@ -207,7 +209,6 @@ func (r *Runner) wait() {
 				pr.response.StartedAt = now
 			}
 			pr.response.CompletedAt = now
-			pr.response.Logs = util.JoinLogs(pr.logs)
 			pr.response.Error = runnerLogs
 			pr.response.Status = PredictionFailed
 			pr.sendWebhook()
@@ -248,21 +249,6 @@ func (r *Runner) handleSignals() {
 		} else if s == SigBusy {
 			log.Info("runner is busy")
 			r.status = StatusBusy
-		}
-	}
-}
-
-func (r *Runner) updateWebhooks() {
-	for range r.ticker.C {
-		for _, pr := range r.pending {
-			if pr.request.Webhook == "" {
-				continue
-			}
-			if pr.response.Status != PredictionProcessing {
-				// We send webhook immediately for all other statuses
-				continue
-			}
-			pr.sendWebhook()
 		}
 	}
 }
@@ -329,15 +315,14 @@ func (r *Runner) handleResponses() {
 			must.Do(os.Remove(p))
 		}
 
+		pr.sendWebhook()
 		if pr.response.Status == PredictionStarting {
 			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
-			pr.sendWebhook()
 			// Only async and iterator predict writes new response per output item with status = "processing"
 			// For blocking or non-iterator cases, set it here immediately after sending "starting" webhook
 			pr.response.Status = PredictionProcessing
 		} else if _, ok := PredictionCompletedStatuses[pr.response.Status]; ok {
 			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
-			pr.sendWebhook()
 			pr.sendResponse()
 			completed[pid] = true
 		}
@@ -371,8 +356,11 @@ func (r *Runner) log(line string) {
 		pid := m[1]
 		msg := m[2]
 		if pr, ok := r.pending[pid]; ok {
-			pr.logs = append(pr.logs, msg)
-			pr.response.Logs = util.JoinLogs(pr.logs)
+			pr.response.Logs += fmt.Sprintln(msg)
+			// In case log is received before "starting" response
+			if pr.response.Status != "" {
+				pr.sendWebhook()
+			}
 		} else {
 			log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
 		}
