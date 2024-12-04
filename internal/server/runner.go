@@ -24,7 +24,6 @@ import (
 
 var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
 var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+).json$`)
-var RESPONSE_FMT = "response-%s.json"
 
 type PendingPrediction struct {
 	request  PredictionRequest
