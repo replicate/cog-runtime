@@ -16,18 +16,17 @@ func b64encode(s string) string {
 }
 
 func TestPredictionPathSucceeded(t *testing.T) {
-	e := NewCogTest(t, "path")
-	assert.NoError(t, e.Start())
+	ct := NewCogTest(t, "path")
+	assert.NoError(t, ct.Start())
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	resp := e.Prediction(map[string]any{"p": b64encode("bar")})
-	assert.Equal(t, server.PredictionSucceeded, resp.Status)
-	assert.Equal(t, b64encode("*bar*"), resp.Output)
-	assert.Equal(t, "reading input file\nwriting output file\n", resp.Logs)
+	resp := ct.Prediction(map[string]any{"p": b64encode("bar")})
+	logs := "reading input file\nwriting output file\n"
+	ct.AssertResponse(resp, server.PredictionSucceeded, b64encode("*bar*"), logs)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
