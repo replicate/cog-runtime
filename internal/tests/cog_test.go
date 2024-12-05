@@ -118,6 +118,7 @@ func (ct *CogTest) Cleanup() error {
 }
 
 func (ct *CogTest) StartWebhook() {
+	log := logger.Sugar()
 	ct.webhookPort = getFreePort()
 	ct.webhookServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", ct.webhookPort),
@@ -126,7 +127,7 @@ func (ct *CogTest) StartWebhook() {
 	go func() {
 		err := ct.webhookServer.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			panic(err)
+			log.Fatalw("failed to start webhook server", "error", err)
 		}
 	}()
 }
