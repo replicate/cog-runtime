@@ -10,8 +10,8 @@ import (
 
 func TestAsyncPredictionSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
-	assert.NoError(t, ct.Start())
 	ct.StartWebhook()
+	assert.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -35,8 +35,8 @@ func TestAsyncPredictionSucceeded(t *testing.T) {
 
 func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
-	assert.NoError(t, ct.Start())
 	ct.StartWebhook()
+	assert.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -60,9 +60,9 @@ func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 
 func TestAsyncPredictionFailure(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
+	ct.StartWebhook()
 	ct.AppendEnvs("PREDICTION_FAILURE=1")
 	assert.NoError(t, ct.Start())
-	ct.StartWebhook()
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -86,10 +86,10 @@ func TestAsyncPredictionFailure(t *testing.T) {
 
 func TestAsyncPredictionCrash(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
+	ct.StartWebhook()
 	ct.AppendArgs("--await-explicit-shutdown=true")
 	ct.AppendEnvs("PREDICTION_CRASH=1")
 	assert.NoError(t, ct.Start())
-	ct.StartWebhook()
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)

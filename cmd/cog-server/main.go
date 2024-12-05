@@ -30,6 +30,7 @@ type Config struct {
 	ModuleName            string `ff:"long: module-name, nodefault, usage: Python module name"`
 	ClassName             string `ff:"long: class-name, nodefault, usage: Python class name"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
+	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
 }
 
 func (c *Config) Validate() error {
@@ -74,11 +75,12 @@ func main() {
 				"module-name", moduleName,
 				"class-name", className,
 				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
+				"upload-url", cfg.UploadUrl,
 			)
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting HTTP server", "addr", addr)
-			r := server.NewRunner(workingDir, moduleName, className, cfg.AwaitExplicitShutdown)
+			r := server.NewRunner(workingDir, moduleName, className, cfg.AwaitExplicitShutdown, cfg.UploadUrl)
 			must.Do(r.Start())
 			s := server.NewServer(addr, r)
 			go func() {

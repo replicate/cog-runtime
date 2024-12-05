@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -37,24 +38,46 @@ type WebhookRequest struct {
 	Response server.PredictionResponse
 }
 
+type UploadRequest struct {
+	Method string
+	Path   string
+	Body   []byte
+}
+
 type WebhookHandler struct {
 	mu              sync.Mutex
 	webhookRequests []WebhookRequest
+	uploadRequests  []UploadRequest
 }
 
 func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var resp server.PredictionResponse
-	must.Do(json.Unmarshal(must.Get(io.ReadAll(r.Body)), &resp))
-	req := WebhookRequest{
-		Method:   r.Method,
-		Path:     r.URL.Path,
-		Response: resp,
-	}
 	log := logger.Sugar()
-	log.Infow("webhook", "request", req)
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.webhookRequests = append(h.webhookRequests, req)
+	body := must.Get(io.ReadAll(r.Body))
+	if strings.HasPrefix(r.URL.Path, "/webhook") {
+		log.Infow("received webhook", "method", r.Method, "path", r.URL.Path)
+		var resp server.PredictionResponse
+		must.Do(json.Unmarshal(body, &resp))
+		req := WebhookRequest{
+			Method:   r.Method,
+			Path:     r.URL.Path,
+			Response: resp,
+		}
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.webhookRequests = append(h.webhookRequests, req)
+	} else if strings.HasPrefix(r.URL.Path, "/upload") {
+		log.Infow("received upload", "method", r.Method, "path", r.URL.Path)
+		req := UploadRequest{
+			Method: r.Method,
+			Path:   r.URL.Path,
+			Body:   body,
+		}
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.uploadRequests = append(h.uploadRequests, req)
+	} else {
+		log.Fatalw("received unknown request", "method", r.Method, "path", r.URL.Path)
+	}
 }
 
 var _ = (http.Handler)((*WebhookHandler)(nil))
@@ -136,6 +159,9 @@ func (ct *CogTest) WaitForWebhookResponses() []server.PredictionResponse {
 	for {
 		completed := make(map[string]bool)
 		for _, req := range ct.webhookServer.Handler.(*WebhookHandler).webhookRequests {
+			if !strings.HasPrefix(req.Path, "/webhook") {
+				continue
+			}
 			if _, ok := server.PredictionCompletedStatuses[req.Response.Status]; ok {
 				completed[req.Response.Id] = true
 			}
@@ -147,11 +173,17 @@ func (ct *CogTest) WaitForWebhookResponses() []server.PredictionResponse {
 	}
 	var r []server.PredictionResponse
 	for _, req := range ct.webhookServer.Handler.(*WebhookHandler).webhookRequests {
+		if !strings.HasPrefix(req.Path, "/webhook") {
+			continue
+		}
 		assert.Equal(ct.t, http.MethodPost, req.Method)
-		assert.Equal(ct.t, "/webhook", req.Path)
 		r = append(r, req.Response)
 	}
 	return r
+}
+
+func (ct *CogTest) GetUploads() []UploadRequest {
+	return ct.webhookServer.Handler.(*WebhookHandler).uploadRequests
 }
 
 func (ct *CogTest) Url(path string) string {
@@ -182,15 +214,22 @@ func (ct *CogTest) WaitForSetup() server.HealthCheck {
 }
 
 func (ct *CogTest) Prediction(input map[string]any) server.PredictionResponse {
-	return ct.prediction(http.MethodPost, ct.Url("/predictions"), input)
+	return ct.prediction(http.MethodPost, ct.Url("/predictions"), input, false)
 }
 
 func (ct *CogTest) PredictionWithId(pid string, input map[string]any) server.PredictionResponse {
-	return ct.prediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), input)
+	return ct.prediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), input, false)
 }
 
-func (ct *CogTest) prediction(method string, url string, input map[string]any) server.PredictionResponse {
+func (ct *CogTest) PredictionWithUpload(input map[string]any) server.PredictionResponse {
+	return ct.prediction(http.MethodPost, ct.Url("/predictions"), input, true)
+}
+
+func (ct *CogTest) prediction(method string, url string, input map[string]any, upload bool) server.PredictionResponse {
 	req := server.PredictionRequest{Input: input}
+	if upload {
+		req.OutputFilePrefix = fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort)
+	}
 	data := bytes.NewReader(must.Get(json.Marshal(req)))
 	r := must.Get(http.NewRequest(method, url, data))
 	r.Header.Set("Content-Type", "application/json")
