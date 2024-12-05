@@ -345,14 +345,20 @@ func (r *Runner) handleResponses() {
 		pr.mu.Unlock()
 
 		pr.sendWebhook()
+		completed := false
 		if pr.response.Status == PredictionStarting {
 			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
 			// Only async and iterator predict writes new response per output item with status = "processing"
 			// For blocking or non-iterator cases, set it here immediately after sending "starting" webhook
+			pr.mu.Lock()
 			pr.response.Status = PredictionProcessing
+			pr.mu.Unlock()
 		} else if _, ok := PredictionCompletedStatuses[pr.response.Status]; ok {
 			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendResponse()
+			completed = true
+		}
+		if completed {
 			r.mu.Lock()
 			delete(r.pending, pid)
 			r.mu.Unlock()

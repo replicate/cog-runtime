@@ -22,6 +22,23 @@ def setup_signals() -> List[int]:
     return signals
 
 
+def wait_for_file(path, exists: bool = True) -> None:
+    while True:
+        time.sleep(0.1)
+        if os.path.exists(path) == exists:
+            time.sleep(0.1)  # Wait for signal
+            return
+
+
+def wait_for_process(p: subprocess.Popen, code: int = 0) -> None:
+    while True:
+        time.sleep(0.1)
+        c = p.poll()
+        if c is not None:
+            assert c == code
+            return
+
+
 def run_file_runner(
     tmp_path: str, predictor: str, env: Optional[Dict[str, str]] = None
 ) -> subprocess.Popen:
@@ -48,14 +65,11 @@ def test_file_runner(tmp_path):
     env['SETUP_SLEEP'] = '1'
     p = run_file_runner(tmp_path, 'sleep', env=env)
 
-    time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
-    assert os.path.exists(openapi_file)
+    wait_for_file(openapi_file)
 
     setup_result_file = os.path.join(tmp_path, 'setup_result.json')
-    assert not os.path.exists(setup_result_file)
-    time.sleep(1.1)
-    assert os.path.exists(setup_result_file)
+    wait_for_file(setup_result_file)
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
@@ -65,16 +79,12 @@ def test_file_runner(tmp_path):
     resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
-    assert os.path.exists(req_file)
-    assert not os.path.exists(resp_file)
-    time.sleep(0.1)
-    assert not os.path.exists(req_file)
+    wait_for_file(req_file, exists=False)
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
     ]
-    time.sleep(1.1)
-    assert os.path.exists(resp_file)
+    wait_for_file(resp_file)
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
@@ -89,9 +99,7 @@ def test_file_runner(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    assert p.poll() is None
-    time.sleep(0.5)
-    assert p.poll() == 0
+    wait_for_process(p)
 
 
 def test_file_runner_setup_failed(tmp_path):
@@ -102,19 +110,16 @@ def test_file_runner_setup_failed(tmp_path):
     env['SETUP_FAILURE'] = '1'
     p = run_file_runner(tmp_path, 'sleep', env=env)
 
-    time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
-    assert os.path.exists(openapi_file)
+    wait_for_file(openapi_file)
 
     setup_result_file = os.path.join(tmp_path, 'setup_result.json')
-    assert not os.path.exists(setup_result_file)
-    time.sleep(1.1)
-    assert os.path.exists(setup_result_file)
+    wait_for_file(setup_result_file)
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'failed'
-    assert p.poll() == 1
     assert signals == []
+    wait_for_process(p, 1)
 
 
 def test_file_runner_predict_failed(tmp_path):
@@ -124,12 +129,11 @@ def test_file_runner_predict_failed(tmp_path):
     env['PREDICTION_FAILURE'] = '1'
     p = run_file_runner(tmp_path, 'sleep', env=env)
 
-    time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
-    assert os.path.exists(openapi_file)
+    wait_for_file(openapi_file)
 
     setup_result_file = os.path.join(tmp_path, 'setup_result.json')
-    assert os.path.exists(setup_result_file)
+    wait_for_file(setup_result_file)
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
@@ -139,16 +143,12 @@ def test_file_runner_predict_failed(tmp_path):
     resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
-    assert os.path.exists(req_file)
-    assert not os.path.exists(resp_file)
-    time.sleep(0.1)
-    assert not os.path.exists(req_file)
+    wait_for_file(req_file, exists=False)
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
     ]
-    time.sleep(1.1)
-    assert os.path.exists(resp_file)
+    wait_for_file(resp_file)
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
@@ -163,6 +163,4 @@ def test_file_runner_predict_failed(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    assert p.poll() is None
-    time.sleep(0.5)
-    assert p.poll() == 0
+    wait_for_process(p)

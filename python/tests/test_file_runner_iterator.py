@@ -1,24 +1,27 @@
 import json
 import os.path
 import pathlib
-import time
 from typing import List, Optional
 
 from coglet import file_runner
 
-from .test_file_runner import run_file_runner, setup_signals
+from .test_file_runner import (
+    run_file_runner,
+    setup_signals,
+    wait_for_file,
+    wait_for_process,
+)
 
 
 def test_file_runner_iterator(tmp_path):
     signals = setup_signals()
     p = run_file_runner(tmp_path, 'iterator')
 
-    time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
-    assert os.path.exists(openapi_file)
+    wait_for_file(openapi_file)
 
     setup_result_file = os.path.join(tmp_path, 'setup_result.json')
-    assert os.path.exists(setup_result_file)
+    wait_for_file(setup_result_file)
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
@@ -28,16 +31,12 @@ def test_file_runner_iterator(tmp_path):
     resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 2, 's': 'bar'}}, f)
-    assert os.path.exists(req_file)
-    assert not os.path.exists(resp_file)
-    time.sleep(0.1)
-    assert not os.path.exists(req_file)
+    wait_for_file(req_file, exists=False)
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
     ]
-    time.sleep(2.1)
-    assert os.path.exists(resp_file)
+    wait_for_file(resp_file)
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
@@ -52,27 +51,25 @@ def test_file_runner_iterator(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    assert p.poll() is None
-    time.sleep(0.5)
-    assert p.poll() == 0
+    wait_for_process(p)
 
 
 def test_file_runner_iterator_webhook(tmp_path):
     signals = setup_signals()
     p = run_file_runner(tmp_path, 'iterator')
 
-    time.sleep(0.1)
     openapi_file = os.path.join(tmp_path, 'openapi.json')
-    assert os.path.exists(openapi_file)
+    wait_for_file(openapi_file)
 
     setup_result_file = os.path.join(tmp_path, 'setup_result.json')
-    assert os.path.exists(setup_result_file)
+    wait_for_file(setup_result_file)
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
     assert signals == [file_runner.FileRunner.SIG_READY]
 
     def assert_output(status: str, output: Optional[List[str]]) -> None:
+        assert os.path.exists(resp_file)
         with open(resp_file, 'r') as f:
             resp = json.load(f)
         assert resp['status'] == status
@@ -82,11 +79,9 @@ def test_file_runner_iterator_webhook(tmp_path):
     resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 2, 's': 'bar'}, 'webhook': 'http://api'}, f)
-    assert os.path.exists(req_file)
-    assert not os.path.exists(resp_file)
-    time.sleep(0.1)
-    assert not os.path.exists(req_file)
+    wait_for_file(req_file, exists=False)
 
+    wait_for_file(resp_file)
     assert_output('starting', None)
     assert signals == [
         file_runner.FileRunner.SIG_READY,
@@ -94,8 +89,8 @@ def test_file_runner_iterator_webhook(tmp_path):
         file_runner.FileRunner.SIG_OUTPUT,
     ]
 
-    time.sleep(1.1)
     resp_file = os.path.join(tmp_path, 'response-a-00001.json')
+    wait_for_file(resp_file)
     assert_output('processing', ['*bar-0*'])
     assert signals == [
         file_runner.FileRunner.SIG_READY,
@@ -104,10 +99,11 @@ def test_file_runner_iterator_webhook(tmp_path):
         file_runner.FileRunner.SIG_OUTPUT,
     ]
 
-    time.sleep(1.1)
     resp_file = os.path.join(tmp_path, 'response-a-00002.json')
+    wait_for_file(resp_file)
     assert_output('processing', ['*bar-0*', '*bar-1*'])
     resp_file = os.path.join(tmp_path, 'response-a-00003.json')
+    wait_for_file(resp_file)
     assert_output('succeeded', ['*bar-0*', '*bar-1*'])
     assert signals == [
         file_runner.FileRunner.SIG_READY,
@@ -121,6 +117,4 @@ def test_file_runner_iterator_webhook(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    assert p.poll() is None
-    time.sleep(0.5)
-    assert p.poll() == 0
+    wait_for_process(p)

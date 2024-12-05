@@ -29,22 +29,30 @@ func TestAsyncPredictorSucceeded(t *testing.T) {
 			bazR = append(bazR, r)
 		}
 	}
-	assert.Equal(t, 3, len(barR))
-	assert.Equal(t, 4, len(bazR))
+	assert.Equal(t, 5, len(barR))
+	assert.Equal(t, 6, len(bazR))
 
-	barLogs := "starting async prediction\nprediction in progress 1/1\n"
-	assertResponse(t, barR[0], server.PredictionStarting, nil, barLogs)
+	barLogs := ""
+	ct.AssertResponse(barR[0], server.PredictionStarting, nil, barLogs)
+	barLogs += "starting async prediction\n"
+	ct.AssertResponse(barR[1], server.PredictionProcessing, nil, barLogs)
+	barLogs += "prediction in progress 1/1\n"
+	ct.AssertResponse(barR[2], server.PredictionProcessing, nil, barLogs)
 	barLogs += "completed async prediction\n"
-	assertResponse(t, barR[1], server.PredictionProcessing, nil, barLogs)
-	assertResponse(t, barR[2], server.PredictionSucceeded, "*bar*", barLogs)
+	ct.AssertResponse(barR[3], server.PredictionProcessing, nil, barLogs)
+	ct.AssertResponse(barR[4], server.PredictionSucceeded, "*bar*", barLogs)
 
-	bazLogs := "starting async prediction\nprediction in progress 1/2\n"
-	assertResponse(t, bazR[0], server.PredictionStarting, nil, bazLogs)
+	bazLogs := ""
+	ct.AssertResponse(bazR[0], server.PredictionStarting, nil, bazLogs)
+	bazLogs += "starting async prediction\n"
+	ct.AssertResponse(bazR[1], server.PredictionProcessing, nil, bazLogs)
+	bazLogs += "prediction in progress 1/2\n"
+	ct.AssertResponse(bazR[2], server.PredictionProcessing, nil, bazLogs)
 	bazLogs += "prediction in progress 2/2\n"
-	assertResponse(t, bazR[1], server.PredictionProcessing, nil, bazLogs)
+	ct.AssertResponse(bazR[3], server.PredictionProcessing, nil, bazLogs)
 	bazLogs += "completed async prediction\n"
-	assertResponse(t, bazR[2], server.PredictionProcessing, nil, bazLogs)
-	assertResponse(t, bazR[3], server.PredictionSucceeded, "*baz*", bazLogs)
+	ct.AssertResponse(bazR[4], server.PredictionProcessing, nil, bazLogs)
+	ct.AssertResponse(bazR[5], server.PredictionSucceeded, "*baz*", bazLogs)
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())

@@ -11,7 +11,7 @@ class Predictor(BasePredictor):
         i = int(os.environ.get('SETUP_SLEEP', '0'))
         for x in range(i):
             print(f'setup in progress {x+1}/{i}')
-            time.sleep(1)
+            time.sleep(0.5)
         if int(os.environ.get('SETUP_FAILURE', '0')) == 1:
             print('setup failed')
             raise Exception('setup failed')
@@ -21,10 +21,13 @@ class Predictor(BasePredictor):
         print('completed setup')
 
     def predict(self, i: int, s: str) -> str:
+        time.sleep(0.1)
         print('starting prediction')
+        if i > 0:
+            time.sleep(0.6)
         for x in range(i):
             print(f'prediction in progress {x+1}/{i}')
-            time.sleep(1)
+            time.sleep(0.6)
         if int(os.environ.get('PREDICTION_FAILURE', '0')) == 1:
             print('prediction failed')
             raise Exception('prediction failed')
