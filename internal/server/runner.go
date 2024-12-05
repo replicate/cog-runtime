@@ -29,7 +29,7 @@ type PendingPrediction struct {
 	request     PredictionRequest
 	response    PredictionResponse
 	lastUpdated time.Time
-	paths       []string
+	inputPaths  []string
 	mu          sync.Mutex
 	c           chan PredictionResponse
 }
@@ -180,8 +180,8 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 
 	log.Infow("received prediction request", "id", req.Id)
 
-	paths := make([]string, 0)
-	input, err := handlePath(req.Input, &paths, base64ToInput)
+	inputPaths := make([]string, 0)
+	input, err := handlePath(req.Input, &inputPaths, base64ToInput)
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +195,9 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		CreatedAt: req.CreatedAt,
 	}
 	pr := PendingPrediction{
-		request:  req,
-		response: resp,
-		paths:    paths,
+		request:    req,
+		response:   resp,
+		inputPaths: inputPaths,
 	}
 	if req.Webhook == "" {
 		pr.c = make(chan PredictionResponse, 1)
@@ -359,6 +359,9 @@ func (r *Runner) handleResponses() {
 			completed = true
 		}
 		if completed {
+			for _, p := range pr.inputPaths {
+				must.Do(os.Remove(p))
+			}
 			r.mu.Lock()
 			delete(r.pending, pid)
 			r.mu.Unlock()
