@@ -10,13 +10,16 @@ class Predictor(BasePredictor):
         i = int(os.environ.get('SETUP_SLEEP', '0'))
         for x in range(i):
             print(f'setup in progress {x+1}/{i}')
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
         print('completed async setup')
 
     async def predict(self, i: int, s: str) -> str:
+        await asyncio.sleep(0.1)
         print('starting async prediction')
+        if i > 0:
+            await asyncio.sleep(0.6)
         for x in range(i):
             print(f'prediction in progress {x+1}/{i}')
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.6)
         print('completed async prediction')
         return f'*{s}*'
