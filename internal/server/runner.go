@@ -306,7 +306,7 @@ func (r *Runner) updateSetupResult() {
 		log.Errorw("setup failed")
 		r.status = StatusSetupFailed
 	} else {
-		panic(fmt.Sprintf("invalid setup status: %s", r.setupResult.Status))
+		log.Fatalw("invalid setup status", "status", r.setupResult.Status)
 	}
 }
 
