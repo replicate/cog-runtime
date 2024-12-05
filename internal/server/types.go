@@ -70,10 +70,11 @@ type SetupResult struct {
 }
 
 type PredictionRequest struct {
-	Input     any    `json:"input"`
-	Id        string `json:"id"`
-	CreatedAt string `json:"created_at"`
-	Webhook   string `json:"webhook,omitempty"`
+	Input            any    `json:"input"`
+	Id               string `json:"id"`
+	CreatedAt        string `json:"created_at"`
+	Webhook          string `json:"webhook,omitempty"`
+	OutputFilePrefix string `json:"output_file_prefix,omitempty"`
 }
 
 type PredictionResponse struct {

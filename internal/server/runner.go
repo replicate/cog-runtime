@@ -85,11 +85,12 @@ type Runner struct {
 	logs                  []string
 	pending               map[string]*PendingPrediction
 	awaitExplicitShutdown bool
+	uploadUrl             string
 	shutdownRequested     bool
 	mu                    sync.Mutex
 }
 
-func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown bool) *Runner {
+func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown bool, uploadUrl string) *Runner {
 	args := []string{
 		"-u",
 		"-m", "coglet",
@@ -104,6 +105,7 @@ func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown b
 		status:                StatusStarting,
 		pending:               make(map[string]*PendingPrediction),
 		awaitExplicitShutdown: awaitExplicitShutdown,
+		uploadUrl:             uploadUrl,
 	}
 }
 
@@ -333,8 +335,15 @@ func (r *Runner) handleResponses() {
 		must.Do(os.Remove(path.Join(r.workingDir, entry.Name())))
 
 		paths := make([]string, 0)
-		if output, err := handlePath(pr.response.Output, &paths, outputToBase64); err != nil {
+		outputFn := outputToBase64
+		if pr.request.OutputFilePrefix != "" {
+			outputFn = outputToUpload(pr.request.OutputFilePrefix)
+		} else if r.uploadUrl != "" {
+			outputFn = outputToUpload(r.uploadUrl)
+		}
+		if output, err := handlePath(pr.response.Output, &paths, outputFn); err != nil {
 			log.Errorw("failed to handle output", "id", pid, "error", err)
+			pr.response.Status = PredictionFailed
 			pr.response.Error = err.Error()
 		} else {
 			pr.response.Output = output

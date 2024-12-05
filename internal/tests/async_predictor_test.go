@@ -10,8 +10,8 @@ import (
 
 func TestAsyncPredictorSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "async_sleep")
-	assert.NoError(t, ct.Start())
 	ct.StartWebhook()
+	assert.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)

@@ -10,8 +10,8 @@ import (
 
 func TestPredictionIteratorSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "iterator")
-	assert.NoError(t, ct.Start())
 	ct.StartWebhook()
+	assert.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -39,8 +39,8 @@ func TestPredictionIteratorSucceeded(t *testing.T) {
 
 func TestPredictionConcatenateIteratorSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "concat_iterator")
-	assert.NoError(t, ct.Start())
 	ct.StartWebhook()
+	assert.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
