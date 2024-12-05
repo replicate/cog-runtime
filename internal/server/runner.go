@@ -30,19 +30,31 @@ type PendingPrediction struct {
 	response    PredictionResponse
 	lastUpdated time.Time
 	paths       []string
+	mu          sync.Mutex
 	c           chan PredictionResponse
 }
 
+func (pr *PendingPrediction) appendLogLine(line string) {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+	pr.response.Logs += fmt.Sprintln(line)
+}
+
 func (pr *PendingPrediction) sendWebhook() {
+	pr.mu.Lock()
 	if pr.request.Webhook == "" {
+		pr.mu.Unlock()
 		return
 	}
 	if pr.response.Status == PredictionProcessing {
 		if time.Since(pr.lastUpdated) < 500*time.Millisecond {
+			pr.mu.Unlock()
 			return
 		}
 		pr.lastUpdated = time.Now()
 	}
+	pr.mu.Unlock()
+
 	log := logger.Sugar()
 	log.Infow("sending webhook", "url", pr.request.Webhook, "response", pr.response)
 	body := bytes.NewBuffer(must.Get(json.Marshal(pr.response)))
@@ -69,13 +81,12 @@ type Runner struct {
 	cmd                   exec.Cmd
 	status                Status
 	schema                string
-	setupResult           *SetupResult
+	setupResult           SetupResult
 	logs                  []string
 	pending               map[string]*PendingPrediction
 	awaitExplicitShutdown bool
 	shutdownRequested     bool
-
-	mu sync.Mutex
+	mu                    sync.Mutex
 }
 
 func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown bool) *Runner {
@@ -104,7 +115,7 @@ func (r *Runner) Start() error {
 		return err
 	}
 	// Placeholder in case setup crashes
-	r.setupResult = &SetupResult{
+	r.setupResult = SetupResult{
 		StartedAt: util.NowIso(),
 	}
 	if err := r.cmd.Start(); err != nil {
@@ -121,7 +132,9 @@ func (r *Runner) Start() error {
 func (r *Runner) Shutdown() error {
 	log := logger.Sugar()
 	log.Infow("shutdown requested")
+	r.mu.Lock()
 	r.shutdownRequested = true
+	r.mu.Unlock()
 	if r.cmd.ProcessState != nil {
 		// Python process already exited
 		// Terminate HTTP server
@@ -157,10 +170,13 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	if req.CreatedAt == "" {
 		req.CreatedAt = util.NowIso()
 	}
+	r.mu.Lock()
 	if _, ok := r.pending[req.Id]; ok {
+		r.mu.Unlock()
 		log.Errorw("prediction rejected: prediction ID exists", "id", req.Id)
 		return nil, fmt.Errorf("prediction ID exists")
 	}
+	r.mu.Unlock()
 
 	log.Infow("received prediction request", "id", req.Id)
 
@@ -202,6 +218,7 @@ func (r *Runner) wait() {
 		runnerLogs := r.rotateLogs()
 		log.Errorw("python runner excited with error", "pid", r.cmd.Process.Pid, "error", err, "logs", runnerLogs)
 		for _, pr := range r.pending {
+			pr.mu.Lock()
 			now := util.NowIso()
 			if pr.response.StartedAt == "" {
 				pr.response.StartedAt = now
@@ -209,9 +226,12 @@ func (r *Runner) wait() {
 			pr.response.CompletedAt = now
 			pr.response.Error = runnerLogs
 			pr.response.Status = PredictionFailed
+			pr.mu.Unlock()
+
 			pr.sendWebhook()
 			pr.sendResponse()
 		}
+		r.mu.Lock()
 		if r.status == StatusStarting {
 			r.status = StatusSetupFailed
 			r.setupResult.CompletedAt = util.NowIso()
@@ -220,9 +240,12 @@ func (r *Runner) wait() {
 		} else {
 			r.status = StatusDefunct
 		}
+		r.mu.Unlock()
 	} else {
 		log.Infow("python runner exited successfully", "pid", r.cmd.Process.Pid)
+		r.mu.Lock()
 		r.status = StatusDefunct
+		r.mu.Unlock()
 	}
 	if !r.awaitExplicitShutdown || r.shutdownRequested {
 		must.Do(r.stop())
@@ -243,10 +266,14 @@ func (r *Runner) handleSignals() {
 				r.updateSetupResult()
 			}
 			log.Info("runner is ready")
+			r.mu.Lock()
 			r.status = StatusReady
+			r.mu.Unlock()
 		} else if s == SigBusy {
 			log.Info("runner is busy")
+			r.mu.Lock()
 			r.status = StatusBusy
+			r.mu.Unlock()
 		}
 	}
 }
@@ -267,44 +294,47 @@ func (r *Runner) updateSchema() {
 func (r *Runner) updateSetupResult() {
 	log := logger.Sugar()
 	log.Infow("updating setup result")
-	var setupResult SetupResult
-	must.Do(r.readJson("setup_result.json", &setupResult))
+	logs := r.rotateLogs()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if setupResult.Status == SetupSucceeded {
+	must.Do(r.readJson("setup_result.json", &r.setupResult))
+	r.setupResult.Logs = logs
+	if r.setupResult.Status == SetupSucceeded {
 		log.Infow("setup succeeded")
 		r.status = StatusReady
-	} else if setupResult.Status == SetupFailed {
+	} else if r.setupResult.Status == SetupFailed {
 		log.Errorw("setup failed")
 		r.status = StatusSetupFailed
 	} else {
 		panic(fmt.Sprintf("invalid setup status: %s", r.setupResult.Status))
 	}
-	setupResult.Logs = r.rotateLogs()
-	r.setupResult = &setupResult
 }
 
 func (r *Runner) handleResponses() {
 	log := logger.Sugar()
-	completed := make(map[string]bool)
 	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
 		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
 		if m == nil {
 			continue
 		}
 		pid := m[1]
+		r.mu.Lock()
 		pr, ok := r.pending[pid]
 		if !ok {
+			r.mu.Unlock()
 			continue
 		}
-		log.Infow("received prediction response", "id", pr.request.Id)
+		r.mu.Unlock()
+
+		pr.mu.Lock()
+		log.Infow("received prediction response", "id", pid)
 		must.Do(r.readJson(entry.Name(), &pr.response))
 		// Delete response immediately to avoid duplicates
 		must.Do(os.Remove(path.Join(r.workingDir, entry.Name())))
 
 		paths := make([]string, 0)
 		if output, err := handlePath(pr.response.Output, &paths, outputToBase64); err != nil {
-			log.Errorw("failed to handle output", "id", pr.request.Id, "error", err)
+			log.Errorw("failed to handle output", "id", pid, "error", err)
 			pr.response.Error = err.Error()
 		} else {
 			pr.response.Output = output
@@ -312,6 +342,7 @@ func (r *Runner) handleResponses() {
 		for _, p := range paths {
 			must.Do(os.Remove(p))
 		}
+		pr.mu.Unlock()
 
 		pr.sendWebhook()
 		if pr.response.Status == PredictionStarting {
@@ -322,13 +353,10 @@ func (r *Runner) handleResponses() {
 		} else if _, ok := PredictionCompletedStatuses[pr.response.Status]; ok {
 			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendResponse()
-			completed[pid] = true
+			r.mu.Lock()
+			delete(r.pending, pid)
+			r.mu.Unlock()
 		}
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for pid, _ := range completed {
-		delete(r.pending, pid)
 	}
 }
 
@@ -348,13 +376,13 @@ func (r *Runner) readJson(filename string, v any) error {
 
 func (r *Runner) log(line string) {
 	log := logger.Sugar()
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if m := LOG_REGEX.FindStringSubmatch(line); m != nil {
 		pid := m[1]
 		msg := m[2]
+		r.mu.Lock()
+		defer r.mu.Unlock()
 		if pr, ok := r.pending[pid]; ok {
-			pr.response.Logs += fmt.Sprintln(msg)
+			pr.appendLogLine(msg)
 			// In case log is received before "starting" response
 			if pr.response.Status != "" {
 				pr.sendWebhook()
@@ -363,12 +391,16 @@ func (r *Runner) log(line string) {
 			log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
 		}
 	} else if !strings.Contains(line, "[coglet]") {
+		r.mu.Lock()
+		defer r.mu.Unlock()
 		r.logs = append(r.logs, line)
 	}
 	fmt.Println(line)
 }
 
 func (r *Runner) rotateLogs() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	logs := util.JoinLogs(r.logs)
 	r.logs = make([]string, 0)
 	return logs

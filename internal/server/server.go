@@ -25,7 +25,7 @@ func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	hc := HealthCheck{
 		Status: h.runner.status.String(),
-		Setup:  h.runner.setupResult,
+		Setup:  &h.runner.setupResult,
 	}
 
 	if bs, err := json.Marshal(hc); err != nil {
