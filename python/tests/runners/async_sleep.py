@@ -22,4 +22,5 @@ class Predictor(BasePredictor):
             print(f'prediction in progress {x+1}/{i}')
             await asyncio.sleep(0.6)
         print('completed async prediction')
+        await asyncio.sleep(0.1)
         return f'*{s}*'

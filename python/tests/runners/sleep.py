@@ -35,4 +35,5 @@ class Predictor(BasePredictor):
             print('prediction crashed')
             sys.exit(1)
         print('completed prediction')
+        time.sleep(0.1)
         return f'*{s}*'
