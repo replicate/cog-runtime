@@ -162,7 +162,7 @@ func (ct *CogTest) WaitForWebhookResponses() []server.PredictionResponse {
 			if !strings.HasPrefix(req.Path, "/webhook") {
 				continue
 			}
-			if _, ok := server.PredictionCompletedStatuses[req.Response.Status]; ok {
+			if req.Response.Status.IsCompleted() {
 				completed[req.Response.Id] = true
 			}
 		}
@@ -214,22 +214,24 @@ func (ct *CogTest) WaitForSetup() server.HealthCheck {
 }
 
 func (ct *CogTest) Prediction(input map[string]any) server.PredictionResponse {
-	return ct.prediction(http.MethodPost, ct.Url("/predictions"), input, false)
+	req := server.PredictionRequest{Input: input}
+	return ct.prediction(http.MethodPost, ct.Url("/predictions"), req)
 }
 
 func (ct *CogTest) PredictionWithId(pid string, input map[string]any) server.PredictionResponse {
-	return ct.prediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), input, false)
+	req := server.PredictionRequest{Input: input}
+	return ct.prediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), req)
 }
 
 func (ct *CogTest) PredictionWithUpload(input map[string]any) server.PredictionResponse {
-	return ct.prediction(http.MethodPost, ct.Url("/predictions"), input, true)
+	req := server.PredictionRequest{
+		Input:            input,
+		OutputFilePrefix: fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort),
+	}
+	return ct.prediction(http.MethodPost, ct.Url("/predictions"), req)
 }
 
-func (ct *CogTest) prediction(method string, url string, input map[string]any, upload bool) server.PredictionResponse {
-	req := server.PredictionRequest{Input: input}
-	if upload {
-		req.OutputFilePrefix = fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort)
-	}
+func (ct *CogTest) prediction(method string, url string, req server.PredictionRequest) server.PredictionResponse {
 	data := bytes.NewReader(must.Get(json.Marshal(req)))
 	r := must.Get(http.NewRequest(method, url, data))
 	r.Header.Set("Content-Type", "application/json")
@@ -241,16 +243,26 @@ func (ct *CogTest) prediction(method string, url string, input map[string]any, u
 }
 
 func (ct *CogTest) AsyncPrediction(input map[string]any) string {
-	return ct.asyncPrediction(http.MethodPost, ct.Url("/predictions"), input)
+	req := server.PredictionRequest{Input: input}
+	return ct.asyncPrediction(http.MethodPost, ct.Url("/predictions"), req)
+}
+
+func (ct *CogTest) AsyncPredictionWithFilter(input map[string]any, filter []server.WebhookEvent) string {
+	req := server.PredictionRequest{
+		Input:               input,
+		WebhookEventsFilter: filter,
+	}
+	return ct.asyncPrediction(http.MethodPost, ct.Url("/predictions"), req)
 }
 
 func (ct *CogTest) AsyncPredictionWithId(pid string, input map[string]any) string {
-	return ct.asyncPrediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), input)
+	req := server.PredictionRequest{Input: input}
+	return ct.asyncPrediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), req)
 }
 
-func (ct *CogTest) asyncPrediction(method string, url string, input map[string]any) string {
+func (ct *CogTest) asyncPrediction(method string, url string, req server.PredictionRequest) string {
 	ct.pending++
-	req := server.PredictionRequest{Input: input, Webhook: fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort)}
+	req.Webhook = fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort)
 	data := bytes.NewReader(must.Get(json.Marshal(req)))
 	r := must.Get(http.NewRequest(method, url, data))
 	r.Header.Set("Content-Type", "application/json")

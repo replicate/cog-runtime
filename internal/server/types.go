@@ -51,11 +51,18 @@ const (
 	PredictionFailed     PredictionStatus = "failed"
 )
 
-var PredictionCompletedStatuses = map[PredictionStatus]bool{
-	PredictionSucceeded: true,
-	PredictionCanceled:  true,
-	PredictionFailed:    true,
+func (s PredictionStatus) IsCompleted() bool {
+	return s == PredictionSucceeded || s == PredictionCanceled || s == PredictionFailed
 }
+
+type WebhookEvent string
+
+const (
+	WebhookStart     WebhookEvent = "start"
+	WebhookOutput    WebhookEvent = "output"
+	WebhookLogs      WebhookEvent = "logs"
+	WebhookCompleted WebhookEvent = "completed"
+)
 
 type HealthCheck struct {
 	Status string       `json:"status"`
@@ -70,11 +77,12 @@ type SetupResult struct {
 }
 
 type PredictionRequest struct {
-	Input            any    `json:"input"`
-	Id               string `json:"id"`
-	CreatedAt        string `json:"created_at"`
-	Webhook          string `json:"webhook,omitempty"`
-	OutputFilePrefix string `json:"output_file_prefix,omitempty"`
+	Input               any            `json:"input"`
+	Id                  string         `json:"id"`
+	CreatedAt           string         `json:"created_at"`
+	Webhook             string         `json:"webhook,omitempty"`
+	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
+	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
 }
 
 type PredictionResponse struct {

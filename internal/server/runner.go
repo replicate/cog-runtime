@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -40,9 +41,13 @@ func (pr *PendingPrediction) appendLogLine(line string) {
 	pr.response.Logs += fmt.Sprintln(line)
 }
 
-func (pr *PendingPrediction) sendWebhook() {
+func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 	pr.mu.Lock()
 	if pr.request.Webhook == "" {
+		pr.mu.Unlock()
+		return
+	}
+	if len(pr.request.WebhookEventsFilter) > 0 && !slices.Contains(pr.request.WebhookEventsFilter, event) {
 		pr.mu.Unlock()
 		return
 	}
@@ -230,7 +235,7 @@ func (r *Runner) wait() {
 			pr.response.Status = PredictionFailed
 			pr.mu.Unlock()
 
-			pr.sendWebhook()
+			pr.sendWebhook(WebhookCompleted)
 			pr.sendResponse()
 		}
 		r.mu.Lock()
@@ -353,21 +358,21 @@ func (r *Runner) handleResponses() {
 		}
 		pr.mu.Unlock()
 
-		pr.sendWebhook()
-		completed := false
 		if pr.response.Status == PredictionStarting {
 			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
+			pr.sendWebhook(WebhookStart)
 			// Only async and iterator predict writes new response per output item with status = "processing"
 			// For blocking or non-iterator cases, set it here immediately after sending "starting" webhook
 			pr.mu.Lock()
 			pr.response.Status = PredictionProcessing
 			pr.mu.Unlock()
-		} else if _, ok := PredictionCompletedStatuses[pr.response.Status]; ok {
+		} else if pr.response.Status == PredictionProcessing {
+			log.Infow("prediction processing", "id", pr.request.Id, "status", pr.response.Status)
+			pr.sendWebhook(WebhookOutput)
+		} else if pr.response.Status.IsCompleted() {
 			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
+			pr.sendWebhook(WebhookCompleted)
 			pr.sendResponse()
-			completed = true
-		}
-		if completed {
 			for _, p := range pr.inputPaths {
 				must.Do(os.Remove(p))
 			}
@@ -403,7 +408,7 @@ func (r *Runner) log(line string) {
 			pr.appendLogLine(msg)
 			// In case log is received before "starting" response
 			if pr.response.Status != "" {
-				pr.sendWebhook()
+				pr.sendWebhook(WebhookLogs)
 			}
 		} else {
 			log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
