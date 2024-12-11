@@ -310,7 +310,7 @@ func (ct *CogTest) asyncPrediction(method string, url string, req server.Predict
 }
 
 func (ct *CogTest) Shutdown() {
-	url := fmt.Sprintf("http://localhost:%d/shutdown", ct.serverPort)
+	url := ct.Url("/shutdown")
 	resp := must.Get(http.DefaultClient.Post(url, "", nil))
 	assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
 }
