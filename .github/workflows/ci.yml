@@ -17,7 +17,7 @@ concurrency:
 jobs:
   check-go:
     name: Check Go
-    runs-on: ubuntu-latest-4-cores
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
     steps:
@@ -29,7 +29,7 @@ jobs:
 
   test-go:
     name: Test Go
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-4-cores
     strategy:
       fail-fast: false
     steps:
@@ -37,7 +37,21 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v3
+      - run: ./script/init.sh
       - run: ./script/test.sh go
+
+  test-go-legacy-cog:
+    name: Test Go with legacy Cog
+    runs-on: ubuntu-latest-4-cores
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v3
+      - run: ./script/init.sh
+      - run: ./script/test.sh go -legacy-cog
 
   build-python:
     name: Build & verify python package
@@ -83,4 +97,5 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v3
+      - run: ./script/init.sh
       - run: ./script/test.sh python
