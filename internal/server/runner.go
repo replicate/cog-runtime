@@ -43,22 +43,26 @@ func (pr *PendingPrediction) appendLogLine(line string) {
 
 func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 	pr.mu.Lock()
-	if pr.request.Webhook == "" {
+	defer func() {
+		// Only async and iterator predict writes new response per output item with status = "processing"
+		// For blocking or non-iterator cases, set it here immediately after sending "starting" webhook
+		if pr.response.Status == PredictionStarting {
+			pr.response.Status = PredictionProcessing
+		}
 		pr.mu.Unlock()
+	}()
+	if pr.request.Webhook == "" {
 		return
 	}
 	if len(pr.request.WebhookEventsFilter) > 0 && !slices.Contains(pr.request.WebhookEventsFilter, event) {
-		pr.mu.Unlock()
 		return
 	}
 	if pr.response.Status == PredictionProcessing {
 		if time.Since(pr.lastUpdated) < 500*time.Millisecond {
-			pr.mu.Unlock()
 			return
 		}
 		pr.lastUpdated = time.Now()
 	}
-	pr.mu.Unlock()
 
 	log := logger.Sugar()
 	log.Infow("sending webhook", "url", pr.request.Webhook, "response", pr.response)
@@ -362,11 +366,6 @@ func (r *Runner) handleResponses() {
 		if pr.response.Status == PredictionStarting {
 			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendWebhook(WebhookStart)
-			// Only async and iterator predict writes new response per output item with status = "processing"
-			// For blocking or non-iterator cases, set it here immediately after sending "starting" webhook
-			pr.mu.Lock()
-			pr.response.Status = PredictionProcessing
-			pr.mu.Unlock()
 		} else if pr.response.Status == PredictionProcessing {
 			log.Infow("prediction processing", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendWebhook(WebhookOutput)
