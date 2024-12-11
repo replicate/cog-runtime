@@ -9,6 +9,9 @@ import (
 )
 
 func TestAsyncPredictorSucceeded(t *testing.T) {
+	if *legacyCog {
+		t.SkipNow()
+	}
 	ct := NewCogTest(t, "async_sleep")
 	ct.StartWebhook()
 	assert.NoError(t, ct.Start())
