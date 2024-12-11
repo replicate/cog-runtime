@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -30,6 +31,7 @@ var (
 	_, b, _, _ = runtime.Caller(0)
 	basePath   = path.Dir(path.Dir(path.Dir(b)))
 	logger     = logging.New("cog-test")
+	legacyCog  = flag.Bool("legacy-cog", false, "Test with legacy Cog")
 )
 
 type WebhookRequest struct {
@@ -111,6 +113,17 @@ func (ct *CogTest) AppendEnvs(envs ...string) {
 }
 
 func (ct *CogTest) Start() error {
+	if *legacyCog {
+		ct.cmd = ct.legacyCmd()
+	} else {
+		ct.cmd = ct.runtimeCmd()
+	}
+	ct.cmd.Stdout = os.Stdout
+	ct.cmd.Stderr = os.Stderr
+	return ct.cmd.Start()
+}
+
+func (ct *CogTest) runtimeCmd() *exec.Cmd {
 	pathEnv := path.Join(basePath, "python", ".venv", "bin")
 	pythonPathEnv := path.Join(basePath, "python")
 	ct.serverPort = getFreePort()
@@ -121,16 +134,34 @@ func (ct *CogTest) Start() error {
 		"--port", fmt.Sprintf("%d", ct.serverPort),
 	}
 	args = append(args, ct.extraArgs...)
-	ct.cmd = exec.Command("go", args...)
-	ct.cmd.Env = os.Environ()
-	ct.cmd.Env = append(ct.cmd.Env,
+	cmd := exec.Command("go", args...)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env,
 		fmt.Sprintf("PATH=%s:%s", pathEnv, os.Getenv("PATH")),
 		fmt.Sprintf("PYTHONPATH=%s", pythonPathEnv),
 	)
-	ct.cmd.Env = append(ct.cmd.Env, ct.extraEnvs...)
-	ct.cmd.Stdout = os.Stdout
-	ct.cmd.Stderr = os.Stderr
-	return ct.cmd.Start()
+	cmd.Env = append(cmd.Env, ct.extraEnvs...)
+	return cmd
+}
+
+func (ct *CogTest) legacyCmd() *exec.Cmd {
+	tmpDir := ct.t.TempDir()
+	runnersPath := path.Join(basePath, "python", "tests", "runners")
+	module := fmt.Sprintf("%s.py", ct.module)
+	must.Do(os.Symlink(path.Join(runnersPath, "cog.yaml"), path.Join(tmpDir, "cog.yaml")))
+	must.Do(os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py")))
+	pythonBin := path.Join(basePath, "python", ".venv-legacy", "bin", "python3")
+	ct.serverPort = getFreePort()
+	args := []string{
+		"-m", "cog.server.http",
+	}
+	args = append(args, ct.extraArgs...)
+	cmd := exec.Command(pythonBin, args...)
+	cmd.Dir = tmpDir
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", ct.serverPort))
+	cmd.Env = append(cmd.Env, ct.extraEnvs...)
+	return cmd
 }
 
 func (ct *CogTest) Cleanup() error {
