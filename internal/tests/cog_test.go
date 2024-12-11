@@ -290,7 +290,7 @@ func (ct *CogTest) AsyncPredictionWithFilter(input map[string]any, filter []serv
 }
 
 func (ct *CogTest) AsyncPredictionWithId(pid string, input map[string]any) string {
-	req := server.PredictionRequest{Input: input}
+	req := server.PredictionRequest{Id: pid, Input: input}
 	return ct.asyncPrediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), req)
 }
 
