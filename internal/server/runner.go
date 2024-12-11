@@ -231,7 +231,8 @@ func (r *Runner) wait() {
 				pr.response.StartedAt = now
 			}
 			pr.response.CompletedAt = now
-			pr.response.Error = runnerLogs
+			pr.response.Logs += runnerLogs
+			pr.response.Error = "prediction failed"
 			pr.response.Status = PredictionFailed
 			pr.mu.Unlock()
 

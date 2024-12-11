@@ -70,6 +70,7 @@ func TestPredictionFailure(t *testing.T) {
 	} else {
 		assert.Equal(t, logs, resp.Logs)
 	}
+	assert.Equal(t, "prediction failed", resp.Error)
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
@@ -101,7 +102,9 @@ func TestPredictionCrash(t *testing.T) {
 		resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
 		assert.Equal(t, server.PredictionFailed, resp.Status)
 		assert.Equal(t, nil, resp.Output)
-		assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction crashed\n", resp.Logs)
+		assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\nprediction crashed\n")
+		assert.Contains(t, resp.Logs, "SystemExit: 1\n")
+		assert.Equal(t, "prediction failed", resp.Error)
 		assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
 	}
 
