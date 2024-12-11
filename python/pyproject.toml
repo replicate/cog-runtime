@@ -20,7 +20,7 @@ dev = [
     "setuptools",
 ]
 
-tests = [
+test = [
     "pytest",
     "pytest-asyncio",
 ]

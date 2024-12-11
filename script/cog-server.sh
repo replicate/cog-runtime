@@ -24,9 +24,8 @@ if [ -z "${PYTHON:-}" ]; then
         --class-name Predictor \
         "$@"
 else
-    python_version="$(cat "$base_dir/python/.python-version")"
     cd "$base_dir/python/tests/runners"
-    cp "$module.py" predict.py
+    ln -fs "$module.py" predict.py
     trap "rm -f predict.py" EXIT
-    uv run --python "$python_version" --with cog python3 -m cog.server.http "$@"
+    "$base_dir/python/.venv-legacy/bin/python3" -m cog.server.http "$@"
 fi
