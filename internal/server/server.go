@@ -81,9 +81,20 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := h.runner.predict(req)
-	if err != nil {
+	if errors.Is(err, ErrDefunct) {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	} else if errors.Is(err, ErrExists) {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	} else if errors.Is(err, ErrSetupFailed) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
 	if c == nil {
 		w.WriteHeader(http.StatusAccepted)
 		resp := PredictionResponse{Id: req.Id, Status: "starting"}

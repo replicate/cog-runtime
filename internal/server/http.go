@@ -6,7 +6,10 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("prediction ID not found")
+	ErrExists      = errors.New("prediction exists")
+	ErrNotFound    = errors.New("prediction not found")
+	ErrDefunct     = errors.New("server is defunct")
+	ErrSetupFailed = errors.New("setup failed")
 )
 
 func NewServer(addr string, runner *Runner) *http.Server {

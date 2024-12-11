@@ -192,10 +192,10 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	log := logger.Sugar()
 	if r.status == StatusSetupFailed {
 		log.Errorw("prediction rejected: setup failed")
-		return nil, fmt.Errorf("setup failed")
+		return nil, ErrSetupFailed
 	} else if r.status == StatusDefunct {
 		log.Errorw("prediction rejected: server is defunct")
-		return nil, fmt.Errorf("server is defunct")
+		return nil, ErrDefunct
 	}
 	if req.CreatedAt == "" {
 		req.CreatedAt = util.NowIso()
@@ -203,8 +203,8 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	r.mu.Lock()
 	if _, ok := r.pending[req.Id]; ok {
 		r.mu.Unlock()
-		log.Errorw("prediction rejected: prediction ID exists", "id", req.Id)
-		return nil, fmt.Errorf("prediction ID exists")
+		log.Errorw("prediction rejected: prediction exists", "id", req.Id)
+		return nil, ErrExists
 	}
 	r.mu.Unlock()
 
