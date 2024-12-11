@@ -124,3 +124,52 @@ async def test_file_runner_async_parallel(tmp_path):
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
     await wait_for_process(p)
+
+
+@pytest.mark.asyncio
+async def test_file_runner_async_cancel(tmp_path):
+    signals = setup_signals()
+
+    env = os.environ.copy()
+    env['SETUP_SLEEP'] = '1'
+    p = run_file_runner(tmp_path, 'async_sleep', env=env)
+
+    openapi_file = os.path.join(tmp_path, 'openapi.json')
+    await async_wait_for_file(openapi_file)
+
+    setup_result_file = os.path.join(tmp_path, 'setup_result.json')
+    await async_wait_for_file(setup_result_file)
+    with open(setup_result_file) as f:
+        setup_result = json.load(f)
+    assert setup_result['status'] == 'succeeded'
+    assert signals == [file_runner.FileRunner.SIG_READY]
+
+    req_file = os.path.join(tmp_path, 'request-a.json')
+    cancel_file = os.path.join(tmp_path, 'cancel-a')
+    resp_file = os.path.join(tmp_path, 'response-a-00000.json')
+    with open(req_file, 'w') as f:
+        json.dump({'input': {'i': 60, 's': 'bar'}}, f)
+    await async_wait_for_file(req_file, exists=False)
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+    ]
+
+    pathlib.Path(cancel_file).touch()
+    await async_wait_for_file(cancel_file, exists=False)
+
+    await async_wait_for_file(resp_file)
+    assert signals == [
+        file_runner.FileRunner.SIG_READY,
+        file_runner.FileRunner.SIG_BUSY,
+        file_runner.FileRunner.SIG_OUTPUT,
+        file_runner.FileRunner.SIG_READY,
+    ]
+
+    with open(resp_file, 'r') as f:
+        resp = json.load(f)
+    assert resp['status'] == 'canceled'
+
+    stop_file = os.path.join(tmp_path, 'stop')
+    pathlib.Path(stop_file).touch()
+    await wait_for_process(p)

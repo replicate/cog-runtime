@@ -1,7 +1,9 @@
 package tests
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/replicate/cog-runtime/internal/server"
 
@@ -18,7 +20,7 @@ func TestAsyncPredictionSucceeded(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 3)
 		logs := ""
@@ -57,7 +59,7 @@ func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	ct.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 3)
 		logs := ""
@@ -97,7 +99,7 @@ func TestAsyncPredictionFailure(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 3)
 		logs := ""
@@ -147,7 +149,7 @@ func TestAsyncPredictionCrash(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 3)
 		logs := ""
@@ -186,6 +188,55 @@ func TestAsyncPredictionCrash(t *testing.T) {
 		assert.Contains(t, wr[4].Logs, "SystemExit: 1\n")
 		assert.Equal(t, "prediction failed", wr[4].Error)
 		assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
+	}
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}
+
+func TestAsyncPredictionCanceled(t *testing.T) {
+	ct := NewCogTest(t, "sleep")
+	ct.StartWebhook()
+	ct.AppendArgs("--await-explicit-shutdown=true")
+	ct.AppendEnvs("PREDICTION_CRASH=1")
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	pid := "p01"
+	ct.AsyncPredictionWithId(pid, map[string]any{"i": 60, "s": "bar"})
+	if *legacyCog {
+		// Compat: legacy Cog buffers logging?
+		time.Sleep(time.Second)
+		ct.Cancel(pid)
+		wr := ct.WaitForWebhookCompletion()
+		assert.Len(t, wr, 3)
+		logs := ""
+		// Compat: legacy Cog sends no "starting" event
+		ct.AssertResponse(wr[0], server.PredictionProcessing, nil, logs)
+		logs += "starting prediction\n"
+		ct.AssertResponse(wr[1], server.PredictionProcessing, nil, logs)
+		// Compat: legacy Cog buffers logging?
+		logs += "prediction in progress 1/60\n"
+		logs += "prediction canceled\n"
+		ct.AssertResponse(wr[2], server.PredictionCanceled, nil, logs)
+	} else {
+		ct.WaitForWebhook(func(response server.PredictionResponse) bool {
+			return strings.Contains(response.Logs, "prediction in progress 1/60\n")
+		})
+		ct.Cancel(pid)
+		wr := ct.WaitForWebhookCompletion()
+		assert.Len(t, wr, 4)
+		logs := ""
+		ct.AssertResponse(wr[0], server.PredictionStarting, nil, logs)
+		logs += "starting prediction\n"
+		ct.AssertResponse(wr[1], server.PredictionProcessing, nil, logs)
+		logs += "prediction in progress 1/60\n"
+		ct.AssertResponse(wr[2], server.PredictionProcessing, nil, logs)
+		logs += "prediction canceled\n"
+		ct.AssertResponse(wr[3], server.PredictionCanceled, nil, logs)
 	}
 
 	ct.Shutdown()

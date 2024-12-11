@@ -14,13 +14,17 @@ class Predictor(BasePredictor):
         print('completed async setup')
 
     async def predict(self, i: int, s: str) -> str:
-        await asyncio.sleep(0.1)
-        print('starting async prediction')
-        if i > 0:
-            await asyncio.sleep(0.6)
-        for x in range(i):
-            print(f'prediction in progress {x+1}/{i}')
-            await asyncio.sleep(0.6)
-        print('completed async prediction')
-        await asyncio.sleep(0.1)
-        return f'*{s}*'
+        try:
+            await asyncio.sleep(0.1)
+            print('starting async prediction')
+            if i > 0:
+                await asyncio.sleep(0.6)
+            for x in range(i):
+                print(f'prediction in progress {x+1}/{i}')
+                await asyncio.sleep(0.6)
+            print('completed async prediction')
+            await asyncio.sleep(0.1)
+            return f'*{s}*'
+        except asyncio.CancelledError as e:
+            print('prediction canceled')
+            raise e

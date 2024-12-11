@@ -23,7 +23,7 @@ func TestPredictionFilterAll(t *testing.T) {
 		server.WebhookLogs,
 		server.WebhookCompleted,
 	})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 5)
 		logs := ""
@@ -71,7 +71,7 @@ func TestPredictionFilterCompleted(t *testing.T) {
 	ct.AsyncPredictionWithFilter(map[string]any{"i": 2, "s": "bar"}, []server.WebhookEvent{
 		server.WebhookCompleted,
 	})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	assert.Len(t, wr, 1)
 	logs := ""
 	logs += "starting prediction\n"
@@ -97,7 +97,7 @@ func TestPredictionFilterStartedCompleted(t *testing.T) {
 		server.WebhookStart,
 		server.WebhookCompleted,
 	})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	assert.Len(t, wr, 2)
 	logs := ""
 	if *legacyCog {
@@ -129,7 +129,7 @@ func TestPredictionFilterOutput(t *testing.T) {
 		server.WebhookOutput,
 		server.WebhookCompleted,
 	})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 3)
 		logs := ""
@@ -171,7 +171,7 @@ func TestPredictionFilterLogs(t *testing.T) {
 		server.WebhookLogs,
 		server.WebhookCompleted,
 	})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 2)
 		logs := ""

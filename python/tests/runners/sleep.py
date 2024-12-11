@@ -3,6 +3,7 @@ import sys
 import time
 
 from cog import BasePredictor
+from cog.server.exceptions import CancelationException
 
 
 class Predictor(BasePredictor):
@@ -21,19 +22,23 @@ class Predictor(BasePredictor):
         print('completed setup')
 
     def predict(self, i: int, s: str) -> str:
-        time.sleep(0.1)
-        print('starting prediction')
-        if i > 0:
-            time.sleep(0.6)
-        for x in range(i):
-            print(f'prediction in progress {x+1}/{i}')
-            time.sleep(0.6)
-        if int(os.environ.get('PREDICTION_FAILURE', '0')) == 1:
-            print('prediction failed')
-            raise Exception('prediction failed')
-        if int(os.environ.get('PREDICTION_CRASH', '0')) == 1:
-            print('prediction crashed')
-            sys.exit(1)
-        print('completed prediction')
-        time.sleep(0.1)
-        return f'*{s}*'
+        try:
+            time.sleep(0.1)
+            print('starting prediction')
+            if i > 0:
+                time.sleep(0.6)
+            for x in range(i):
+                print(f'prediction in progress {x+1}/{i}')
+                time.sleep(0.6)
+            if int(os.environ.get('PREDICTION_FAILURE', '0')) == 1:
+                print('prediction failed')
+                raise Exception('prediction failed')
+            if int(os.environ.get('PREDICTION_CRASH', '0')) == 1:
+                print('prediction crashed')
+                sys.exit(1)
+            print('completed prediction')
+            time.sleep(0.1)
+            return f'*{s}*'
+        except CancelationException as e:
+            print('prediction canceled')
+            raise e

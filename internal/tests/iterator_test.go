@@ -26,7 +26,7 @@ func testPredictionIteratorSucceeded(t *testing.T, module string) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	ct.AsyncPrediction(map[string]any{"i": 2, "s": "bar"})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	if *legacyCog {
 		assert.Len(t, wr, 5)
 		logs := ""

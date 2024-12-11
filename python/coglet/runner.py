@@ -87,6 +87,7 @@ class Runner:
         self.inputs = predictor.inputs
         self.output = predictor.output
         self.predictor = cls()
+        self.is_async_predict = inspect.iscoroutinefunction(self.predictor.predict)
 
     async def setup(self) -> None:
         kwargs: Dict[str, Any] = {}
@@ -116,7 +117,7 @@ class Runner:
     async def predict(self, inputs: Dict[str, Any]) -> Any:
         assert not self.is_iter(), 'predict returns iterator, call predict_iter instead'
         kwargs = _kwargs(self.inputs, inputs)
-        if inspect.iscoroutinefunction(self.predictor.predict):
+        if self.is_async_predict:
             output = await self.predictor.predict(**kwargs)
         else:
             output = self.predictor.predict(**kwargs)
@@ -127,7 +128,7 @@ class Runner:
         assert self.output.type is not None, 'missing output type'
 
         kwargs = _kwargs(self.inputs, inputs)
-        if inspect.iscoroutinefunction(self.predictor.predict):
+        if self.is_async_predict:
             async for x in self.predictor.predict(**kwargs):
                 assert util.check_value(
                     self.output.type, x

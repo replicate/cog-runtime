@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
@@ -91,5 +92,16 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		resp := <-c
 		w.WriteHeader(http.StatusOK)
 		must.Get(w.Write(must.Get(json.Marshal(resp))))
+	}
+}
+
+func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.runner.cancel(id); err == nil {
+		w.WriteHeader(http.StatusOK)
+	} else if errors.Is(err, ErrNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+	} else {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
