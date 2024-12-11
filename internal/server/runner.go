@@ -25,6 +25,7 @@ import (
 
 var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
 var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
+var CANCEL_FMT = "cancel-%s"
 
 type PendingPrediction struct {
 	request     PredictionRequest
@@ -92,6 +93,7 @@ type Runner struct {
 	schema                string
 	setupResult           SetupResult
 	logs                  []string
+	asyncPredict          bool
 	pending               map[string]*PendingPrediction
 	awaitExplicitShutdown bool
 	uploadUrl             string
@@ -168,6 +170,23 @@ func (r *Runner) stop() error {
 
 ////////////////////
 // Prediction
+
+func (r *Runner) cancel(pid string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.pending[pid]; !ok {
+		return ErrNotFound
+	}
+	if r.asyncPredict {
+		// Async predict, use files to cancel
+		p := path.Join(r.workingDir, fmt.Sprintf(CANCEL_FMT, pid))
+		return os.WriteFile(p, []byte{}, 0644)
+	} else {
+		// Blocking predict, use SIGUSR1 to cancel
+		// FIXME: ensure only one prediction in flight?
+		return syscall.Kill(r.cmd.Process.Pid, syscall.SIGUSR1)
+	}
+}
 
 func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error) {
 	log := logger.Sugar()
@@ -276,6 +295,9 @@ func (r *Runner) handleSignals() {
 			if r.status == StatusStarting {
 				r.updateSchema()
 				r.updateSetupResult()
+				if _, err := os.Stat(path.Join(r.workingDir, "async_predict")); err == nil {
+					r.asyncPredict = true
+				}
 			}
 			log.Info("runner is ready")
 			r.mu.Lock()

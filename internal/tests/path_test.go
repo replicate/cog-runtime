@@ -83,7 +83,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	ct.AsyncPrediction(map[string]any{"p": b64encode("bar")})
-	wr := ct.WaitForWebhookResponses()
+	wr := ct.WaitForWebhookCompletion()
 	ul := ct.GetUploads()
 
 	if *legacyCog {

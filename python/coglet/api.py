@@ -8,6 +8,10 @@ from typing import Any, Iterator, List, Optional, TypeVar, Union
 ########################################
 
 
+class CancelationException(Exception):
+    pass
+
+
 class Path(pathlib.PosixPath):
     pass
 

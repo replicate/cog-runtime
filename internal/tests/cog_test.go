@@ -209,18 +209,22 @@ func (ct *CogTest) StartWebhook() {
 	}()
 }
 
-func (ct *CogTest) WaitForWebhookResponses() []server.PredictionResponse {
+func (ct *CogTest) WaitForWebhookCompletion() []server.PredictionResponse {
+	return ct.WaitForWebhook(func(response server.PredictionResponse) bool { return response.Status.IsCompleted() })
+}
+
+func (ct *CogTest) WaitForWebhook(fn func(response server.PredictionResponse) bool) []server.PredictionResponse {
 	for {
-		completed := make(map[string]bool)
+		matches := make(map[string]bool)
 		for _, req := range ct.webhookServer.Handler.(*WebhookHandler).webhookRequests {
 			if !strings.HasPrefix(req.Path, "/webhook") {
 				continue
 			}
-			if req.Response.Status.IsCompleted() {
-				completed[req.Response.Id] = true
+			if fn(req.Response) {
+				matches[req.Response.Id] = true
 			}
 		}
-		if len(completed) == ct.pending {
+		if len(matches) == ct.pending {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -328,6 +332,12 @@ func (ct *CogTest) asyncPrediction(method string, url string, req server.Predict
 	var pr server.PredictionResponse
 	must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &pr))
 	return pr.Id
+}
+
+func (ct *CogTest) Cancel(pid string) {
+	url := ct.Url(fmt.Sprintf("/predictions/%s/cancel", pid))
+	resp := must.Get(http.DefaultClient.Post(url, "application/json", nil))
+	assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
 }
 
 func (ct *CogTest) Shutdown() {

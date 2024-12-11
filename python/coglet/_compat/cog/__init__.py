@@ -1,6 +1,7 @@
 from coglet.api import (
     BaseModel,
     BasePredictor,
+    CancelationException,
     ConcatenateIterator,
     Input,
     Path,
@@ -13,6 +14,7 @@ __version_tuple__ = (0, 0, 8001, '', 'coglet')
 __all__ = [
     'BaseModel',
     'BasePredictor',
+    'CancelationException',
     'ConcatenateIterator',
     'Input',
     'Path',

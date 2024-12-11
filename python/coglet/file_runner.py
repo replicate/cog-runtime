@@ -3,6 +3,7 @@ import contextvars
 import json
 import logging
 import os
+import pathlib
 import re
 import signal
 import sys
@@ -12,7 +13,7 @@ from coglet import api, inspector, runner, schemas, util
 
 
 class FileRunner:
-    CANCEL_RE = re.compile(r'^cancel-(?P<pid>\S+).json$')
+    CANCEL_RE = re.compile(r'^cancel-(?P<pid>\S+)$')
     REQUEST_RE = re.compile(r'^request-(?P<pid>\S+).json$')
     RESPONSE_FMT = 'response-{pid}-{epoch:05d}.json'
 
@@ -83,6 +84,22 @@ class FileRunner:
         if setup_result['status'] == 'failed':
             return 1
 
+        def _noop_handler(signum, _) -> None:
+            pass
+
+        def _cancel_handler(signum, _) -> None:
+            # ctx_pid is set when we are inside a prediction
+            if signum == signal.SIGUSR1 and self.ctx_pid.get() is not None:
+                raise api.CancelationException()
+
+        if self.runner is not None and self.runner.is_async_predict:
+            # Async predict, use files to cancel
+            pathlib.Path(os.path.join(self.working_dir, 'async_predict')).touch()
+            signal.signal(signal.SIGUSR1, _noop_handler)
+        else:
+            # Blocking predict, use SIGUSR1 to cancel
+            signal.signal(signal.SIGUSR1, _cancel_handler)
+
         ready = True
         self._signal(FileRunner.SIG_READY)
 
@@ -99,7 +116,7 @@ class FileRunner:
                     if not task.done():
                         task.cancel()
                         tasks.append(task)
-                        self.logger.info('prediction cancelled: id=%s', pid)
+                        self.logger.info('prediction canceled: id=%s', pid)
                 await asyncio.gather(*tasks)
                 return 0
 
@@ -162,20 +179,25 @@ class FileRunner:
                 self._respond(pid, epoch, resp)
                 epoch += 1
 
-            self.ctx_pid.set(pid)
             if self.runner.is_iter():
                 resp['output'] = []
                 resp['status'] = 'processing'
+                self.ctx_pid.set(pid)
                 async for o in self.runner.predict_iter(req['input']):
                     resp['output'].append(o)
                     if is_async:
                         self._respond(pid, epoch, resp)
                         epoch += 1
             else:
+                self.ctx_pid.set(pid)
                 resp['output'] = await self.runner.predict(req['input'])
-            resp['status'] = 'succeeded'
             self.ctx_pid.set(None)
+            resp['status'] = 'succeeded'
             self.logger.info('prediction completed: id=%s', pid)
+        except api.CancelationException:
+            resp['status'] = 'canceled'
+            self.ctx_pid.set(None)
+            self.logger.error('prediction canceled: id=%s', pid)
         except asyncio.CancelledError:
             resp['status'] = 'canceled'
             self.ctx_pid.set(None)

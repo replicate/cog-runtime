@@ -1,7 +1,12 @@
 package server
 
 import (
+	"errors"
 	"net/http"
+)
+
+var (
+	ErrNotFound = errors.New("prediction ID not found")
 )
 
 func NewServer(addr string, runner *Runner) *http.Server {
@@ -12,7 +17,7 @@ func NewServer(addr string, runner *Runner) *http.Server {
 	serveMux.HandleFunc("GET /openapi.json", handler.OpenApi)
 	serveMux.HandleFunc("POST /predictions", handler.Predict)
 	serveMux.HandleFunc("PUT /predictions/{id}", handler.Predict)
-	// POST /predictions/<pid>/cancel
+	serveMux.HandleFunc("POST /predictions/{id}/cancel", handler.Cancel)
 	serveMux.HandleFunc("POST /shutdown", handler.Shutdown)
 
 	return &http.Server{
