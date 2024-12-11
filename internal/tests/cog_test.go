@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/replicate/cog-runtime/internal/util"
+
 	"github.com/replicate/go/logging"
 
 	"github.com/replicate/go/must"
@@ -250,7 +252,7 @@ func (ct *CogTest) Prediction(input map[string]any) server.PredictionResponse {
 }
 
 func (ct *CogTest) PredictionWithId(pid string, input map[string]any) server.PredictionResponse {
-	req := server.PredictionRequest{Input: input}
+	req := server.PredictionRequest{Id: pid, Input: input}
 	return ct.prediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), req)
 }
 
@@ -263,6 +265,7 @@ func (ct *CogTest) PredictionWithUpload(input map[string]any) server.PredictionR
 }
 
 func (ct *CogTest) prediction(method string, url string, req server.PredictionRequest) server.PredictionResponse {
+	req.CreatedAt = util.NowIso()
 	data := bytes.NewReader(must.Get(json.Marshal(req)))
 	r := must.Get(http.NewRequest(method, url, data))
 	r.Header.Set("Content-Type", "application/json")

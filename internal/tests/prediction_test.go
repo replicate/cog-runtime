@@ -1,7 +1,16 @@
 package tests
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
 	"testing"
+
+	"github.com/replicate/go/must"
+
+	"github.com/replicate/cog-runtime/internal/util"
 
 	"github.com/replicate/cog-runtime/internal/server"
 
@@ -55,7 +64,12 @@ func TestPredictionFailure(t *testing.T) {
 	resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
 	assert.Equal(t, server.PredictionFailed, resp.Status)
 	assert.Equal(t, nil, resp.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction failed\n", resp.Logs)
+	logs := "starting prediction\nprediction in progress 1/1\nprediction failed\n"
+	if *legacyCog {
+		assert.Contains(t, resp.Logs, fmt.Sprintf("Exception: prediction failed\n%s", logs))
+	} else {
+		assert.Equal(t, logs, resp.Logs)
+	}
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
@@ -71,11 +85,25 @@ func TestPredictionCrash(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
-	assert.Equal(t, server.PredictionFailed, resp.Status)
-	assert.Equal(t, nil, resp.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction crashed\n", resp.Logs)
-	assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
+	if *legacyCog {
+		req := server.PredictionRequest{Input: map[string]any{"i": 1, "s": "bar"}}
+		req.CreatedAt = util.NowIso()
+		data := bytes.NewReader(must.Get(json.Marshal(req)))
+		r := must.Get(http.NewRequest(http.MethodPost, ct.Url("/predictions"), data))
+		r.Header.Set("Content-Type", "application/json")
+		resp := must.Get(http.DefaultClient.Do(r))
+		// Compat: legacy Cog returns HTTP 500 and "Internal Server Error"
+		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+		body := string(must.Get(io.ReadAll(resp.Body)))
+		assert.Equal(t, "Internal Server Error", body)
+		assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
+	} else {
+		resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
+		assert.Equal(t, server.PredictionFailed, resp.Status)
+		assert.Equal(t, nil, resp.Output)
+		assert.Equal(t, "starting prediction\nprediction in progress 1/1\nprediction crashed\n", resp.Logs)
+		assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
+	}
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
