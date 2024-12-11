@@ -32,8 +32,8 @@ func TestAsyncPredictorSucceeded(t *testing.T) {
 			bazR = append(bazR, r)
 		}
 	}
-	assert.Equal(t, 5, len(barR))
-	assert.Equal(t, 6, len(bazR))
+	assert.Len(t, barR, 5)
+	assert.Len(t, bazR, 6)
 
 	barLogs := ""
 	ct.AssertResponse(barR[0], server.PredictionStarting, nil, barLogs)
