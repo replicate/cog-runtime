@@ -36,7 +36,12 @@ func TestSetupFailure(t *testing.T) {
 	hc := e.WaitForSetup()
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
 	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
-	assert.Equal(t, "starting setup\nsetup failed\n", hc.Setup.Logs)
+	if *legacyCog {
+		// Compat: legacy Cog includes worker stacktrace
+		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: setup failed\n")
+	} else {
+		assert.Equal(t, "starting setup\nsetup failed\n", hc.Setup.Logs)
+	}
 
 	e.Shutdown()
 	assert.NoError(t, e.Cleanup())
@@ -51,7 +56,13 @@ func TestSetupCrash(t *testing.T) {
 	hc := e.WaitForSetup()
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
 	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
-	assert.Equal(t, "starting setup\nsetup crashed\n", hc.Setup.Logs)
+	if *legacyCog {
+		// Compat: legacy Cog includes worker stacktrace
+		// Compat: "SystemExit: 1" parsing error?
+		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: 1\n")
+	} else {
+		assert.Equal(t, "starting setup\nsetup crashed\n", hc.Setup.Logs)
+	}
 
 	e.Shutdown()
 	assert.NoError(t, e.Cleanup())
