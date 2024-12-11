@@ -296,6 +296,7 @@ func (ct *CogTest) AsyncPredictionWithId(pid string, input map[string]any) strin
 
 func (ct *CogTest) asyncPrediction(method string, url string, req server.PredictionRequest) string {
 	ct.pending++
+	req.CreatedAt = util.NowIso()
 	req.Webhook = fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort)
 	data := bytes.NewReader(must.Get(json.Marshal(req)))
 	r := must.Get(http.NewRequest(method, url, data))
