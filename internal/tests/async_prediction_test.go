@@ -1,9 +1,17 @@
 package tests
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/replicate/go/must"
+
+	"github.com/replicate/cog-runtime/internal/util"
 
 	"github.com/replicate/cog-runtime/internal/server"
 
@@ -237,6 +245,60 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 		ct.AssertResponse(wr[2], server.PredictionProcessing, nil, logs)
 		logs += "prediction canceled\n"
 		ct.AssertResponse(wr[3], server.PredictionCanceled, nil, logs)
+	}
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}
+
+func TestAsyncPredictionConcurrency(t *testing.T) {
+	ct := NewCogTest(t, "sleep")
+	ct.StartWebhook()
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
+
+	// Fail prediction requests when one is in progress
+	req := server.PredictionRequest{
+		CreatedAt: util.NowIso(),
+		Input:     map[string]any{"i": 1, "s": "baz"},
+		Webhook:   fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort),
+	}
+	data := bytes.NewReader(must.Get(json.Marshal(req)))
+	r := must.Get(http.NewRequest(http.MethodPost, ct.Url("/predictions"), data))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Prefer", "respond-async")
+	resp := must.Get(http.DefaultClient.Do(r))
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+
+	wr := ct.WaitForWebhookCompletion()
+	if *legacyCog {
+		assert.Len(t, wr, 3)
+		logs := ""
+		// Compat: legacy Cog sends no "starting" event
+		ct.AssertResponse(wr[0], server.PredictionProcessing, nil, logs)
+		// Compat: legacy Cog buffers logging?
+		logs += "starting prediction\n"
+		ct.AssertResponse(wr[1], server.PredictionProcessing, "*bar*", logs)
+		logs += "prediction in progress 1/1\n"
+		logs += "completed prediction\n"
+		ct.AssertResponse(wr[2], server.PredictionSucceeded, "*bar*", logs)
+	} else {
+		assert.True(t, len(wr) > 0)
+		assert.Len(t, wr, 5)
+		logs := ""
+		ct.AssertResponse(wr[0], server.PredictionStarting, nil, logs)
+		logs += "starting prediction\n"
+		ct.AssertResponse(wr[1], server.PredictionProcessing, nil, logs)
+		logs += "prediction in progress 1/1\n"
+		ct.AssertResponse(wr[2], server.PredictionProcessing, nil, logs)
+		logs += "completed prediction\n"
+		ct.AssertResponse(wr[3], server.PredictionProcessing, nil, logs)
+		ct.AssertResponse(wr[4], server.PredictionSucceeded, "*bar*", logs)
 	}
 
 	ct.Shutdown()

@@ -114,3 +114,42 @@ func TestPredictionCrash(t *testing.T) {
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
 }
+
+func TestPredictionConcurrency(t *testing.T) {
+	ct := NewCogTest(t, "sleep")
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	var resp1 server.PredictionResponse
+	var resp2 server.PredictionResponse
+	done1 := make(chan bool, 1)
+	done2 := make(chan bool, 1)
+
+	go func() {
+		resp1 = ct.Prediction(map[string]any{"i": 1, "s": "bar"})
+		done1 <- true
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	// Block prediction requests when one is in progress
+	go func() {
+		resp2 = ct.Prediction(map[string]any{"i": 1, "s": "baz"})
+		done2 <- true
+	}()
+
+	<-done1
+	assert.Equal(t, server.PredictionSucceeded, resp1.Status)
+	assert.Equal(t, "*bar*", resp1.Output)
+	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp1.Logs)
+
+	<-done2
+	assert.Equal(t, server.PredictionSucceeded, resp2.Status)
+	assert.Equal(t, "*baz*", resp2.Output)
+	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp2.Logs)
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}

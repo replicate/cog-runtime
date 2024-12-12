@@ -6,6 +6,7 @@ import (
 )
 
 var (
+	ErrConflict    = errors.New("already running a prediction")
 	ErrExists      = errors.New("prediction exists")
 	ErrNotFound    = errors.New("prediction not found")
 	ErrDefunct     = errors.New("server is defunct")
