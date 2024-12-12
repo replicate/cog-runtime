@@ -81,11 +81,14 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := h.runner.predict(req)
-	if errors.Is(err, ErrDefunct) {
+	if errors.Is(err, ErrConflict) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	} else if errors.Is(err, ErrDefunct) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	} else if errors.Is(err, ErrExists) {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	} else if errors.Is(err, ErrSetupFailed) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

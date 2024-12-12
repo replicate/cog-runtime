@@ -184,6 +184,11 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		req.CreatedAt = util.NowIso()
 	}
 	r.mu.Lock()
+	if !r.asyncPredict && req.Webhook != "" && len(r.pending) > 0 {
+		r.mu.Unlock()
+		log.Errorw("prediction rejected: Already running a prediction")
+		return nil, ErrConflict
+	}
 	if _, ok := r.pending[req.Id]; ok {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: prediction exists", "id", req.Id)
