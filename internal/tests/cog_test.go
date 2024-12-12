@@ -248,6 +248,14 @@ func (ct *CogTest) Url(path string) string {
 	return fmt.Sprintf("http://localhost:%d%s", ct.serverPort, path)
 }
 
+func (ct *CogTest) WebhookUrl() string {
+	return fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort)
+}
+
+func (ct *CogTest) UploadUrl() string {
+	return fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort)
+}
+
 func (ct *CogTest) HealthCheck() server.HealthCheck {
 	url := fmt.Sprintf("http://localhost:%d/health-check", ct.serverPort)
 	for {
@@ -273,65 +281,74 @@ func (ct *CogTest) WaitForSetup() server.HealthCheck {
 
 func (ct *CogTest) Prediction(input map[string]any) server.PredictionResponse {
 	req := server.PredictionRequest{Input: input}
-	return ct.prediction(http.MethodPost, ct.Url("/predictions"), req)
+	return ct.prediction(http.MethodPost, "/predictions", req)
 }
 
 func (ct *CogTest) PredictionWithId(pid string, input map[string]any) server.PredictionResponse {
 	req := server.PredictionRequest{Id: pid, Input: input}
-	return ct.prediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), req)
+	return ct.prediction(http.MethodPut, fmt.Sprintf("/predictions/%s", pid), req)
 }
 
 func (ct *CogTest) PredictionWithUpload(input map[string]any) server.PredictionResponse {
 	req := server.PredictionRequest{
 		Input:            input,
-		OutputFilePrefix: fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort),
+		OutputFilePrefix: ct.UploadUrl(),
 	}
-	return ct.prediction(http.MethodPost, ct.Url("/predictions"), req)
-}
-
-func (ct *CogTest) prediction(method string, url string, req server.PredictionRequest) server.PredictionResponse {
-	req.CreatedAt = util.NowIso()
-	data := bytes.NewReader(must.Get(json.Marshal(req)))
-	r := must.Get(http.NewRequest(method, url, data))
-	r.Header.Set("Content-Type", "application/json")
-	resp := must.Get(http.DefaultClient.Do(r))
-	assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
-	var pr server.PredictionResponse
-	must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &pr))
-	return pr
+	return ct.prediction(http.MethodPost, "/predictions", req)
 }
 
 func (ct *CogTest) AsyncPrediction(input map[string]any) string {
-	req := server.PredictionRequest{Input: input}
-	return ct.asyncPrediction(http.MethodPost, ct.Url("/predictions"), req)
+	req := server.PredictionRequest{
+		Input:   input,
+		Webhook: ct.WebhookUrl(),
+	}
+	resp := ct.prediction(http.MethodPost, "/predictions", req)
+	return resp.Id
 }
 
 func (ct *CogTest) AsyncPredictionWithFilter(input map[string]any, filter []server.WebhookEvent) string {
 	req := server.PredictionRequest{
 		Input:               input,
+		Webhook:             ct.WebhookUrl(),
 		WebhookEventsFilter: filter,
 	}
-	return ct.asyncPrediction(http.MethodPost, ct.Url("/predictions"), req)
+	resp := ct.prediction(http.MethodPost, "/predictions", req)
+	return resp.Id
 }
 
 func (ct *CogTest) AsyncPredictionWithId(pid string, input map[string]any) string {
-	req := server.PredictionRequest{Id: pid, Input: input}
-	return ct.asyncPrediction(http.MethodPut, ct.Url(fmt.Sprintf("/predictions/%s", pid)), req)
+	req := server.PredictionRequest{
+		Id:      pid,
+		Input:   input,
+		Webhook: ct.WebhookUrl(),
+	}
+	resp := ct.prediction(http.MethodPut, fmt.Sprintf("/predictions/%s", pid), req)
+	return resp.Id
 }
 
-func (ct *CogTest) asyncPrediction(method string, url string, req server.PredictionRequest) string {
+func (ct *CogTest) prediction(method string, path string, req server.PredictionRequest) server.PredictionResponse {
+	resp := ct.PredictionReq(method, path, req)
+	if req.Webhook == "" {
+
+		assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
+	} else {
+		assert.Equal(ct.t, http.StatusAccepted, resp.StatusCode)
+	}
 	ct.pending++
-	req.CreatedAt = util.NowIso()
-	req.Webhook = fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort)
-	data := bytes.NewReader(must.Get(json.Marshal(req)))
-	r := must.Get(http.NewRequest(method, url, data))
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Prefer", "respond-async")
-	resp := must.Get(http.DefaultClient.Do(r))
-	assert.Equal(ct.t, http.StatusAccepted, resp.StatusCode)
 	var pr server.PredictionResponse
 	must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &pr))
-	return pr.Id
+	return pr
+}
+
+func (ct *CogTest) PredictionReq(method string, path string, req server.PredictionRequest) *http.Response {
+	req.CreatedAt = util.NowIso()
+	data := bytes.NewReader(must.Get(json.Marshal(req)))
+	r := must.Get(http.NewRequest(method, ct.Url(path), data))
+	r.Header.Set("Content-Type", "application/json")
+	if req.Webhook != "" {
+		r.Header.Set("Prefer", "respond-async")
+	}
+	return must.Get(http.DefaultClient.Do(r))
 }
 
 func (ct *CogTest) Cancel(pid string) {

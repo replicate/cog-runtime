@@ -1,8 +1,6 @@
 package tests
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,8 +8,6 @@ import (
 	"time"
 
 	"github.com/replicate/go/must"
-
-	"github.com/replicate/cog-runtime/internal/util"
 
 	"github.com/replicate/cog-runtime/internal/server"
 
@@ -88,12 +84,10 @@ func TestPredictionCrash(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	if *legacyCog {
-		req := server.PredictionRequest{Input: map[string]any{"i": 1, "s": "bar"}}
-		req.CreatedAt = util.NowIso()
-		data := bytes.NewReader(must.Get(json.Marshal(req)))
-		r := must.Get(http.NewRequest(http.MethodPost, ct.Url("/predictions"), data))
-		r.Header.Set("Content-Type", "application/json")
-		resp := must.Get(http.DefaultClient.Do(r))
+		req := server.PredictionRequest{
+			Input: map[string]any{"i": 1, "s": "bar"},
+		}
+		resp := ct.PredictionReq(http.MethodPost, "/predictions", req)
 		// Compat: legacy Cog returns HTTP 500 and "Internal Server Error"
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		body := string(must.Get(io.ReadAll(resp.Body)))
