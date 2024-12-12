@@ -15,6 +15,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
+    "build",
     "ipython",
     "mypy",
     "setuptools",
@@ -34,3 +35,6 @@ asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
     "ignore::ImportWarning",
 ]
+
+[tool.setuptools.packages.find]
+exclude = ["tests*"]
