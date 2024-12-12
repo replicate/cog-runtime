@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/replicate/go/must"
 
@@ -97,6 +98,8 @@ func TestPredictionCrash(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		body := string(must.Get(io.ReadAll(resp.Body)))
 		assert.Equal(t, "Internal Server Error", body)
+		// Compat: flaky server?
+		time.Sleep(100 * time.Millisecond)
 		assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
 	} else {
 		resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
