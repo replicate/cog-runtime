@@ -1,0 +1,53 @@
+[project]
+name = 'coglet'
+version = '0.1.0'
+description = 'Minimum viable Cog runtime'
+readme = 'README.md'
+requires-python = '>=3.9'
+classifiers = [
+  'Programming Language :: Python :: 3.9',
+  'Programming Language :: Python :: 3.10',
+  'Programming Language :: Python :: 3.11',
+  'Programming Language :: Python :: 3.12',
+  'Programming Language :: Python :: 3.13',
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    'build',
+    'ipython',
+    'mypy',
+    'setuptools',
+]
+
+test = [
+    'pytest',
+    'pytest-asyncio',
+]
+
+[build-system]
+requires = ['setuptools']
+build-backend = 'setuptools.build_meta'
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = 'function'
+filterwarnings = [
+    'ignore::ImportWarning',
+]
+testpaths = [
+    'python',
+]
+
+[tool.ruff]
+src = ['python']
+
+[tool.ruff.format]
+quote-style = 'single'
+
+[tool.ruff.lint]
+extend-select = ['I']
+
+[tool.setuptools.packages.find]
+where = ['python']
+exclude = ['tests*']

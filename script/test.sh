@@ -13,7 +13,6 @@ test_go() {
 }
 
 test_python() {
-    cd "$base_dir/python"
     .venv/bin/pytest "$@"
 }
 

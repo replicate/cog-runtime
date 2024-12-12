@@ -42,6 +42,9 @@ def wait_for_process(p: subprocess.Popen, code: int = 0) -> None:
 def run_file_runner(
     tmp_path: str, predictor: str, env: Optional[Dict[str, str]] = None
 ) -> subprocess.Popen:
+    if env is None:
+        env = {}
+    env['PYTHONPATH'] = str(pathlib.Path(__file__).absolute().parent.parent)
     cmd = [
         sys.executable,
         '-m',

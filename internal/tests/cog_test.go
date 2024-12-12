@@ -147,7 +147,7 @@ func (ct *CogTest) Start() error {
 }
 
 func (ct *CogTest) runtimeCmd() *exec.Cmd {
-	pathEnv := path.Join(basePath, "python", ".venv", "bin")
+	pathEnv := path.Join(basePath, ".venv", "bin")
 	pythonPathEnv := path.Join(basePath, "python")
 	ct.serverPort = portFinder.Get()
 	args := []string{
@@ -173,7 +173,7 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 	module := fmt.Sprintf("%s.py", ct.module)
 	must.Do(os.Symlink(path.Join(runnersPath, "cog.yaml"), path.Join(tmpDir, "cog.yaml")))
 	must.Do(os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py")))
-	pythonBin := path.Join(basePath, "python", ".venv-legacy", "bin", "python3")
+	pythonBin := path.Join(basePath, ".venv-legacy", "bin", "python3")
 	ct.serverPort = portFinder.Get()
 	args := []string{
 		"-m", "cog.server.http",
