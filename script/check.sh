@@ -19,7 +19,6 @@ check_go() {
 }
 
 check_python() {
-    cd "$base_dir/python"
     uv sync --all-extras
     if [[ -z "${CI:-}" ]]; then
         uv tool run ruff check --fix
@@ -28,7 +27,7 @@ check_python() {
         uv tool run ruff check
         uv tool run ruff format --check
     fi
-    .venv/bin/mypy . --exclude tests/runners --exclude tests/schemas
+    .venv/bin/mypy . --exclude python/tests/runners --exclude python/tests/schemas
 }
 
 if [ $# -eq 0 ]; then

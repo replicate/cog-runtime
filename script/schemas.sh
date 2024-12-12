@@ -13,5 +13,5 @@ trap "rm -f predict.py" EXIT
 for f in *.py; do
     echo "Generating schema for $(basename "$f")"
     ln -fs "$f" predict.py
-    "$base_dir/python/.venv-legacy/bin/python3" -m cog.command.openapi_schema > "$(basename "$f" .py).json"
+    "$base_dir/.venv-legacy/bin/python3" -m cog.command.openapi_schema > "$(basename "$f" .py).json"
 done
