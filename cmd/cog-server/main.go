@@ -14,7 +14,6 @@ import (
 	"github.com/peterbourgon/ff/v4/ffhelp"
 	"github.com/replicate/go/logging"
 	"github.com/replicate/go/must"
-	"github.com/replicate/go/version"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/replicate/cog-runtime/internal/server"
@@ -111,7 +110,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Infow("starting Cog HTTP server", "version", version.Version())
+	log.Infow("starting Cog HTTP server", "version", util.Version())
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		ch := make(chan os.Signal, 1)

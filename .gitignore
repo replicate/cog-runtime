@@ -1,7 +1,9 @@
 *.egg-info
 .direnv/
 .envrc
-.idea
+/.idea
+/dist
+/internal/util/version.txt
+/python/coglet/_version.py
+/uv.lock
 __pycache__
-python/coglet/_version.py
-uv.lock
