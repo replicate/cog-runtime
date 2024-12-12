@@ -1,6 +1,8 @@
 package util
 
 import (
+	"embed"
+	_ "embed"
 	"encoding/base32"
 	"fmt"
 	"os"
@@ -57,4 +59,17 @@ func JoinLogs(logs []string) string {
 		r += "\n"
 	}
 	return r
+}
+
+// Wildcard match in case version.txt is not generated yet
+//
+//go:embed *
+var embedFS embed.FS
+
+func Version() string {
+	bs, err := embedFS.ReadFile("version.txt")
+	if err != nil {
+		return "0.0.0+unknown"
+	}
+	return strings.TrimSpace(string(bs))
 }
