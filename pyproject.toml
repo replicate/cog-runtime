@@ -1,6 +1,6 @@
 [project]
 name = 'coglet'
-version = '0.1.0'
+dynamic = ['version']
 description = 'Minimum viable Cog runtime'
 readme = 'README.md'
 requires-python = '>=3.9'
@@ -27,7 +27,7 @@ test = [
 ]
 
 [build-system]
-requires = ['setuptools']
+requires = ['setuptools', 'setuptools-scm']
 build-backend = 'setuptools.build_meta'
 
 [tool.pytest.ini_options]
@@ -51,3 +51,6 @@ extend-select = ['I']
 [tool.setuptools.packages.find]
 where = ['python']
 exclude = ['tests*']
+
+[tool.setuptools_scm]
+version_file = "python/coglet/_version.py"

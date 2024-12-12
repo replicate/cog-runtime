@@ -1,7 +1,7 @@
 *.egg-info
+.direnv/
+.envrc
 .idea
 __pycache__
+python/coglet/_version.py
 uv.lock
-.envrc
-.direnv/
-python/.coverage*

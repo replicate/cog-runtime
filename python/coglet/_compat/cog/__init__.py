@@ -1,3 +1,4 @@
+import coglet
 from coglet.api import (
     BaseModel,
     BasePredictor,
@@ -8,8 +9,7 @@ from coglet.api import (
     Secret,
 )
 
-__version__ = '0.0.8001+coglet'
-__version_tuple__ = (0, 0, 8001, '', 'coglet')
+__version__ = coglet.__version__
 
 __all__ = [
     'BaseModel',
