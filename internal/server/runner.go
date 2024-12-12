@@ -171,23 +171,6 @@ func (r *Runner) stop() error {
 ////////////////////
 // Prediction
 
-func (r *Runner) cancel(pid string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.pending[pid]; !ok {
-		return ErrNotFound
-	}
-	if r.asyncPredict {
-		// Async predict, use files to cancel
-		p := path.Join(r.workingDir, fmt.Sprintf(CANCEL_FMT, pid))
-		return os.WriteFile(p, []byte{}, 0644)
-	} else {
-		// Blocking predict, use SIGUSR1 to cancel
-		// FIXME: ensure only one prediction in flight?
-		return syscall.Kill(r.cmd.Process.Pid, syscall.SIGUSR1)
-	}
-}
-
 func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error) {
 	log := logger.Sugar()
 	if r.status == StatusSetupFailed {
@@ -236,6 +219,23 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	defer r.mu.Unlock()
 	r.pending[req.Id] = &pr
 	return pr.c, nil
+}
+
+func (r *Runner) cancel(pid string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.pending[pid]; !ok {
+		return ErrNotFound
+	}
+	if r.asyncPredict {
+		// Async predict, use files to cancel
+		p := path.Join(r.workingDir, fmt.Sprintf(CANCEL_FMT, pid))
+		return os.WriteFile(p, []byte{}, 0644)
+	} else {
+		// Blocking predict, use SIGUSR1 to cancel
+		// FIXME: ensure only one prediction in flight?
+		return syscall.Kill(r.cmd.Process.Pid, syscall.SIGUSR1)
+	}
 }
 
 ////////////////////
