@@ -1,15 +1,11 @@
 package tests
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/replicate/go/must"
 
 	"github.com/replicate/cog-runtime/internal/util"
 
@@ -268,11 +264,7 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 		Input:     map[string]any{"i": 1, "s": "baz"},
 		Webhook:   fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort),
 	}
-	data := bytes.NewReader(must.Get(json.Marshal(req)))
-	r := must.Get(http.NewRequest(http.MethodPost, ct.Url("/predictions"), data))
-	r.Header.Set("Content-Type", "application/json")
-	r.Header.Set("Prefer", "respond-async")
-	resp := must.Get(http.DefaultClient.Do(r))
+	resp := ct.PredictionReq(http.MethodPost, "/predictions", req)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 
 	wr := ct.WaitForWebhookCompletion()
