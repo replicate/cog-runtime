@@ -97,7 +97,9 @@ class Runner:
         self.inputs = predictor.inputs
         self.output = predictor.output
         self.predictor = cls()
-        self.is_async_predict = inspect.iscoroutinefunction(self.predictor.predict)
+        self.is_async_predict = inspect.iscoroutinefunction(
+            self.predictor.predict
+        ) or inspect.isasyncgenfunction(self.predictor.predict)
 
     async def setup(self) -> None:
         kwargs: Dict[str, Any] = {}

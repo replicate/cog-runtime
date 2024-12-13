@@ -10,8 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAsyncPredictorSucceeded(t *testing.T) {
+func TestAsyncPredictorConcurrency(t *testing.T) {
 	if *legacyCog {
+		// Compat: legacy Cog rejects concurrent prediction requests
 		t.SkipNow()
 	}
 	ct := NewCogTest(t, "async_sleep")
