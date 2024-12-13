@@ -183,6 +183,7 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 	cmd.Dir = tmpDir
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", ct.serverPort))
+	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
 	cmd.Env = append(cmd.Env, ct.extraEnvs...)
 	return cmd
 }
@@ -371,4 +372,30 @@ func (ct *CogTest) AssertResponse(
 	assert.Equal(ct.t, status, response.Status)
 	assert.Equal(ct.t, output, response.Output)
 	assert.Equal(ct.t, logs, response.Logs)
+}
+
+func (ct *CogTest) AssertResponses(
+	responses []server.PredictionResponse,
+	finalStatus server.PredictionStatus,
+	finalOutput any,
+	finalLogs string) {
+	l := len(responses)
+	logs := ""
+	for i, r := range responses {
+		if i == l-1 {
+			assert.Equal(ct.t, r.Status, finalStatus)
+			assert.Equal(ct.t, r.Output, finalOutput)
+			if r.Status == server.PredictionFailed {
+				// Compat: legacy Cog includes Traceback in failed logs
+				assert.Contains(ct.t, r.Logs, finalLogs)
+			} else {
+				assert.Equal(ct.t, r.Logs, finalLogs)
+			}
+		} else {
+			assert.Equal(ct.t, r.Status, server.PredictionProcessing)
+			// Logs are incremental
+			assert.Contains(ct.t, r.Logs, logs)
+			logs = r.Logs
+		}
+	}
 }
