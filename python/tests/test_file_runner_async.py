@@ -19,7 +19,7 @@ async def async_wait_for_file(path, exists: bool = True) -> None:
             return
 
 
-async def wait_for_process(p: subprocess.Popen, code: int = 0) -> None:
+async def async_wait_for_process(p: subprocess.Popen, code: int = 0) -> None:
     while True:
         await asyncio.sleep(0.1)
         c = p.poll()
@@ -70,11 +70,11 @@ async def test_file_runner_async(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    await wait_for_process(p)
+    await async_wait_for_process(p)
 
 
 @pytest.mark.asyncio
-async def test_file_runner_async_parallel(tmp_path):
+async def test_file_runner_async_concurrency(tmp_path):
     signals = setup_signals()
     p = run_file_runner(tmp_path, 'async_sleep')
 
@@ -123,7 +123,7 @@ async def test_file_runner_async_parallel(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    await wait_for_process(p)
+    await async_wait_for_process(p)
 
 
 @pytest.mark.asyncio
@@ -172,4 +172,4 @@ async def test_file_runner_async_cancel(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    await wait_for_process(p)
+    await async_wait_for_process(p)
