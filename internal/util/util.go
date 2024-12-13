@@ -48,9 +48,15 @@ func PredictionId() string {
 	return encoding.EncodeToString(shuffle)
 }
 
+const TimeLayout = "2006-01-02T15:04:05.999999-07:00"
+
 func NowIso() string {
 	// Python: datetime.now(tz=timezone.utc).isoformat()
-	return time.Now().UTC().Format("2006-01-02T15:04:05.999999-07:00")
+	return time.Now().UTC().Format(TimeLayout)
+}
+
+func ParseTime(t string) time.Time {
+	return must.Get(time.Parse(TimeLayout, t))
 }
 
 func JoinLogs(logs []string) string {

@@ -85,14 +85,19 @@ type PredictionRequest struct {
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
 }
 
+type PredictionMetrics struct {
+	PredictTime float64 `json:"predict_time"`
+}
+
 type PredictionResponse struct {
-	Input       any              `json:"input"`
-	Output      any              `json:"output"`
-	Id          string           `json:"id"`
-	CreatedAt   string           `json:"created_at"`
-	StartedAt   string           `json:"started_at"`
-	CompletedAt string           `json:"completed_at"`
-	Logs        string           `json:"logs,omitempty"`
-	Error       string           `json:"error,omitempty"`
-	Status      PredictionStatus `json:"status,omitempty"`
+	Input       any               `json:"input"`
+	Output      any               `json:"output"`
+	Id          string            `json:"id"`
+	CreatedAt   string            `json:"created_at"`
+	StartedAt   string            `json:"started_at"`
+	CompletedAt string            `json:"completed_at"`
+	Logs        string            `json:"logs,omitempty"`
+	Error       string            `json:"error,omitempty"`
+	Status      PredictionStatus  `json:"status,omitempty"`
+	Metrics     PredictionMetrics `json:"metrics,omitempty"`
 }
