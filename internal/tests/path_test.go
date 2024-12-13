@@ -85,29 +85,10 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	wr := ct.WaitForWebhookCompletion()
 	ul := ct.GetUploads()
 
-	if *legacyCog {
-		assert.Len(t, wr, 3)
-		assert.Len(t, ul, 1)
-		logs := ""
-		// Compat: legacy Cog sends no "starting" event
-		ct.AssertResponse(wr[0], server.PredictionProcessing, nil, logs)
-		logs += "reading input file\n"
-		url := fmt.Sprintf("http://localhost:%d%s", ct.webhookPort, ul[0].Path)
-		ct.AssertResponse(wr[1], server.PredictionProcessing, url, logs)
-		logs += "writing output file\n"
-		ct.AssertResponse(wr[2], server.PredictionSucceeded, url, logs)
-	} else {
-		assert.Len(t, wr, 4)
-		assert.Len(t, ul, 1)
-		logs := ""
-		ct.AssertResponse(wr[0], server.PredictionStarting, nil, logs)
-		logs += "reading input file\n"
-		ct.AssertResponse(wr[1], server.PredictionProcessing, nil, logs)
-		logs += "writing output file\n"
-		ct.AssertResponse(wr[2], server.PredictionProcessing, nil, logs)
-		url := fmt.Sprintf("http://localhost:%d%s", ct.webhookPort, ul[0].Path)
-		ct.AssertResponse(wr[3], server.PredictionSucceeded, url, logs)
-	}
+	assert.Len(t, ul, 1)
+	logs := "reading input file\nwriting output file\n"
+	url := fmt.Sprintf("http://localhost:%d%s", ct.webhookPort, ul[0].Path)
+	ct.AssertResponses(wr, server.PredictionSucceeded, url, logs)
 
 	body := string(ul[0].Body)
 	assert.Contains(t, body, "*bar*")

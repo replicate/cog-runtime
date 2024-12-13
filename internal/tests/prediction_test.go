@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -62,11 +61,8 @@ func TestPredictionFailure(t *testing.T) {
 	assert.Equal(t, server.PredictionFailed, resp.Status)
 	assert.Equal(t, nil, resp.Output)
 	logs := "starting prediction\nprediction in progress 1/1\nprediction failed\n"
-	if *legacyCog {
-		assert.Contains(t, resp.Logs, fmt.Sprintf("Exception: prediction failed\n%s", logs))
-	} else {
-		assert.Equal(t, logs, resp.Logs)
-	}
+	// Compat: legacy Cog also includes Traceback
+	assert.Contains(t, resp.Logs, logs)
 	assert.Equal(t, "prediction failed", resp.Error)
 
 	ct.Shutdown()
