@@ -280,7 +280,6 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 		logs += "completed prediction\n"
 		ct.AssertResponse(wr[2], server.PredictionSucceeded, "*bar*", logs)
 	} else {
-		assert.True(t, len(wr) > 0)
 		assert.Len(t, wr, 5)
 		logs := ""
 		ct.AssertResponse(wr[0], server.PredictionStarting, nil, logs)

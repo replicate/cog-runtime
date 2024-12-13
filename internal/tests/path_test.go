@@ -3,7 +3,6 @@ package tests
 import (
 	"encoding/base64"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/replicate/cog-runtime/internal/server"
@@ -55,7 +54,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	logs := "reading input file\nwriting output file\n"
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	output := resp.Output.(string)
-	assert.True(t, strings.HasPrefix(output, fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort)))
+	assert.Contains(t, output, ct.UploadUrl())
 	assert.Equal(t, logs, resp.Logs)
 
 	ul := ct.GetUploads()
