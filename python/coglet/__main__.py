@@ -3,7 +3,7 @@ import asyncio
 import contextvars
 import logging
 import sys
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional
 
 from coglet import file_runner
 
@@ -37,7 +37,7 @@ def main() -> int:
     _stdout_write = sys.stdout.write
     _stderr_write = sys.stderr.write
 
-    def _ctx_write(write_fn):
+    def _ctx_write(write_fn) -> Callable[[str], int]:
         buf: Dict[str, str] = {}
 
         def _write(s: str) -> int:
