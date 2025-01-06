@@ -30,6 +30,9 @@ test = [
 requires = ['setuptools', 'setuptools-scm']
 build-backend = 'setuptools.build_meta'
 
+[tool.check-wheel-contents]
+ignore = ['W009']
+
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = 'function'
 filterwarnings = [
@@ -51,6 +54,9 @@ extend-select = ['I']
 [tool.setuptools.packages.find]
 where = ['python']
 exclude = ['tests*']
+
+[tool.setuptools.package-data]
+'cog.server.http' = ['cog-server-*']
 
 [tool.setuptools_scm]
 version_file = "python/coglet/_version.py"
