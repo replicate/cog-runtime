@@ -7,10 +7,11 @@ set -euo pipefail
 base_dir="$(git rev-parse --show-toplevel)"
 
 cd "$base_dir"
-python -m build
+rm -rf dist
+.venv/bin/python3 -m build -w
 
 # Export Python version to Go
-python -c 'import coglet; print(coglet.__version__)' > internal/util/version.txt
+.venv/bin/python3 -c 'import coglet; print(coglet.__version__)' > internal/util/version.txt
 
 for os in darwin linux; do
     for arch in amd64 arm64; do
