@@ -119,4 +119,4 @@ jobs:
       - run: ./script/build.sh
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: dist/coglet-*.whl
