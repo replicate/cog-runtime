@@ -78,7 +78,8 @@ class Input:
     order: int
     type: Type
     is_list: bool
-    default: Any = None
+    # Compat: Cog allows default=None
+    default: Any = api.Missing
     description: Optional[str] = None
     ge: Optional[Union[int, float]] = None
     le: Optional[Union[int, float]] = None

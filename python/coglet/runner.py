@@ -27,7 +27,8 @@ def _kwargs(adt_ins: Dict[str, adt.Input], inputs: Dict[str, Any]) -> Dict[str, 
         kwargs[name] = value
     for name, adt_in in adt_ins.items():
         if name not in kwargs:
-            assert adt_in.default is not None, (
+            # Compat: Cog allows default=None
+            assert adt_in.default is not api.Missing, (
                 f'missing default value for field: {name}'
             )
             kwargs[name] = adt_in.default
