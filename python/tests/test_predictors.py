@@ -49,9 +49,9 @@ def test_schema(predictor):
     with open(path, 'r') as f:
         schema = json.load(f)
 
+    # Compat: Cog handles secret differently
     if predictor == 'secrets':
         props = schema['components']['schemas']['Input']['properties']
-        # FIXME: Bug in Cog?
         # Default Secret should be redacted
         props['s3']['default'] = '**********'
         # List[Secret] missing defaults
