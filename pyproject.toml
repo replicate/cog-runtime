@@ -22,6 +22,7 @@ dev = [
 ]
 
 test = [
+    'numpy',
     'pytest-cov',
     'pytest',
     'pytest-asyncio',
