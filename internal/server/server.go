@@ -55,10 +55,11 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
-		return
-	}
+	// Compat: https://github.com/replicate/director/pull/347
+	//if r.Header.Get("Content-Type") != "application/json" {
+	//	http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
+	//	return
+	//}
 	var req PredictionRequest
 	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
