@@ -177,6 +177,25 @@ def _predictor_adt(module_name: str, class_name: str, f: Callable) -> adt.Predic
     return adt.Predictor(module_name, class_name, inputs, output)
 
 
+# setup and predict might be decorated
+def unwrap(f: Callable) -> Callable:
+    g = f
+    while hasattr(g, '__closure__') and g.__closure__ is not None:
+        cs = [
+            c.cell_contents
+            for c in g.__closure__
+            if inspect.isfunction(c.cell_contents)
+        ]
+        assert len(cs) <= 1, f'unable to inspect function decorator: {f}'
+        if len(cs) == 0:
+            # No more functions in closure
+            return g
+        else:
+            # 1 function in closure, keep digging
+            g = cs[0]
+    return g
+
+
 def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
     module = importlib.import_module(module_name)
     fullname = f'{module_name}.{class_name}'
@@ -189,5 +208,5 @@ def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
 
     assert hasattr(cls, 'setup'), f'setup method not found: {fullname}'
     assert hasattr(cls, 'predict'), f'predict method not found: {fullname}'
-    _validate_setup(getattr(cls, 'setup'))
-    return _predictor_adt(module_name, class_name, getattr(cls, 'predict'))
+    _validate_setup(unwrap(getattr(cls, 'setup')))
+    return _predictor_adt(module_name, class_name, unwrap(getattr(cls, 'predict')))
