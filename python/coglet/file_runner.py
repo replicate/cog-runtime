@@ -75,7 +75,7 @@ class FileRunner:
             self.logger.info('setup completed')
             setup_result['status'] = 'succeeded'
         except Exception as e:
-            self.logger.error('setup failed: %s', e)
+            self.logger.exception('setup failed: %s', e)
             setup_result['status'] = 'failed'
         finally:
             setup_result['completed_at'] = util.now_iso()
@@ -206,7 +206,7 @@ class FileRunner:
             resp['error'] = str(e)
             resp['status'] = 'failed'
             self.ctx_pid.set(None)
-            self.logger.error('prediction failed: id=%s %s', pid, e)
+            self.logger.exception('prediction failed: id=%s %s', pid, e)
         finally:
             resp['completed_at'] = util.now_iso()
         self._respond(pid, epoch, resp)

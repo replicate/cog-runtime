@@ -40,7 +40,7 @@ func TestSetupFailure(t *testing.T) {
 		// Compat: legacy Cog includes worker stacktrace
 		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: setup failed\n")
 	} else {
-		assert.Equal(t, "starting setup\nsetup failed\n", hc.Setup.Logs)
+		assert.Contains(t, hc.Setup.Logs, "starting setup\nsetup failed\nTraceback")
 	}
 
 	e.Shutdown()
