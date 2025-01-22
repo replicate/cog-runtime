@@ -11,7 +11,7 @@ class Predictor(BasePredictor):
         if i > 0:
             await asyncio.sleep(0.6)
         for x in range(i):
-            print(f'prediction in progress {x+1}/{i}')
+            print(f'prediction in progress {x + 1}/{i}')
             await asyncio.sleep(0.6)
             yield f'*{s}-{x}*'
             await asyncio.sleep(0.6)

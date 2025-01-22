@@ -10,7 +10,7 @@ class Predictor(BasePredictor):
         if i > 0:
             time.sleep(0.6)
         for x in range(i):
-            print(f'prediction in progress {x+1}/{i}')
+            print(f'prediction in progress {x + 1}/{i}')
             time.sleep(0.6)
             yield f'*{s}-{x}*'
             time.sleep(0.6)

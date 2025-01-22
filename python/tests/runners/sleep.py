@@ -11,7 +11,7 @@ class Predictor(BasePredictor):
         print('starting setup')
         i = int(os.environ.get('SETUP_SLEEP', '0'))
         for x in range(i):
-            print(f'setup in progress {x+1}/{i}')
+            print(f'setup in progress {x + 1}/{i}')
             time.sleep(0.5)
         if int(os.environ.get('SETUP_FAILURE', '0')) == 1:
             print('setup failed')
@@ -28,7 +28,7 @@ class Predictor(BasePredictor):
             if i > 0:
                 time.sleep(0.6)
             for x in range(i):
-                print(f'prediction in progress {x+1}/{i}')
+                print(f'prediction in progress {x + 1}/{i}')
                 time.sleep(0.6)
             if int(os.environ.get('PREDICTION_FAILURE', '0')) == 1:
                 print('prediction failed')

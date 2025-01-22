@@ -42,62 +42,62 @@ def _validate_input(
     defaults = []
     if cog_in.default is not None:
         if is_list:
-            assert (
-                type(cog_in.default) is list
-            ), f'default must be a list for input: {name}'
-            assert all(
-                util.check_value(cog_t, v) for v in cog_in.default
-            ), f'incompatible default for input: {name}]'
+            assert type(cog_in.default) is list, (
+                f'default must be a list for input: {name}'
+            )
+            assert all(util.check_value(cog_t, v) for v in cog_in.default), (
+                f'incompatible default for input: {name}]'
+            )
             defaults = cog_in.default
         else:
-            assert util.check_value(
-                cog_t, cog_in.default
-            ), f'incompatible default for input: {name}'
+            assert util.check_value(cog_t, cog_in.default), (
+                f'incompatible default for input: {name}'
+            )
             defaults = [cog_in.default]
 
     if cog_in.ge is not None or cog_in.le is not None:
         assert cog_t in adt.NUMERIC_TYPES, f'incompatible input type for ge/le: {name}'
         if cog_in.ge is not None:
-            assert all(
-                x >= cog_in.ge for x in defaults
-            ), f'not all defaults >= {cog_in.ge} for input: {name}'
+            assert all(x >= cog_in.ge for x in defaults), (
+                f'not all defaults >= {cog_in.ge} for input: {name}'
+            )
         if cog_in.le is not None:
-            assert all(
-                x <= cog_in.le for x in defaults
-            ), f'not all defaults <= {cog_in.ge} for input: {name}'
+            assert all(x <= cog_in.le for x in defaults), (
+                f'not all defaults <= {cog_in.ge} for input: {name}'
+            )
 
     if cog_in.min_length is not None or cog_in.max_length is not None:
-        assert (
-            cog_t is adt.Type.STRING
-        ), f'incompatible input type for min_length/max_length: {name}'
+        assert cog_t is adt.Type.STRING, (
+            f'incompatible input type for min_length/max_length: {name}'
+        )
         if cog_in.min_length is not None:
-            assert all(
-                len(x) >= cog_in.min_length for x in defaults
-            ), f'not all defaults have len(x) >= {cog_in.min_length} for input: {name}'
+            assert all(len(x) >= cog_in.min_length for x in defaults), (
+                f'not all defaults have len(x) >= {cog_in.min_length} for input: {name}'
+            )
         if cog_in.max_length is not None:
-            assert all(
-                len(x) <= cog_in.max_length for x in defaults
-            ), f'not all defaults have len(x) <= {cog_in.min_length} for input: {name}'
+            assert all(len(x) <= cog_in.max_length for x in defaults), (
+                f'not all defaults have len(x) <= {cog_in.min_length} for input: {name}'
+            )
 
     if cog_in.regex is not None:
         assert cog_t is adt.Type.STRING, f'incompatible input type for regex: {name}'
         regex = re.compile(cog_in.regex)
-        assert all(
-            regex.match(x) for x in defaults
-        ), f'not all defaults match regex for input: {name}'
+        assert all(regex.match(x) for x in defaults), (
+            f'not all defaults match regex for input: {name}'
+        )
 
     if cog_in.choices is not None:
         assert cog_t in adt.CHOICE_TYPES, f'incompatible input type for choices: {name}'
         assert len(cog_in.choices) >= 2, f'choices must have >= 2 elements: {name}'
-        assert (
-            cog_in.ge is None and cog_in.le is None
-        ), f'choices and ge/le are mutually exclusive: {name}'
-        assert (
-            cog_in.min_length is None and cog_in.max_length is None
-        ), f'choices and min_length/max_length are mutually exclusive: {name}'
-        assert all(
-            adt.PYTHON_TO_COG.get(type(x)) is cog_t for x in cog_in.choices
-        ), f'not all choices have the same type as input: {name}'
+        assert cog_in.ge is None and cog_in.le is None, (
+            f'choices and ge/le are mutually exclusive: {name}'
+        )
+        assert cog_in.min_length is None and cog_in.max_length is None, (
+            f'choices and min_length/max_length are mutually exclusive: {name}'
+        )
+        assert all(adt.PYTHON_TO_COG.get(type(x)) is cog_t for x in cog_in.choices), (
+            f'not all choices have the same type as input: {name}'
+        )
 
 
 def _input_adt(
@@ -181,9 +181,9 @@ def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
     assert hasattr(module, class_name), f'class not found: {fullname}'
     cls = getattr(module, class_name)
     assert inspect.isclass(cls), f'not a class: {fullname}'
-    assert _check_parent(
-        cls, api.BasePredictor
-    ), f'predictor {fullname} does not inherit cog.BasePredictor'
+    assert _check_parent(cls, api.BasePredictor), (
+        f'predictor {fullname} does not inherit cog.BasePredictor'
+    )
 
     assert hasattr(cls, 'setup'), f'setup method not found: {fullname}'
     assert hasattr(cls, 'predict'), f'predict method not found: {fullname}'
