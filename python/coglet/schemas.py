@@ -2,7 +2,7 @@ import json
 import os.path
 from typing import Any, Dict, Optional, Union
 
-from coglet import adt, api, util
+from coglet import adt, util
 
 
 def _from_json_type(prop: Dict[str, Any]) -> adt.Type:
@@ -37,7 +37,6 @@ def from_json_input(schema: Dict[str, Any]) -> Dict[str, adt.Input]:
         return int(v) if tpe is adt.Type.INTEGER else float(v)
 
     schemas = schema['components']['schemas']
-    required = set(schemas['Input'].get('required', []))
     for name, prop in schemas['Input']['properties'].items():
         if 'type' not in prop and 'allOf' in prop:
             p = schemas[name]
@@ -52,9 +51,8 @@ def from_json_input(schema: Dict[str, Any]) -> Dict[str, adt.Input]:
                 is_list = False
                 cog_t = _from_json_type(prop)
             choices = None
-        # Compat: Cog allows default=None
-        default: Any = api.Missing if name in required else prop.get('default')
-        if default is not api.Missing and default is not None:
+        default = prop.get('default')
+        if default is not None:
             if is_list:
                 default = [util.normalize_value(cog_t, v) for v in default]
             else:
@@ -147,9 +145,9 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
             p['writeOnly'] = True
             p['x-cog-secret'] = True
 
-        if adt_in.default is api.Missing:
+        if adt_in.default is None:
             required.append(name)
-        elif adt_in.default is not None:
+        else:
             if adt_in.is_list:
                 prop['default'] = [
                     util.json_value(adt_in.type, x) for x in adt_in.default

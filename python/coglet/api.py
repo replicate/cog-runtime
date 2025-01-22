@@ -43,20 +43,9 @@ class ConcatenateIterator(Iterator[_T_co]):
 ########################################
 
 
-# Compat: Cog allows default=None
-# default=None:    presence of default value None
-# default=Missing: absence of default value
-class _Missing:
-    pass
-
-
-Missing = _Missing()
-
-
 @dataclass(frozen=True)
 class Input:
-    # Compat: Cog allows default=None
-    default: Any = Missing
+    default: Any = None
     description: Optional[str] = None
     ge: Optional[Union[int, float]] = None
     le: Optional[Union[int, float]] = None
