@@ -18,7 +18,8 @@ base_dir="$(git rev-parse --show-toplevel)"
 if [ -z "${PYTHON:-}" ]; then
     export LOG_FORMAT=development
     export PATH="$base_dir/.venv/bin:$PATH"
-    export PYTHONPATH="$base_dir/python"
+    PYTHON_VERSION="$(cat "$base_dir/.python-version")"
+    export PYTHONPATH="$base_dir/python:$base_dir/.venv/lib/python$PYTHON_VERSION/site-packages"
     args=(--module-name "tests.runners.$module" --class-name Predictor)
     if [ -n "${PORT:-}" ]; then
         args+=(--port "$PORT")

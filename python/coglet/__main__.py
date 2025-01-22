@@ -41,16 +41,26 @@ def main() -> int:
         buf: Dict[str, str] = {}
 
         def _write(s: str) -> int:
+            if len(s) == 0:
+                return 0
             pid = _ctx_pid.get()
             prefix = f'[pid={pid}] ' if pid is not None else ''
             if pid is None:
                 pid = 'logger'
             n = 0
+            s = s.replace('\r', '\n')
             if s[-1] == '\n':
                 b = buf.pop(pid, '')
                 out = b + s[:-1].replace('\n', f'\n{prefix}') + '\n'
                 n += write_fn(out)
                 buf[pid] = prefix
+            elif '\n' in s:
+                b = buf.pop(pid, '')
+                lines = s.replace('\n', f'\n{prefix}').split('\n')
+                n += write_fn(b + lines[0] + '\n')
+                for line in lines[1:-1]:
+                    n += write_fn(b + line + '\n')
+                buf[pid] = lines[-1]
             else:
                 if pid not in buf:
                     buf[pid] = prefix

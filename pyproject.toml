@@ -24,6 +24,7 @@ dev = [
 test = [
     'pytest',
     'pytest-asyncio',
+    'tqdm',
 ]
 
 [build-system]
