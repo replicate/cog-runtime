@@ -40,7 +40,8 @@ def _validate_input(
     name: str, cog_t: adt.Type, is_list: bool, cog_in: api.Input
 ) -> None:
     defaults = []
-    if cog_in.default is not None:
+    # Compat: Cog allows default=None
+    if cog_in.default is not api.Missing and cog_in.default is not None:
         if is_list:
             assert type(cog_in.default) is list, (
                 f'default must be a list for input: {name}'
@@ -114,8 +115,9 @@ def _input_adt(
         )
     else:
         _validate_input(name, cog_t, is_list, cog_in)
-        if cog_in.default is None:
-            default = None
+        # Compat: Cog allows default=None
+        if cog_in.default is api.Missing or cog_in.default is None:
+            default = cog_in.default
         else:
             if is_list:
                 default = [util.normalize_value(cog_t, x) for x in cog_in.default]
