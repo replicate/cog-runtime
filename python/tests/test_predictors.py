@@ -57,6 +57,15 @@ def test_schema(predictor):
         # List[Secret] missing defaults
         props['ss']['default'] = ['**********', '**********']
 
+    # Compat: Cog does not produce defaults for numpy values
+    if predictor == 'np_types':
+        props = schema['components']['schemas']['Input']['properties']
+        props['c']['default'] = 1
+        props['f']['default'] = 3.14
+        props['i']['default'] = 0
+        props['l1']['default'] = [2.71, 3.14]
+        props['l2']['default'] = [3, 4]
+
     assert schemas.to_json_input(p) == schema['components']['schemas']['Input']
     assert schemas.to_json_output(p) == schema['components']['schemas']['Output']
     assert schemas.to_json_schema(p) == schema

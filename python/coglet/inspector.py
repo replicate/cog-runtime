@@ -4,7 +4,7 @@ import re
 import typing
 from typing import Callable, Optional
 
-from coglet import adt, api, util
+from coglet import adt, api, normalizer, util
 
 
 def _check_parent(child: type, parent: type) -> bool:
@@ -172,6 +172,9 @@ def _predictor_adt(module_name: str, class_name: str, f: Callable) -> adt.Predic
     for i, (name, cog_in) in enumerate(zip(names, cog_ins)):
         tpe = spec.annotations.get(name)
         assert tpe is not None, f'missing type annotation for {name}'
+        if cog_in is not None:
+            # Compat: Cog allows numpy types
+            cog_in = normalizer.normalize_input(cog_in)
         inputs[name] = _input_adt(i, name, tpe, cog_in)
     output = _output_adt(spec.annotations['return'])
     return adt.Predictor(module_name, class_name, inputs, output)
