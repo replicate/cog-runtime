@@ -367,9 +367,9 @@ func (r *Runner) handleResponses() {
 		paths := make([]string, 0)
 		outputFn := outputToBase64
 		if pr.request.OutputFilePrefix != "" {
-			outputFn = outputToUpload(pr.request.OutputFilePrefix)
+			outputFn = outputToUpload(pr.request.OutputFilePrefix, pr.response.Id)
 		} else if r.uploadUrl != "" {
-			outputFn = outputToUpload(r.uploadUrl)
+			outputFn = outputToUpload(r.uploadUrl, pr.response.Id)
 		}
 		if output, err := handlePath(pr.response.Output, &paths, outputFn); err != nil {
 			log.Errorw("failed to handle output", "id", pid, "error", err)
