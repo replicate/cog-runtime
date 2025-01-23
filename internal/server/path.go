@@ -21,13 +21,15 @@ var BASE64_REGEX = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 func handlePath(output any, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
 	if x, ok := output.(string); ok {
 		return fn(x, paths)
-	} else if xs, ok := output.([]string); ok {
+	} else if xs, ok := output.([]any); ok {
 		for i, x := range xs {
-			o, err := fn(x, paths)
-			if err != nil {
-				return nil, err
+			if s, ok := x.(string); ok {
+				o, err := fn(s, paths)
+				if err != nil {
+					return nil, err
+				}
+				xs[i] = o
 			}
-			xs[i] = o
 		}
 		return xs, nil
 	} else if m, ok := output.(map[string]any); ok {
