@@ -1,11 +1,48 @@
 import argparse
 import asyncio
 import contextvars
+import importlib
 import logging
+import os
+import os.path
 import sys
+import time
 from typing import Callable, Dict, Optional
 
 from coglet import file_runner
+
+
+def pre_setup(logger: logging.Logger) -> bool:
+    if os.environ.get('R8_TORCH_VERSION') is not None:
+        logger.info('eagerly importing torch')
+        importlib.import_module('torch')
+
+    wait_file = os.environ.get('COG_WAIT_FILE')
+    if wait_file is None:
+        return True
+    elapsed = 0.0
+    timeout = 60.0
+    while elapsed < timeout:
+        if os.path.exists(wait_file):
+            logger.info(f'wait file found after {elapsed:.2f}s: {wait_file}')
+            pyenv_path = os.environ.get('COG_PYENV_PATH')
+            if pyenv_path is not None:
+                p = os.path.join(
+                    pyenv_path,
+                    'lib',
+                    f'python{sys.version_info.major}.f{sys.version_info.minor}',
+                    'site-packages',
+                )
+                if p not in sys.path:
+                    logger.info(f'adding pyenv to PYTHONPATH: {p}')
+                    sys.path.append(p)
+                    # In case the model forks Python interpreter
+                    os.environ['PYTHONPATH'] = ':'.join(sys.path)
+            return True
+        time.sleep(0.01)
+        elapsed += 0.01
+    logger.error(f'wait file not found after {timeout:.2f}s: {wait_file}')
+    return False
 
 
 def main() -> int:
@@ -73,6 +110,9 @@ def main() -> int:
     sys.stderr.write = _ctx_write(_stderr_write)  # type: ignore
 
     args = parser.parse_args()
+
+    if not pre_setup(logger):
+        return -1
 
     return asyncio.run(
         file_runner.FileRunner(
