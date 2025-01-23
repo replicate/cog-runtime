@@ -70,6 +70,7 @@ type UploadRequest struct {
 }
 
 type WebhookHandler struct {
+	ct              *CogTest
 	mu              sync.Mutex
 	webhookRequests []WebhookRequest
 	uploadRequests  []UploadRequest
@@ -90,8 +91,11 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		h.webhookRequests = append(h.webhookRequests, req)
+		w.WriteHeader(http.StatusOK)
 	} else if strings.HasPrefix(r.URL.Path, "/upload") {
 		log.Infow("received upload", "method", r.Method, "path", r.URL.Path)
+		filename, ok := strings.CutPrefix(r.URL.Path, "/upload/")
+		assert.True(h.ct.t, ok)
 		req := UploadRequest{
 			Method: r.Method,
 			Path:   r.URL.Path,
@@ -100,6 +104,14 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		h.uploadRequests = append(h.uploadRequests, req)
+		if !*legacyCog {
+			// Compat: legacy Cog only sets this when --upload-url is set
+			pid := r.Header.Get("X-Prediction-Id")
+			assert.NotEmpty(h.ct.t, pid)
+			h.ct.WebhookUrl()
+			w.Header().Set("Location", fmt.Sprintf("%s%s", h.ct.UploadUrl(), filename))
+		}
+		w.WriteHeader(http.StatusAccepted)
 	} else {
 		log.Fatalw("received unknown request", "method", r.Method, "path", r.URL.Path)
 	}
@@ -200,7 +212,7 @@ func (ct *CogTest) StartWebhook() {
 	ct.webhookPort = portFinder.Get()
 	ct.webhookServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", ct.webhookPort),
-		Handler: &WebhookHandler{},
+		Handler: &WebhookHandler{ct: ct},
 	}
 	go func() {
 		err := ct.webhookServer.ListenAndServe()
@@ -383,8 +395,8 @@ func (ct *CogTest) AssertResponses(
 	logs := ""
 	for i, r := range responses {
 		if i == l-1 {
-			assert.Equal(ct.t, r.Status, finalStatus)
-			assert.Equal(ct.t, r.Output, finalOutput)
+			assert.Equal(ct.t, finalStatus, r.Status)
+			assert.Equal(ct.t, finalOutput, r.Output)
 			if r.Status == server.PredictionFailed {
 				// Compat: legacy Cog includes Traceback in failed logs
 				assert.Contains(ct.t, r.Logs, finalLogs)

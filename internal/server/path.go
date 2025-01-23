@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path"
@@ -86,7 +85,7 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mt, b64), nil
 }
 
-func outputToUpload(uploadUrl string) func(s string, paths *[]string) (string, error) {
+func outputToUpload(uploadUrl string, predictionId string) func(s string, paths *[]string) (string, error) {
 	return func(s string, paths *[]string) (string, error) {
 		p, ok := strings.CutPrefix(s, "file://")
 		if !ok {
@@ -98,23 +97,16 @@ func outputToUpload(uploadUrl string) func(s string, paths *[]string) (string, e
 			return "", err
 		}
 		*paths = append(*paths, p)
-
-		buf := bytes.Buffer{}
-		writer := multipart.NewWriter(&buf)
 		filename := path.Base(p)
-		part := must.Get(writer.CreateFormFile("file", filename))
-		must.Get(part.Write(bs))
-		must.Do(writer.Close())
-
 		url := fmt.Sprintf("%s%s", uploadUrl, filename)
-		req := must.Get(http.NewRequest(http.MethodPut, url, &buf))
-		req.Header.Set("Content-Type", writer.FormDataContentType())
+		req := must.Get(http.NewRequest(http.MethodPut, url, bytes.NewReader(bs)))
+		req.Header.Set("X-Prediction-ID", predictionId)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return "", err
 		} else if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 			return "", fmt.Errorf("failed to upload file: status %s", resp.Status)
 		}
-		return url, nil
+		return resp.Header.Get("Location"), nil
 	}
 }

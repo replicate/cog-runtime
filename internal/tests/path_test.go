@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/replicate/cog-runtime/internal/server"
@@ -54,18 +55,13 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	logs := "reading input file\nwriting output file\n"
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	output := resp.Output.(string)
-	assert.Contains(t, output, ct.UploadUrl())
+	assert.True(t, strings.HasPrefix(output, ct.UploadUrl()))
 	assert.Equal(t, logs, resp.Logs)
 
 	ul := ct.GetUploads()
 	assert.Len(t, ul, 1)
 	body := string(ul[0].Body)
 	assert.Contains(t, body, "*bar*")
-	assert.Contains(t, body, "Content-Disposition: form-data; name=\"file\"; filename=\"")
-	if !*legacyCog {
-		// Compat: different HTTP multipart handling
-		assert.Contains(t, body, "Content-Type: application/octet-stream")
-	}
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
@@ -87,16 +83,13 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 
 	assert.Len(t, ul, 1)
 	logs := "reading input file\nwriting output file\n"
-	url := fmt.Sprintf("http://localhost:%d%s", ct.webhookPort, ul[0].Path)
+	filename, ok := strings.CutPrefix(ul[0].Path, "/upload/")
+	assert.True(t, ok)
+	url := fmt.Sprintf("%s%s", ct.UploadUrl(), filename)
 	ct.AssertResponses(wr, server.PredictionSucceeded, url, logs)
 
 	body := string(ul[0].Body)
 	assert.Contains(t, body, "*bar*")
-	if !*legacyCog {
-		// Compat: different HTTP multipart handling
-		assert.Contains(t, body, "Content-Disposition: form-data; name=\"file\"; filename=\"")
-		assert.Contains(t, body, "Content-Type: application/octet-stream")
-	}
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
