@@ -91,11 +91,11 @@ type PredictionMetrics struct {
 
 type PredictionResponse struct {
 	Input       any               `json:"input"`
-	Output      any               `json:"output"`
+	Output      any               `json:"output,omitempty"`
 	Id          string            `json:"id"`
-	CreatedAt   string            `json:"created_at"`
-	StartedAt   string            `json:"started_at"`
-	CompletedAt string            `json:"completed_at"`
+	CreatedAt   string            `json:"created_at,omitempty"`
+	StartedAt   string            `json:"started_at,omitempty"`
+	CompletedAt string            `json:"completed_at,omitempty"`
 	Logs        string            `json:"logs,omitempty"`
 	Error       string            `json:"error,omitempty"`
 	Status      PredictionStatus  `json:"status,omitempty"`
