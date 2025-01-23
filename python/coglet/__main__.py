@@ -30,7 +30,7 @@ def pre_setup(logger: logging.Logger) -> bool:
                 p = os.path.join(
                     pyenv_path,
                     'lib',
-                    f'python{sys.version_info.major}.f{sys.version_info.minor}',
+                    f'python{sys.version_info.major}.{sys.version_info.minor}',
                     'site-packages',
                 )
                 if p not in sys.path:
