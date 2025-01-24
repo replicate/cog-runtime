@@ -23,6 +23,7 @@ def _delete_files(paths: List[api.Path]) -> None:
         if os.path.exists(p):
             os.remove(p)
 
+
 # FIXME: move this to Go
 def _download_files(
     adt_ins: Dict[str, adt.Input], inputs: Dict[str, Any]
