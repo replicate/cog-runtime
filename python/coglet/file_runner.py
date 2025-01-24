@@ -60,7 +60,6 @@ class FileRunner:
         if os.path.exists(openapi_file):
             os.unlink(openapi_file)
 
-        # FIXME: eager import torch, etc. and wait for user tarball
         self.logger.info('setup started')
         setup_result: Dict[str, Any] = {'started_at': util.now_iso()}
         try:
