@@ -42,6 +42,27 @@ func TestPredictionPathSucceeded(t *testing.T) {
 	assert.NoError(t, ct.Cleanup())
 }
 
+func TestPredictionPathInputSucceeded(t *testing.T) {
+	ct := NewCogTest(t, "path")
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	resp := ct.Prediction(map[string]any{"p": "https://raw.githubusercontent.com/replicate/cog-runtime/refs/heads/main/.python-version"})
+	logs := "reading input file\nwriting output file\n"
+	if *legacyCog {
+		// Compat: different MIME type detection logic
+		ct.AssertResponse(resp, server.PredictionSucceeded, b64encodeLegacy("*3.9\n*"), logs)
+	} else {
+		ct.AssertResponse(resp, server.PredictionSucceeded, b64encode("*3.9\n*"), logs)
+	}
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}
+
 func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "path")
 	ct.StartWebhook()

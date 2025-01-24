@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -17,10 +20,11 @@ import (
 
 var BASE64_REGEX = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 
-func handlePath(output any, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
-	if x, ok := output.(string); ok {
+// FIXME: get Path fields from schema
+func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
+	if x, ok := json.(string); ok {
 		return fn(x, paths)
-	} else if xs, ok := output.([]any); ok {
+	} else if xs, ok := json.([]any); ok {
 		for i, x := range xs {
 			if s, ok := x.(string); ok {
 				o, err := fn(s, paths)
@@ -31,7 +35,7 @@ func handlePath(output any, paths *[]string, fn func(string, *[]string) (string,
 			}
 		}
 		return xs, nil
-	} else if m, ok := output.(map[string]any); ok {
+	} else if m, ok := json.(map[string]any); ok {
 		for key, value := range m {
 			if s, ok := value.(string); ok {
 				o, err := fn(s, paths)
@@ -43,7 +47,7 @@ func handlePath(output any, paths *[]string, fn func(string, *[]string) (string,
 		}
 		return m, nil
 	} else {
-		return output, nil
+		return json, nil
 	}
 }
 
@@ -62,6 +66,30 @@ func base64ToInput(s string, paths *[]string) (string, error) {
 	}
 	defer f.Close()
 	if _, err := f.Write(bs); err != nil {
+		return "", err
+	}
+	*paths = append(*paths, f.Name())
+	return f.Name(), nil
+}
+
+func urlToInput(s string, paths *[]string) (string, error) {
+	if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
+		return s, nil
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp("", fmt.Sprintf("cog-input-*%s", filepath.Ext(u.Path)))
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	resp, err := http.DefaultClient.Get(s)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(f, resp.Body); err != nil {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
