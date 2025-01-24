@@ -196,6 +196,10 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	if err != nil {
 		return nil, err
 	}
+	input, err = handlePath(req.Input, &inputPaths, urlToInput)
+	if err != nil {
+		return nil, err
+	}
 	req.Input = input
 
 	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
