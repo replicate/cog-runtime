@@ -13,7 +13,13 @@ class CancelationException(Exception):
 
 
 class Path(pathlib.PosixPath):
-    pass
+    def __init__(self, *args):
+        super().__init__()
+        self.url = None
+        if len(args) == 1 and (
+            args[0].startswith('http://') or args[0].startswith('https://')
+        ):
+            self.url = args[0]
 
 
 @dataclass(frozen=True)

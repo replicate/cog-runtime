@@ -3,9 +3,46 @@ import inspect
 import os
 import os.path
 import re
-from typing import Any, AsyncGenerator, Dict
+import tempfile
+import urllib.request
+from typing import Any, AsyncGenerator, Dict, List, Tuple
 
 from coglet import adt, api, util
+
+
+def _download_file(path: api.Path) -> Tuple[api.Path, bool]:
+    if path.url is None:
+        return path, False
+    dst = tempfile.mktemp(suffix=os.path.splitext(path.name)[1])
+    urllib.request.urlretrieve(path.url, dst)
+    return api.Path(dst), True
+
+
+def _delete_files(paths: List[api.Path]) -> None:
+    for p in paths:
+        if os.path.exists(p):
+            os.remove(p)
+
+# FIXME: move this to Go
+def _download_files(
+    adt_ins: Dict[str, adt.Input], inputs: Dict[str, Any]
+) -> Tuple[Dict[str, Any], List[api.Path]]:
+    to_delete = []
+    for name, value in inputs.items():
+        adt_in = adt_ins[name]
+        if adt_in.type is not adt.Type.PATH:
+            continue
+        if adt_in.is_list:
+            for v in value:
+                v, ok = _download_file(v)
+                if ok:
+                    to_delete.append(v)
+        else:
+            value, ok = _download_file(value)
+            if ok:
+                to_delete.append(value)
+        inputs[name] = value
+    return inputs, to_delete
 
 
 def _kwargs(adt_ins: Dict[str, adt.Input], inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -129,10 +166,12 @@ class Runner:
     async def predict(self, inputs: Dict[str, Any]) -> Any:
         assert not self.is_iter(), 'predict returns iterator, call predict_iter instead'
         kwargs = _kwargs(self.inputs, inputs)
+        kwargs, to_delete = _download_files(self.inputs, kwargs)
         if self.is_async_predict:
             output = await self.predictor.predict(**kwargs)
         else:
             output = self.predictor.predict(**kwargs)
+        _delete_files(to_delete)
         return _check_output(self.output, output)
 
     async def predict_iter(self, inputs: Dict[str, Any]) -> AsyncGenerator[Any, None]:

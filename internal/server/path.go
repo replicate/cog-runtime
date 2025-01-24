@@ -17,6 +17,7 @@ import (
 
 var BASE64_REGEX = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 
+// FIXME: get Path fields from schema
 func handlePath(output any, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
 	if x, ok := output.(string); ok {
 		return fn(x, paths)
