@@ -6,6 +6,7 @@
 /dist
 /internal/util/version.txt
 /python/coglet/_version.py
+/python/cog/command/cog-schema-*
 /python/cog/server/http/cog-server-*
 /uv.lock
 __pycache__

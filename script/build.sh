@@ -15,6 +15,7 @@ uv run --with setuptools_scm python3 -m setuptools_scm > internal/util/version.t
 for os in darwin linux; do
     for arch in amd64 arm64; do
         CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -o python/cog/server/http/cog-server-$os-$arch ./cmd/cog-server
+        CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -o python/cog/command/cog-schema-$os-$arch ./cmd/cog-schema
     done
 done
 

@@ -57,6 +57,7 @@ where = ['python']
 exclude = ['tests*']
 
 [tool.setuptools.package-data]
+'cog.command' = ['cog-schema-*']
 'cog.server.http' = ['cog-server-*']
 
 [tool.setuptools_scm]
