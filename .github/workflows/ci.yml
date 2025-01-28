@@ -120,3 +120,4 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/coglet-*.whl
+          prerelease: ${{ github.ref != 'refs/heads/main' }}
