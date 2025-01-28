@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -22,7 +21,5 @@ func main() {
 		return
 	}
 	bin := must.Get(exec.LookPath("python3"))
-	fmt.Println(bin)
-	fmt.Println(os.Environ())
 	must.Do(syscall.Exec(bin, []string{bin, "-m", "coglet.schema", m, c}, os.Environ()))
 }
