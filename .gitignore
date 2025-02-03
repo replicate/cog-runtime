@@ -1,12 +1,13 @@
 *.egg-info
+.coverage
 .direnv/
 .envrc
 /.idea
 /build
 /dist
 /internal/util/version.txt
-/python/coglet/_version.py
 /python/cog/command/cog-schema-*
 /python/cog/server/http/cog-server-*
+/python/coglet/_version.py
 /uv.lock
 __pycache__
