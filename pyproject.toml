@@ -22,6 +22,7 @@ dev = [
 ]
 
 test = [
+    'pytest-cov',
     'pytest',
     'pytest-asyncio',
     'tqdm',
@@ -35,6 +36,12 @@ build-backend = 'setuptools.build_meta'
 ignore = ['W009']
 
 [tool.pytest.ini_options]
+addopts = [
+    '-v',
+    '--cov',
+    '--cov-report=term',
+    '--cov-report=html',
+]
 asyncio_default_fixture_loop_scope = 'function'
 filterwarnings = [
     'ignore::ImportWarning',
