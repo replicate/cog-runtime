@@ -24,7 +24,7 @@ import (
 
 var logger = logging.New("cog-server")
 
-var ErrTimedOut = errors.New("Timed out waiting for COG_WAIT_FILE")
+var ErrTimedOut = errors.New("timed out waiting for COG_WAIT_FILE")
 
 type Config struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
@@ -140,12 +140,13 @@ func main() {
 func waitCogWaitFile(log *zap.SugaredLogger) error {
 	waitFileLocation, ok := os.LookupEnv("COG_WAIT_FILE")
 	if !ok {
-		log.Debugw("COG_WAIT_FILE not set, skipping wait")
+		log.Debug("COG_WAIT_FILE not set, skipping wait")
 		return nil
 	}
 	for i := 0; i < 10; i++ {
 		_, err := os.Stat(waitFileLocation)
 		if errors.Is(err, os.ErrNotExist) {
+			// Check if we hit the max number of waits
 			if i == 9 {
 				return ErrTimedOut
 			}
