@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import contextvars
 import importlib
+import json
 import logging
 import os
 import os.path
@@ -12,14 +13,17 @@ from typing import Callable, Dict, Optional
 from coglet import file_runner
 
 
-def pre_setup(logger: logging.Logger) -> bool:
+def pre_setup(logger: logging.Logger, module_name: str, class_name: str) -> tuple[bool, str, str]:
     if os.environ.get('R8_TORCH_VERSION') is not None:
         logger.info('eagerly importing torch')
         importlib.import_module('torch')
 
-    wait_file = os.environ.get('COG_WAIT_FILE')
+    if module_name and class_name:
+        return True, module_name, class_name
+
+    wait_file = os.environ.get('COG_WAIT_JSON_FILE')
     if wait_file is None:
-        return True
+        return True, module_name, class_name
     elapsed = 0.0
     timeout = 60.0
     while elapsed < timeout:
@@ -38,11 +42,12 @@ def pre_setup(logger: logging.Logger) -> bool:
                     sys.path.append(p)
                     # In case the model forks Python interpreter
                     os.environ['PYTHONPATH'] = ':'.join(sys.path)
-            return True
+            cog_wait_json = json.load(wait_file)
+            return True, cog_wait_json["module_name"], cog_wait_json["class_name"]
         time.sleep(0.01)
         elapsed += 0.01
     logger.error(f'wait file not found after {timeout:.2f}s: {wait_file}')
-    return False
+    return False, "", ""
 
 
 def main() -> int:
@@ -51,10 +56,10 @@ def main() -> int:
         '--working-dir', metavar='DIR', required=True, help='working directory'
     )
     parser.add_argument(
-        '--module-name', metavar='NAME', required=True, help='Python module name'
+        '--module-name', metavar='NAME', required=False, help='Python module name'
     )
     parser.add_argument(
-        '--class-name', metavar='NAME', required=True, help='Python class name'
+        '--class-name', metavar='NAME', required=False, help='Python class name'
     )
 
     logger = logging.getLogger('coglet')

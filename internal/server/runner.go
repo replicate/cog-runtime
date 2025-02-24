@@ -99,8 +99,12 @@ func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown b
 		"-u",
 		"-m", "coglet",
 		"--working-dir", workingDir,
-		"--module-name", moduleName,
-		"--class-name", className,
+	}
+	if moduleName != "" {
+		args = append(args, "--module-name", moduleName)
+	}
+	if className != "" {
+		args = append(args, "--class-name", className)
 	}
 	cmd := exec.Command("python3", args...)
 	return &Runner{

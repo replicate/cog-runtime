@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -64,7 +65,9 @@ func main() {
 				moduleName, className = cfg.ModuleName, cfg.ClassName
 			} else {
 				m, c, err := util.PredictFromCogYaml()
-				if err != nil {
+				if errors.Is(err, os.ErrNotExist) {
+					m, c = "", ""
+				} else if err != nil {
 					return err
 				}
 				moduleName, className = m, c
@@ -114,12 +117,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Debug("Waiting for COG_WAIT_FILE")
-	err = waitCogWaitFile(log)
-	if err != nil {
-		log.Error(err)
-		os.Exit(1)
-	}
+	go func() {
+		log.Debug("Waiting for COG_WAIT_FILE")
+		err = waitCogWaitFile(log)
+		if err != nil {
+			log.Error(err)
+		}
+	}()
 
 	log.Infow("starting Cog HTTP server", "version", util.Version())
 	ctx, cancel := context.WithCancel(context.Background())
@@ -143,6 +147,7 @@ func waitCogWaitFile(log *zap.SugaredLogger) error {
 		log.Debug("COG_WAIT_FILE not set, skipping wait")
 		return nil
 	}
+	os.Setenv("COG_WAIT_JSON_FILE", "/tmp/cog_info_file.json")
 	for i := 0; i < 10; i++ {
 		_, err := os.Stat(waitFileLocation)
 		if errors.Is(err, os.ErrNotExist) {
@@ -155,5 +160,15 @@ func waitCogWaitFile(log *zap.SugaredLogger) error {
 			return err
 		}
 	}
+	m, c, err := util.PredictFromCogYaml()
+	if err != nil {
+		return err
+	}
+	jsonInfo := map[string]string{"module_name": m, "class_name": c}
+	writeData, err := json.Marshal(jsonInfo)
+	if err != nil {
+		return err
+	}
+	os.WriteFile("/tmp/cog_info_file.json", writeData, 0x664)
 	return nil
 }
