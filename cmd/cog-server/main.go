@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	_ "github.com/KimMachineGun/automemlimit"
 	"github.com/peterbourgon/ff/v4"
@@ -15,12 +16,15 @@ import (
 	"github.com/replicate/go/logging"
 	"github.com/replicate/go/must"
 	_ "go.uber.org/automaxprocs"
+	"go.uber.org/zap"
 
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
 var logger = logging.New("cog-server")
+
+var ErrTimedOut = errors.New("Timed out waiting for COG_WAIT_FILE")
 
 type Config struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
@@ -110,6 +114,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	log.Debug("Waiting for COG_WAIT_FILE")
+	err = waitCogWaitFile(log)
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
+	}
+
 	log.Infow("starting Cog HTTP server", "version", util.Version())
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -124,4 +135,24 @@ func main() {
 	} else {
 		log.Info("shutdown completed normally")
 	}
+}
+
+func waitCogWaitFile(log *zap.SugaredLogger) error {
+	waitFileLocation, ok := os.LookupEnv("COG_WAIT_FILE")
+	if !ok {
+		log.Debugw("COG_WAIT_FILE not set, skipping wait")
+		return nil
+	}
+	for i := 0; i < 10; i++ {
+		_, err := os.Stat(waitFileLocation)
+		if errors.Is(err, os.ErrNotExist) {
+			if i == 9 {
+				return ErrTimedOut
+			}
+			time.Sleep(10 * time.Second)
+		} else if err != nil {
+			return err
+		}
+	}
+	return nil
 }
