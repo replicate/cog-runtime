@@ -26,17 +26,8 @@ type Config struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
 	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
 	WorkingDir            string `ff:"long: working-dir, nodefault, usage: working directory"`
-	ModuleName            string `ff:"long: module-name, nodefault, usage: Python module name"`
-	ClassName             string `ff:"long: class-name, nodefault, usage: Python class name"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
-}
-
-func (c *Config) Validate() error {
-	if (c.ModuleName == "") != (c.ClassName == "") {
-		return fmt.Errorf("--module-name and --class-name must be specified together")
-	}
-	return nil
 }
 
 func main() {
@@ -51,35 +42,20 @@ func main() {
 		Usage: "cog-server [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			if err := cfg.Validate(); err != nil {
-				return err
-			}
 
-			var moduleName, className string
-			if cfg.ModuleName != "" && cfg.ClassName != "" {
-				moduleName, className = cfg.ModuleName, cfg.ClassName
-			} else {
-				m, c, err := util.PredictFromCogYaml()
-				if err != nil {
-					return err
-				}
-				moduleName, className = m, c
-			}
 			workingDir := cfg.WorkingDir
 			if workingDir == "" {
 				workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
 			}
 			log.Infow("configuration",
 				"working-dir", workingDir,
-				"module-name", moduleName,
-				"class-name", className,
 				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
 				"upload-url", cfg.UploadUrl,
 			)
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting HTTP server", "addr", addr)
-			r := server.NewRunner(workingDir, moduleName, className, cfg.AwaitExplicitShutdown, cfg.UploadUrl)
+			r := server.NewRunner(workingDir, cfg.AwaitExplicitShutdown, cfg.UploadUrl)
 			must.Do(r.Start())
 			s := server.NewServer(addr, r)
 			go func() {

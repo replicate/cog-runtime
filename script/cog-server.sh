@@ -14,20 +14,20 @@ shift
 
 base_dir="$(git rev-parse --show-toplevel)"
 
+cd "$base_dir/python/tests/runners"
+ln -fs "$module.py" predict.py
+trap "rm -f predict.py" EXIT
 # PYTHON=1 to run with legacy Cog
 if [ -z "${PYTHON:-}" ]; then
     export LOG_FORMAT=development
     export PATH="$base_dir/.venv/bin:$PATH"
     PYTHON_VERSION="$(cat "$base_dir/.python-version")"
     export PYTHONPATH="$base_dir/python:$base_dir/.venv/lib/python$PYTHON_VERSION/site-packages"
-    args=(--module-name "tests.runners.$module" --class-name Predictor)
+    args=()
     if [ -n "${PORT:-}" ]; then
         args+=(--port "$PORT")
     fi
-    go run cmd/cog-server/main.go "${args[@]}" "$@"
+    go run "$base_dir/cmd/cog-server/main.go" "${args[@]}" "$@"
 else
-    cd "$base_dir/python/tests/runners"
-    ln -fs "$module.py" predict.py
-    trap "rm -f predict.py" EXIT
     "$base_dir/.venv-legacy/bin/python3" -m cog.server.http "$@"
 fi

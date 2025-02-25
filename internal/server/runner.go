@@ -94,13 +94,11 @@ type Runner struct {
 	mu                    sync.Mutex
 }
 
-func NewRunner(workingDir, moduleName, className string, awaitExplicitShutdown bool, uploadUrl string) *Runner {
+func NewRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) *Runner {
 	args := []string{
 		"-u",
 		"-m", "coglet",
 		"--working-dir", workingDir,
-		"--module-name", moduleName,
-		"--class-name", className,
 	}
 	cmd := exec.Command("python3", args...)
 	return &Runner{
@@ -130,6 +128,7 @@ func (r *Runner) Start() error {
 	}
 	log.Infow("python runner started", "pid", r.cmd.Process.Pid)
 	close(cmdStart)
+	go r.config()
 	go r.wait()
 	go r.handleSignals()
 	return nil
@@ -242,6 +241,49 @@ func (r *Runner) cancel(pid string) error {
 
 ////////////////////
 // Background tasks
+
+func (r *Runner) config() {
+	log := logger.Sugar()
+
+	// Wait until user files become available and pass config to Python runner
+	waitFile := os.Getenv("COG_WAIT_FILE")
+	if waitFile != "" {
+		started := time.Now()
+		timeout := 60 * time.Second
+		found := false
+		for time.Since(started) < timeout {
+			if _, err := os.Stat(waitFile); err == nil {
+				found = true
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if !found {
+			elapsed := time.Since(started)
+			log.Errorw(
+				"wait file not found after timeout", "elapsed", elapsed, "wait_file", waitFile)
+			panic(fmt.Errorf("wait file not found after timeout %s: %s", elapsed, waitFile))
+		}
+	}
+
+	// For testing only, set by CogTest, to avoid creating a one-off cog.yaml
+	moduleName := os.Getenv("COG_MODULE_NAME")
+	className := os.Getenv("COG_CLASS_NAME")
+
+	if moduleName == "" || className == "" {
+		m, c, err := util.PredictFromCogYaml()
+		if err != nil {
+			log.Errorw("failed to read cog.yaml", "err", err)
+			panic(err)
+		}
+		moduleName = m
+		className = c
+	}
+	conf := Config{ModuleName: moduleName, ClassName: className}
+	confFile := path.Join(r.workingDir, "config.json")
+	f := must.Get(os.Create(confFile))
+	must.Do(json.NewEncoder(f).Encode(conf))
+}
 
 func (r *Runner) wait() {
 	log := logger.Sugar()

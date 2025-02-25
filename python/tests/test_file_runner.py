@@ -51,11 +51,11 @@ def run_file_runner(
         'coglet',
         '--working-dir',
         tmp_path,
-        '--module-name',
-        f'tests.runners.{predictor}',
-        '--class-name',
-        'Predictor',
     ]
+    conf_file = os.path.join(tmp_path, 'config.json')
+    with open(conf_file, 'w') as f:
+        conf = {'module_name': f'tests.runners.{predictor}', 'class_name': 'Predictor'}
+        json.dump(conf, f)
     return subprocess.Popen(
         cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
