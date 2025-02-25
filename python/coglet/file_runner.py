@@ -1,5 +1,6 @@
 import asyncio
 import contextvars
+import inspect
 import json
 import logging
 import os
@@ -183,14 +184,21 @@ class FileRunner:
                 resp['status'] = 'processing'
                 self.ctx_pid.set(pid)
                 async for o in self.runner.predict_iter(req['input']):
+                    # Test JSON serialization in case of invalid output
+                    json.dumps(o, default=output_json)
+
                     resp['output'].append(o)
                     if is_async:
                         self._respond(pid, epoch, resp)
                         epoch += 1
             else:
                 self.ctx_pid.set(pid)
-                resp['output'] = await self.runner.predict(req['input'])
+                o = await self.runner.predict(req['input'])
+                # Test JSON serialization in case of invalid output
+                json.dumps(o, default=output_json)
+                resp['output'] = o
             self.ctx_pid.set(None)
+
             resp['status'] = 'succeeded'
             self.logger.info('prediction completed: id=%s', pid)
         except api.CancelationException:
@@ -230,9 +238,14 @@ class FileRunner:
 
 
 def output_json(obj):
-    if type(obj) is api.Path:
+    tpe = type(obj)
+    if tpe is api.Path:
         return f'file://{obj.absolute()}'
-    elif type(obj) is api.Secret:
+    elif tpe is api.Secret:
         return obj.get_secret_value()
+    elif tpe.__name__ == 'Output' and any(
+        c is api.BaseModel for c in inspect.getmro(tpe)
+    ):
+        return obj.__dict__
     else:
-        raise TypeError(f'Object of type {type(obj)} is not JSON serializable')
+        raise TypeError(f'Object of type {tpe} is not JSON serializable')
