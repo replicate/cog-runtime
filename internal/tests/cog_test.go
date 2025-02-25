@@ -164,14 +164,16 @@ func (ct *CogTest) runtimeCmd() *exec.Cmd {
 	ct.serverPort = portFinder.Get()
 	args := []string{
 		"run", path.Join(basePath, "cmd", "cog-server", "main.go"),
-		"--module-name", fmt.Sprintf("tests.runners.%s", ct.module),
-		"--class-name", "Predictor",
 		"--port", fmt.Sprintf("%d", ct.serverPort),
 	}
 	args = append(args, ct.extraArgs...)
 	cmd := exec.Command("go", args...)
 	cmd.Env = os.Environ()
+
 	cmd.Env = append(cmd.Env,
+		// Pass module and class to Runner, to avoid creating a one-off cog.yaml
+		fmt.Sprintf("COG_MODULE_NAME=tests.runners.%s", ct.module),
+		fmt.Sprintf("COG_CLASS_NAME=Predictor"),
 		fmt.Sprintf("PATH=%s:%s", pathEnv, os.Getenv("PATH")),
 		fmt.Sprintf("PYTHONPATH=%s", pythonPathEnv),
 	)

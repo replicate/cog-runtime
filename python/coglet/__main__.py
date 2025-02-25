@@ -2,59 +2,55 @@ import argparse
 import asyncio
 import contextvars
 import importlib
+import json
 import logging
 import os
 import os.path
 import sys
 import time
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 from coglet import file_runner
 
 
-def pre_setup(logger: logging.Logger) -> bool:
+def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, str]]:
     if os.environ.get('R8_TORCH_VERSION') is not None:
         logger.info('eagerly importing torch')
         importlib.import_module('torch')
 
-    wait_file = os.environ.get('COG_WAIT_FILE')
-    if wait_file is None:
-        return True
+    # Cog server waits until user files become available and passes config to Python runner
+    conf_file = os.path.join(working_dir, 'config.json')
     elapsed = 0.0
     timeout = 60.0
     while elapsed < timeout:
-        if os.path.exists(wait_file):
-            logger.info(f'wait file found after {elapsed:.2f}s: {wait_file}')
-            pyenv_path = os.environ.get('COG_PYENV_PATH')
-            if pyenv_path is not None:
-                p = os.path.join(
-                    pyenv_path,
-                    'lib',
-                    f'python{sys.version_info.major}.{sys.version_info.minor}',
-                    'site-packages',
-                )
-                if p not in sys.path:
-                    logger.info(f'adding pyenv to PYTHONPATH: {p}')
-                    sys.path.append(p)
-                    # In case the model forks Python interpreter
-                    os.environ['PYTHONPATH'] = ':'.join(sys.path)
-            return True
+        if os.path.exists(conf_file):
+            logger.info(f'config file found after {elapsed:.2f}s: {conf_file}')
+            with open(conf_file, 'r') as f:
+                conf = json.load(f)
+                os.unlink(conf_file)
+            module_name = conf['module_name']
+            class_name = conf['class_name']
+
+            # Add user venv to PYTHONPATH
+            pv = f'python{sys.version_info.major}.{sys.version_info.minor}'
+            venv = os.path.join('/', 'root', '.venv', 'lib', pv, 'site-packages')
+            if venv is not None and venv not in sys.path and os.path.exists(venv):
+                logger.info(f'adding venv to PYTHONPATH: {venv}')
+                sys.path.append(venv)
+                # In case the model forks Python interpreter
+                os.environ['PYTHONPATH'] = ':'.join(sys.path)
+            return module_name, class_name
         time.sleep(0.01)
         elapsed += 0.01
-    logger.error(f'wait file not found after {timeout:.2f}s: {wait_file}')
-    return False
+
+    logger.error(f'config file not found after {timeout:.2f}s: {conf_file}')
+    return None
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--working-dir', metavar='DIR', required=True, help='working directory'
-    )
-    parser.add_argument(
-        '--module-name', metavar='NAME', required=True, help='Python module name'
-    )
-    parser.add_argument(
-        '--class-name', metavar='NAME', required=True, help='Python class name'
     )
 
     logger = logging.getLogger('coglet')
@@ -111,15 +107,17 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if not pre_setup(logger):
+    tup = pre_setup(logger, args.working_dir)
+    if tup is None:
         return -1
+    module_name, class_name = tup
 
     return asyncio.run(
         file_runner.FileRunner(
             logger=logger,
             working_dir=args.working_dir,
-            module_name=args.module_name,
-            class_name=args.class_name,
+            module_name=module_name,
+            class_name=class_name,
             ctx_pid=_ctx_pid,
         ).start()
     )
