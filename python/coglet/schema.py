@@ -11,14 +11,33 @@ def main():
         sys.exit(1)
 
     # Some libraries print progress upon import and mess up schema JSON
+    _buffer = ''
+
+    def _write(s: str) -> int:
+        nonlocal _buffer
+        _buffer += s
+        return len(s)
+
     _stdout_write = sys.stdout.write
     _stderr_write = sys.stderr.write
-    sys.stdout.write = lambda out: len(out)
-    sys.stderr.write = lambda out: len(out)
-    p = inspector.create_predictor(sys.argv[1], sys.argv[2])
-    s = schemas.to_json_schema(p)
-    sys.stdout.write = _stdout_write
-    sys.stderr.write = _stderr_write
+    sys.stdout.write = _write
+    sys.stderr.write = _write
+
+    try:
+        # This could fail due to various reasons:
+        # - Bad dependencies
+        # - Bad input/output types
+        # - Libraries downloading weights on init
+        p = inspector.create_predictor(sys.argv[1], sys.argv[2])
+        s = schemas.to_json_schema(p)
+    except Exception as e:
+        sys.stdout.write = _stdout_write
+        sys.stderr.write = _stderr_write
+        print(_buffer)
+        raise e
+    finally:
+        sys.stdout.write = _stdout_write
+        sys.stderr.write = _stderr_write
 
     print(json.dumps(s, indent=2))
 
