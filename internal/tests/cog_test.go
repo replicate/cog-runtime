@@ -163,7 +163,7 @@ func (ct *CogTest) runtimeCmd() *exec.Cmd {
 	pythonPathEnv := path.Join(basePath, "python")
 	ct.serverPort = portFinder.Get()
 	args := []string{
-		"run", path.Join(basePath, "cmd", "cog-server", "main.go"),
+		"run", path.Join(basePath, "cmd", "cog", "main.go"), "server",
 		"--port", fmt.Sprintf("%d", ct.serverPort),
 	}
 	args = append(args, ct.extraArgs...)

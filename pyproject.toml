@@ -64,8 +64,7 @@ where = ['python']
 exclude = ['tests*']
 
 [tool.setuptools.package-data]
-'cog.command' = ['cog-schema-*']
-'cog.server.http' = ['cog-server-*']
+'cog' = ['cog-*']
 
 [tool.setuptools_scm]
 version_file = "python/coglet/_version.py"
