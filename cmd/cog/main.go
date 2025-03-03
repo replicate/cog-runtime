@@ -6,23 +6,20 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 
-	_ "github.com/KimMachineGun/automemlimit"
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 	"github.com/replicate/go/logging"
 	"github.com/replicate/go/must"
-	_ "go.uber.org/automaxprocs"
 
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-var logger = logging.New("cog-server")
-
-type Config struct {
+type ServerConfig struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
 	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
 	WorkingDir            string `ff:"long: working-dir, nodefault, usage: working directory"`
@@ -30,19 +27,41 @@ type Config struct {
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
 }
 
-func main() {
+var logger = logging.New("cog")
+
+func schemaCommand() *ff.Command {
 	log := logger.Sugar()
 
-	var cfg Config
-	flags := ff.NewFlagSet("cog-server")
-	must.Do(flags.AddStruct(&cfg))
+	flags := ff.NewFlagSet("schema")
 
-	cmd := &ff.Command{
-		Name:  "cog-server",
-		Usage: "cog-server [FLAGS]",
+	return &ff.Command{
+		Name:  "schema",
+		Usage: "schema [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
+			m, c, err := util.PredictFromCogYaml()
+			if err != nil {
+				log.Errorw("failed to parse cog.yaml", "err", err)
+				return err
+			}
+			bin := must.Get(exec.LookPath("python3"))
+			return syscall.Exec(bin, []string{bin, "-m", "coglet.schema", m, c}, os.Environ())
+		},
+	}
+}
 
+func serverCommand() *ff.Command {
+	log := logger.Sugar()
+
+	var cfg ServerConfig
+	flags := ff.NewFlagSet("server")
+	must.Do(flags.AddStruct(&cfg))
+
+	return &ff.Command{
+		Name:  "server",
+		Usage: "server [FLAGS]",
+		Flags: flags,
+		Exec: func(ctx context.Context, args []string) error {
 			workingDir := cfg.WorkingDir
 			if workingDir == "" {
 				workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
@@ -53,8 +72,17 @@ func main() {
 				"upload-url", cfg.UploadUrl,
 			)
 
+			ctx, cancel := context.WithCancel(ctx)
+			go func() {
+				ch := make(chan os.Signal, 1)
+				signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+				s := <-ch
+				log.Infow("stopping Cog HTTP server", "signal", s)
+				cancel()
+			}()
+
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-			log.Infow("starting HTTP server", "addr", addr)
+			log.Infow("starting Cog HTTP server", "addr", addr)
 			r := server.NewRunner(workingDir, cfg.AwaitExplicitShutdown, cfg.UploadUrl)
 			must.Do(r.Start())
 			s := server.NewServer(addr, r)
@@ -65,39 +93,40 @@ func main() {
 			}()
 			if err := s.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
 				if r.ExitCode() == 0 {
-					return nil
+					log.Infow("shutdown completed normally")
 				} else {
-					return fmt.Errorf("python runner exited with code %d", r.ExitCode())
+					log.Errorw("python runner exited with code", "code", r.ExitCode())
 				}
+				return nil
 			} else {
 				return err
 			}
 		},
 	}
+}
 
-	err := cmd.Parse(os.Args[1:])
+func main() {
+	log := logger.Sugar()
+	flags := ff.NewFlagSet("cog")
+	cmd := &ff.Command{
+		Name:  "cog",
+		Usage: "cog <COMMAND> [FLAGS]",
+		Flags: flags,
+		Exec: func(ctx context.Context, args []string) error {
+			return ff.ErrHelp
+		},
+		Subcommands: []*ff.Command{
+			schemaCommand(),
+			serverCommand(),
+		},
+	}
+	err := cmd.ParseAndRun(context.Background(), os.Args[1:])
 	switch {
 	case errors.Is(err, ff.ErrHelp):
 		must.Get(fmt.Fprintln(os.Stderr, ffhelp.Command(cmd)))
 		os.Exit(1)
 	case err != nil:
 		log.Error(err)
-		must.Get(fmt.Fprintln(os.Stderr, ffhelp.Command(cmd)))
 		os.Exit(1)
-	}
-
-	log.Infow("starting Cog HTTP server", "version", util.Version())
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-		s := <-ch
-		log.Infow("stopping Cog HTTP server", "signal", s)
-		cancel()
-	}()
-	if err := cmd.Run(ctx); err != nil {
-		log.Error(err)
-	} else {
-		log.Info("shutdown completed normally")
 	}
 }
