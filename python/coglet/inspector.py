@@ -2,7 +2,7 @@ import importlib
 import inspect
 import re
 import typing
-from typing import Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 from coglet import adt, api, util
 
@@ -176,7 +176,7 @@ def _predictor_adt(module_name: str, class_name: str, f: Callable) -> adt.Predic
 
 
 # setup and predict might be decorated
-def unwrap(f: Callable) -> Callable:
+def _unwrap(f: Callable) -> Callable:
     g = f
     while hasattr(g, '__closure__') and g.__closure__ is not None:
         cs = [
@@ -194,6 +194,88 @@ def unwrap(f: Callable) -> Callable:
     return g
 
 
+def check_input(
+    adt_ins: Dict[str, adt.Input], inputs: Dict[str, Any]
+) -> Dict[str, Any]:
+    kwargs: Dict[str, Any] = {}
+    for name, value in inputs.items():
+        assert name in adt_ins, f'unknown field: {name}'
+        adt_in = adt_ins[name]
+        cog_t = adt_in.type
+        if adt_in.is_list:
+            assert all(util.check_value(cog_t, v) for v in value), (
+                f'incompatible value for field: {name}={value}'
+            )
+            value = [util.normalize_value(cog_t, v) for v in value]
+        else:
+            assert util.check_value(cog_t, value), (
+                f'incompatible value for field: {name}={value}'
+            )
+            value = util.normalize_value(cog_t, value)
+        kwargs[name] = value
+    for name, adt_in in adt_ins.items():
+        if name not in kwargs:
+            assert adt_in.default is not None, (
+                f'missing default value for field: {name}'
+            )
+            kwargs[name] = adt_in.default
+
+        values = kwargs[name] if adt_in.is_list else [kwargs[name]]
+        v = kwargs[name]
+        if adt_in.ge is not None:
+            assert (x >= adt_in.ge for x in values), (
+                f'validation failure: >= {adt_in.ge} for field: {name}={v}'
+            )
+        if adt_in.le is not None:
+            assert (x <= adt_in.le for x in values), (
+                f'validation failure: <= {adt_in.le} for field: {name}={v}'
+            )
+        if adt_in.min_length is not None:
+            assert (len(x) >= adt_in.min_length for x in values), (
+                f'validation failure: len(x) >= {adt_in.min_length} for field: {name}={v}'
+            )
+        if adt_in.max_length is not None:
+            assert (len(x) <= adt_in.max_length for x in values), (
+                f'validation failure: len(x) <= {adt_in.max_length} for field: {name}={v}'
+            )
+        if adt_in.regex is not None:
+            p = re.compile(adt_in.regex)
+            assert all(p.match(x) is not None for x in values), (
+                f'validation failure: regex match for field: {name}={v}'
+            )
+        if adt_in.choices is not None:
+            assert all(x in adt_in.choices for x in values), (
+                f'validation failure: choices for field: {name}={v}'
+            )
+    return kwargs
+
+
+def check_output(adt_out: adt.Output, output: Any) -> Any:
+    if adt_out.kind is adt.Kind.SINGLE:
+        assert adt_out.type is not None, 'missing output type'
+        assert util.check_value(adt_out.type, output), f'incompatible output: {output}'
+        return util.normalize_value(adt_out.type, output)
+    elif adt_out.kind is adt.Kind.LIST:
+        assert adt_out.type is not None, 'missing output type'
+        assert type(output) is list, 'output is not list'
+        for i, x in enumerate(output):
+            assert util.check_value(adt_out.type, x), (
+                f'incompatible output element: {x}'
+            )
+            output[i] = util.normalize_value(adt_out.type, x)
+        return output
+    elif adt_out.kind == adt.Kind.OBJECT:
+        assert adt_out.fields is not None, 'missing output fields'
+        for name, tpe in adt_out.fields.items():
+            assert hasattr(output, name), f'missing output field: {name}'
+            value = getattr(output, name)
+            assert util.check_value(tpe, value), (
+                f'incompatible output for field: {name}={value}'
+            )
+            setattr(output, name, util.normalize_value(tpe, value))
+        return output
+
+
 def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
     module = importlib.import_module(module_name)
     fullname = f'{module_name}.{class_name}'
@@ -206,5 +288,20 @@ def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
 
     assert hasattr(cls, 'setup'), f'setup method not found: {fullname}'
     assert hasattr(cls, 'predict'), f'predict method not found: {fullname}'
-    _validate_setup(unwrap(getattr(cls, 'setup')))
-    return _predictor_adt(module_name, class_name, unwrap(getattr(cls, 'predict')))
+    _validate_setup(_unwrap(getattr(cls, 'setup')))
+    return _predictor_adt(module_name, class_name, _unwrap(getattr(cls, 'predict')))
+
+
+def get_test_inputs(
+    cls: type[api.BasePredictor], inputs: Dict[str, adt.Input]
+) -> Dict[str, Any]:
+    if hasattr(cls, 'test_inputs'):
+        test_inputs = getattr(cls, 'test_inputs')
+    else:
+        # Fall back to defaults if no test_inputs is not defined
+        test_inputs = {}
+
+    try:
+        return check_input(inputs, test_inputs)
+    except AssertionError as e:
+        raise AssertionError(f'invalid test_inputs: {e}')

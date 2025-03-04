@@ -4,6 +4,8 @@ from cog import BasePredictor, ConcatenateIterator
 
 
 class Predictor(BasePredictor):
+    test_inputs = {'i': 3, 's': 'foo'}
+
     def predict(self, i: int, s: str) -> ConcatenateIterator[str]:
         time.sleep(0.1)
         print('starting prediction')

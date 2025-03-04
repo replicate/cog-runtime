@@ -5,6 +5,8 @@ from cog import BasePredictor
 
 
 class Predictor(BasePredictor):
+    test_inputs = {'i': 0, 's': 'foo'}
+
     async def setup(self) -> None:
         print('starting async setup')
         i = int(os.environ.get('SETUP_SLEEP', '0'))

@@ -6,6 +6,8 @@ from cog import BasePredictor
 
 
 class Predictor(BasePredictor):
+    test_inputs = {'s': 'foo'}
+
     def setup(self) -> None:
         print('starting async setup')
         for _ in tqdm(range(500)):
