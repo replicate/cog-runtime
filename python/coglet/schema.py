@@ -1,3 +1,4 @@
+import importlib
 import json
 import os.path
 import sys
@@ -29,6 +30,12 @@ def main():
         # - Bad input/output types
         # - Libraries downloading weights on init
         p = inspector.create_predictor(sys.argv[1], sys.argv[2])
+
+        # Check that test_inputs exists and is valid
+        module = importlib.import_module(p.module_name)
+        cls = getattr(module, p.class_name)
+        inspector.get_test_inputs(cls, p.inputs)
+
         s = schemas.to_json_schema(p)
     except Exception as e:
         sys.stdout.write = _stdout_write

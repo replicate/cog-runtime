@@ -7,6 +7,8 @@ from cog.server.exceptions import CancelationException
 
 
 class Predictor(BasePredictor):
+    test_inputs = {'i': 0, 's': 'foo'}
+
     def setup(self) -> None:
         print('starting setup')
         i = int(os.environ.get('SETUP_SLEEP', '0'))

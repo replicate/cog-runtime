@@ -105,6 +105,27 @@ func serverCommand() *ff.Command {
 	}
 }
 
+func testCommand() *ff.Command {
+	log := logger.Sugar()
+
+	flags := ff.NewFlagSet("test")
+
+	return &ff.Command{
+		Name:  "test",
+		Usage: "test [FLAGS]",
+		Flags: flags,
+		Exec: func(ctx context.Context, args []string) error {
+			m, c, err := util.PredictFromCogYaml()
+			if err != nil {
+				log.Errorw("failed to parse cog.yaml", "err", err)
+				return err
+			}
+			bin := must.Get(exec.LookPath("python3"))
+			return syscall.Exec(bin, []string{bin, "-m", "coglet.test", m, c}, os.Environ())
+		},
+	}
+}
+
 func main() {
 	log := logger.Sugar()
 	flags := ff.NewFlagSet("cog")
@@ -118,6 +139,7 @@ func main() {
 		Subcommands: []*ff.Command{
 			schemaCommand(),
 			serverCommand(),
+			testCommand(),
 		},
 	}
 	err := cmd.ParseAndRun(context.Background(), os.Args[1:])

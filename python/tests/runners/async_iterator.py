@@ -5,6 +5,8 @@ from cog import BasePredictor
 
 
 class Predictor(BasePredictor):
+    test_inputs = {'i': 3, 's': 'foo'}
+
     async def predict(self, i: int, s: str) -> Iterator[str]:
         await asyncio.sleep(0.1)
         print('starting prediction')
