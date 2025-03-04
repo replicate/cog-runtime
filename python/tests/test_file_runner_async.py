@@ -15,7 +15,6 @@ async def async_wait_for_file(path, exists: bool = True) -> None:
     while True:
         await asyncio.sleep(0.1)
         if os.path.exists(path) == exists:
-            await asyncio.sleep(0.1)  # Wait for signal
             return
 
 
@@ -51,11 +50,13 @@ async def test_file_runner_async(tmp_path):
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
     await async_wait_for_file(req_file, exists=False)
+    await asyncio.sleep(0.2)  # Extra wait for signal
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
     ]
     await async_wait_for_file(resp_file)
+    await asyncio.sleep(0.2)  # Extra wait for signal
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
@@ -98,12 +99,14 @@ async def test_file_runner_async_concurrency(tmp_path):
         json.dump({'input': {'i': 1, 's': 'baz'}}, f)
     await async_wait_for_file(req_file_a, exists=False)
     await async_wait_for_file(req_file_b, exists=False)
+    await asyncio.sleep(0.2)  # Extra wait for signal
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
     ]
     await async_wait_for_file(resp_file_a)
     await async_wait_for_file(resp_file_b)
+    await asyncio.sleep(0.2)  # Extra wait for signal
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
@@ -150,6 +153,7 @@ async def test_file_runner_async_cancel(tmp_path):
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 60, 's': 'bar'}}, f)
     await async_wait_for_file(req_file, exists=False)
+    await asyncio.sleep(0.2)  # Extra wait for signal
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
@@ -159,6 +163,7 @@ async def test_file_runner_async_cancel(tmp_path):
     await async_wait_for_file(cancel_file, exists=False)
 
     await async_wait_for_file(resp_file)
+    await asyncio.sleep(0.2)  # Extra wait for signal
     assert signals == [
         file_runner.FileRunner.SIG_READY,
         file_runner.FileRunner.SIG_BUSY,
