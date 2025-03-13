@@ -57,6 +57,13 @@ def test_schema(predictor):
         # List[Secret] missing defaults
         props['ss']['default'] = ['**********', '**********']
 
+    # Special case: Cog serializes Path() and Path("") to "."
+    # Which is an invalid URI for web
+    if predictor == 'paths':
+        props = schema['components']['schemas']['Input']['properties']
+        props['p4']['default'] = ''
+        props['p5']['default'] = ''
+
     assert schemas.to_json_input(p) == schema['components']['schemas']['Input']
     assert schemas.to_json_output(p) == schema['components']['schemas']['Output']
     assert schemas.to_json_schema(p) == schema

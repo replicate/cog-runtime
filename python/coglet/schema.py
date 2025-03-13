@@ -47,6 +47,7 @@ def main():
         sys.stderr.write = _stderr_write
 
     print(json.dumps(s, indent=2))
+    print(_buffer)
 
 
 if __name__ == '__main__':

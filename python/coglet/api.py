@@ -13,7 +13,9 @@ class CancelationException(Exception):
 
 
 class Path(pathlib.PosixPath):
-    pass
+    def __init__(self, *args):
+        super().__init__()
+        self.is_empty = args == () or args == ('',)
 
 
 @dataclass(frozen=True)

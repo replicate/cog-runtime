@@ -36,7 +36,13 @@ def check_value(expected: adt.Type, value: Any) -> bool:
 def json_value(expected: adt.Type, value: Any) -> Any:
     if expected is adt.Type.FLOAT:
         return float(value)
-    elif expected in {adt.Type.PATH, adt.Type.SECRET}:
+    elif expected is adt.Type.PATH:
+        # Special case: Path() or Path('') to '' instead of '.'
+        # So that such a default empty value passes as a valid URI in web
+        if type(value) is api.Path and value.is_empty:
+            return ''
+        return str(value)
+    elif expected is adt.Type.SECRET:
         return str(value)
     else:
         return value
