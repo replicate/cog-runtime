@@ -15,4 +15,4 @@ uv venv --python "$python_version" .venv-legacy
 export VIRTUAL_ENV="$base_dir/.venv-legacy"
 export UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV"
 uv sync --all-extras
-uv pip install cog==0.13.6
+uv pip install cog==0.14.1
