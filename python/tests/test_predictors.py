@@ -50,7 +50,7 @@ def test_schema(predictor):
         schema = json.load(f)
 
     # Compat: Cog handles secret differently
-    if predictor == 'secrets':
+    if predictor == 'secret':
         props = schema['components']['schemas']['Input']['properties']
         # Default Secret should be redacted
         props['s3']['default'] = '**********'
@@ -62,12 +62,12 @@ def test_schema(predictor):
     assert schemas.to_json_schema(p) == schema
 
     eq = api.Secret.__eq__
-    if predictor == 'secrets':
+    if predictor == 'secret':
         api.Secret.__eq__ = lambda self, other: type(other) is api.Secret
 
     assert schemas.from_json_input(schema) == p.inputs
     assert schemas.from_json_output(schema) == p.output
     assert schemas.from_json_schema(module_name, class_name, schema) == p
 
-    if predictor == 'secrets':
+    if predictor == 'secret':
         api.Secret.__eq__ = eq
