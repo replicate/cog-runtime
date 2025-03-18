@@ -344,7 +344,6 @@ func (ct *CogTest) AsyncPredictionWithId(pid string, input map[string]any) strin
 func (ct *CogTest) prediction(method string, path string, req server.PredictionRequest) server.PredictionResponse {
 	resp := ct.PredictionReq(method, path, req)
 	if req.Webhook == "" {
-
 		assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
 	} else {
 		assert.Equal(ct.t, http.StatusAccepted, resp.StatusCode)
