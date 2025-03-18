@@ -87,6 +87,7 @@ type Runner struct {
 	setupResult           SetupResult
 	logs                  []string
 	asyncPredict          bool
+	maxConcurrency        int
 	pending               map[string]*PendingPrediction
 	awaitExplicitShutdown bool
 	uploadUrl             string
@@ -176,7 +177,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		req.CreatedAt = util.NowIso()
 	}
 	r.mu.Lock()
-	if !r.asyncPredict && len(r.pending) > 0 {
+	if !r.asyncPredict && r.maxConcurrency > 0 && len(r.pending) > r.maxConcurrency {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: Already running a prediction")
 		return nil, ErrConflict
@@ -271,13 +272,19 @@ func (r *Runner) config() {
 	className := os.Getenv("COG_CLASS_NAME")
 
 	if moduleName == "" || className == "" {
-		m, c, err := util.PredictFromCogYaml()
+		y, err := util.ReadCogYaml()
 		if err != nil {
 			log.Errorw("failed to read cog.yaml", "err", err)
 			panic(err)
 		}
+		m, c, err := y.PredictModuleAndClass()
+		if err != nil {
+			log.Errorw("failed to parse predict", "err", err)
+			panic(err)
+		}
 		moduleName = m
 		className = c
+		r.maxConcurrency = y.Concurrency.Max
 	}
 	conf := Config{ModuleName: moduleName, ClassName: className}
 	confFile := path.Join(r.workingDir, "config.json")
