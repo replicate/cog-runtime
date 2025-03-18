@@ -15,22 +15,31 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type CogYaml struct {
-	Predict string `yaml:"predict"`
+type Concurrency struct {
+	Max int `yaml:"max"`
 }
 
-func PredictFromCogYaml() (string, string, error) {
+type CogYaml struct {
+	Concurrency Concurrency `yaml:"concurrency"`
+	Predict     string      `yaml:"predict"`
+}
+
+func ReadCogYaml() (*CogYaml, error) {
 	var cogYaml CogYaml
 	bs, err := os.ReadFile("cog.yaml")
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 	if err := yaml.Unmarshal(bs, &cogYaml); err != nil {
-		return "", "", err
+		return nil, err
 	}
-	parts := strings.Split(cogYaml.Predict, ":")
+	return &cogYaml, nil
+}
+
+func (y *CogYaml) PredictModuleAndClass() (string, string, error) {
+	parts := strings.Split(y.Predict, ":")
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid predict: %s", cogYaml.Predict)
+		return "", "", fmt.Errorf("invalid predict: %s", y.Predict)
 	}
 	moduleName := strings.TrimSuffix(parts[0], ".py")
 	className := parts[1]

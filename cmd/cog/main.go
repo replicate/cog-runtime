@@ -39,9 +39,14 @@ func schemaCommand() *ff.Command {
 		Usage: "schema [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			m, c, err := util.PredictFromCogYaml()
+			y, err := util.ReadCogYaml()
 			if err != nil {
-				log.Errorw("failed to parse cog.yaml", "err", err)
+				log.Errorw("failed to read cog.yaml", "err", err)
+				return err
+			}
+			m, c, err := y.PredictModuleAndClass()
+			if err != nil {
+				log.Errorw("failed to parse predict", "err", err)
 				return err
 			}
 			bin := must.Get(exec.LookPath("python3"))
@@ -115,9 +120,14 @@ func testCommand() *ff.Command {
 		Usage: "test [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			m, c, err := util.PredictFromCogYaml()
+			y, err := util.ReadCogYaml()
 			if err != nil {
-				log.Errorw("failed to parse cog.yaml", "err", err)
+				log.Errorw("failed to read cog.yaml", "err", err)
+				return err
+			}
+			m, c, err := y.PredictModuleAndClass()
+			if err != nil {
+				log.Errorw("failed to parse predict", "err", err)
 				return err
 			}
 			bin := must.Get(exec.LookPath("python3"))
