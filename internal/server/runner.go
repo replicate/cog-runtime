@@ -177,7 +177,13 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		req.CreatedAt = util.NowIso()
 	}
 	r.mu.Lock()
-	if !r.asyncPredict && r.maxConcurrency > 0 && len(r.pending) > r.maxConcurrency {
+	// blocking `def predict()`, max concurrency is always 1
+	maxPending := 1
+	// `async def predict()`, respect concurrency.max from cog.yaml
+	if r.asyncPredict {
+		maxPending = r.maxConcurrency
+	}
+	if !r.asyncPredict && len(r.pending) >= maxPending {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: Already running a prediction")
 		return nil, ErrConflict

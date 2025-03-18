@@ -3,7 +3,6 @@ package tests
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/replicate/cog-runtime/internal/server"
 
@@ -11,10 +10,6 @@ import (
 )
 
 func TestAsyncPredictorConcurrency(t *testing.T) {
-	if *legacyCog {
-		// Compat: legacy Cog rejects concurrent prediction requests
-		t.SkipNow()
-	}
 	ct := NewCogTest(t, "async_sleep")
 	ct.StartWebhook()
 	assert.NoError(t, ct.Start())
@@ -23,8 +18,8 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	barId := ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	bazId := ct.AsyncPrediction(map[string]any{"i": 2, "s": "baz"})
+	barId := ct.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
+	bazId := ct.AsyncPredictionWithId("p02", map[string]any{"i": 2, "s": "baz"})
 	wr := ct.WaitForWebhookCompletion()
 	var barR []server.PredictionResponse
 	var bazR []server.PredictionResponse
@@ -45,6 +40,11 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 }
 
 func TestAsyncPredictorCanceled(t *testing.T) {
+	if *legacyCog {
+		// Cancellation bug as of 0.14.1
+		// https://github.com/replicate/cog/issues/2212
+		t.SkipNow()
+	}
 	ct := NewCogTest(t, "async_sleep")
 	ct.StartWebhook()
 	assert.NoError(t, ct.Start())
@@ -55,14 +55,9 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 
 	pid := "p01"
 	ct.AsyncPredictionWithId(pid, map[string]any{"i": 60, "s": "bar"})
-	if *legacyCog {
-		// Compat: legacy Cog does not send output webhook
-		time.Sleep(time.Second)
-	} else {
-		ct.WaitForWebhook(func(response server.PredictionResponse) bool {
-			return strings.Contains(response.Logs, "prediction in progress 1/60\n")
-		})
-	}
+	ct.WaitForWebhook(func(response server.PredictionResponse) bool {
+		return strings.Contains(response.Logs, "prediction in progress 1/60\n")
+	})
 	ct.Cancel(pid)
 	wr := ct.WaitForWebhookCompletion()
 	logs := "starting async prediction\nprediction in progress 1/60\nprediction canceled\n"

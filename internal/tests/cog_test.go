@@ -185,7 +185,12 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 	tmpDir := ct.t.TempDir()
 	runnersPath := path.Join(basePath, "python", "tests", "runners")
 	module := fmt.Sprintf("%s.py", ct.module)
-	must.Do(os.Symlink(path.Join(runnersPath, "cog.yaml"), path.Join(tmpDir, "cog.yaml")))
+	yaml := "cog.yaml"
+	if strings.HasPrefix(ct.module, "async_") {
+		// cog.yaml with concurrency.max
+		yaml = "async_cog.yaml"
+	}
+	must.Do(os.Symlink(path.Join(runnersPath, yaml), path.Join(tmpDir, "cog.yaml")))
 	must.Do(os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py")))
 	pythonBin := path.Join(basePath, ".venv-legacy", "bin", "python3")
 	ct.serverPort = portFinder.Get()
