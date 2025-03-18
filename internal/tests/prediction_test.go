@@ -114,7 +114,6 @@ func TestPredictionConcurrency(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	var resp1 server.PredictionResponse
-	var resp2 server.PredictionResponse
 	done1 := make(chan bool, 1)
 	done2 := make(chan bool, 1)
 
@@ -124,9 +123,11 @@ func TestPredictionConcurrency(t *testing.T) {
 	}()
 
 	time.Sleep(100 * time.Millisecond)
-	// Block prediction requests when one is in progress
+	// Fail prediction requests when one is in progress
 	go func() {
-		resp2 = ct.Prediction(map[string]any{"i": 1, "s": "baz"})
+		req := server.PredictionRequest{Input: map[string]any{"i": 1, "s": "baz"}}
+		resp := ct.PredictionReq("POST", "/predictions", req)
+		assert.Equal(t, http.StatusConflict, resp.StatusCode)
 		done2 <- true
 	}()
 
@@ -136,9 +137,6 @@ func TestPredictionConcurrency(t *testing.T) {
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp1.Logs)
 
 	<-done2
-	assert.Equal(t, server.PredictionSucceeded, resp2.Status)
-	assert.Equal(t, "*baz*", resp2.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp2.Logs)
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
