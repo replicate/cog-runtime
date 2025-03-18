@@ -37,7 +37,11 @@ def _validate_predict(f: Callable) -> None:
 
 
 def _validate_input(
-    name: str, cog_t: adt.Type, is_list: bool, cog_in: api.Input
+    name: str,
+    cog_t: adt.Type,
+    is_list: bool,
+    cog_in: api.Input,
+    coder: Optional[api.Coder],
 ) -> None:
     defaults = []
     if cog_in.default is not None:
@@ -45,12 +49,12 @@ def _validate_input(
             assert type(cog_in.default) is list, (
                 f'default must be a list for input: {name}'
             )
-            assert all(util.check_value(cog_t, v) for v in cog_in.default), (
+            assert all(util.check_value(cog_t, v, coder) for v in cog_in.default), (
                 f'incompatible default for input: {name}]'
             )
             defaults = cog_in.default
         else:
-            assert util.check_value(cog_t, cog_in.default), (
+            assert util.check_value(cog_t, cog_in.default, coder), (
                 f'incompatible default for input: {name}'
             )
             defaults = [cog_in.default]
@@ -103,24 +107,26 @@ def _validate_input(
 def _input_adt(
     order: int, name: str, tpe: type, cog_in: Optional[api.Input]
 ) -> adt.Input:
-    cog_t, is_list = util.check_cog_type(tpe)
-    assert cog_t is not None, f'unsupported input type for {name}'
+    cog_t, is_list, coder = util.check_cog_type(tpe)
     if cog_in is None:
         return adt.Input(
             name=name,
             order=order,
             type=cog_t,
             is_list=is_list,
+            coder=coder,
         )
     else:
-        _validate_input(name, cog_t, is_list, cog_in)
+        _validate_input(name, cog_t, is_list, cog_in, coder)
         if cog_in.default is None:
             default = None
         else:
             if is_list:
-                default = [util.normalize_value(cog_t, x) for x in cog_in.default]
+                default = [
+                    util.normalize_input(cog_t, x, coder) for x in cog_in.default
+                ]
             else:
-                default = util.normalize_value(cog_t, cog_in.default)
+                default = util.normalize_input(cog_t, cog_in.default, coder)
         return adt.Input(
             name=name,
             order=order,
@@ -134,6 +140,7 @@ def _input_adt(
             max_length=cog_in.max_length,
             regex=cog_in.regex,
             choices=cog_in.choices,
+            coder=coder,
         )
 
 
@@ -142,7 +149,7 @@ def _output_adt(tpe: type) -> adt.Output:
         assert tpe.__name__ == 'Output', 'output type must be named Output'
         fields = {}
         for name, t in tpe.__annotations__.items():
-            cog_t, is_list = util.check_cog_type(t)
+            cog_t, is_list, coder = util.check_cog_type(t)
             assert not is_list, f'output field must not be list: {name}'
             fields[name] = cog_t
         return adt.Output(kind=adt.Kind.OBJECT, fields=fields)
@@ -203,15 +210,15 @@ def check_input(
         adt_in = adt_ins[name]
         cog_t = adt_in.type
         if adt_in.is_list:
-            assert all(util.check_value(cog_t, v) for v in value), (
+            assert all(util.check_value(cog_t, v, adt_in.coder) for v in value), (
                 f'incompatible value for field: {name}={value}'
             )
-            value = [util.normalize_value(cog_t, v) for v in value]
+            value = [util.normalize_input(cog_t, v, adt_in.coder) for v in value]
         else:
-            assert util.check_value(cog_t, value), (
+            assert util.check_value(cog_t, value, adt_in.coder), (
                 f'incompatible value for field: {name}={value}'
             )
-            value = util.normalize_value(cog_t, value)
+            value = util.normalize_input(cog_t, value, adt_in.coder)
         kwargs[name] = value
     for name, adt_in in adt_ins.items():
         if name not in kwargs:
@@ -253,13 +260,15 @@ def check_input(
 def check_output(adt_out: adt.Output, output: Any) -> Any:
     if adt_out.kind is adt.Kind.SINGLE:
         assert adt_out.type is not None, 'missing output type'
-        assert util.check_value(adt_out.type, output), f'incompatible output: {output}'
+        assert util.check_value(adt_out.type, output, None), (
+            f'incompatible output: {output}'
+        )
         return util.normalize_value(adt_out.type, output)
     elif adt_out.kind is adt.Kind.LIST:
         assert adt_out.type is not None, 'missing output type'
         assert type(output) is list, 'output is not list'
         for i, x in enumerate(output):
-            assert util.check_value(adt_out.type, x), (
+            assert util.check_value(adt_out.type, x, None), (
                 f'incompatible output element: {x}'
             )
             output[i] = util.normalize_value(adt_out.type, x)
@@ -269,7 +278,7 @@ def check_output(adt_out: adt.Output, output: Any) -> Any:
         for name, tpe in adt_out.fields.items():
             assert hasattr(output, name), f'missing output field: {name}'
             value = getattr(output, name)
-            assert util.check_value(tpe, value), (
+            assert util.check_value(tpe, value, None), (
                 f'incompatible output for field: {name}={value}'
             )
             setattr(output, name, util.normalize_value(tpe, value))

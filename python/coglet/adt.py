@@ -13,6 +13,7 @@ class Type(Enum):
     STRING = 4
     PATH = 5
     SECRET = 6
+    CUSTOM = 7
 
 
 NUMERIC_TYPES = {Type.FLOAT, Type.INTEGER}
@@ -53,6 +54,7 @@ COG_TO_JSON = {
     Type.STRING: 'string',
     Type.PATH: 'string',
     Type.SECRET: 'string',
+    Type.CUSTOM: 'object',
 }
 
 # JSON types to Cog types
@@ -86,6 +88,7 @@ class Input:
     max_length: Optional[int] = None
     regex: Optional[str] = None
     choices: Optional[List[Union[str, int]]] = None
+    coder: Optional[api.Coder] = None
 
 
 @dataclass(frozen=True)

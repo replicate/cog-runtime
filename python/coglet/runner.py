@@ -71,13 +71,13 @@ class Runner:
         kwargs = inspector.check_input(self.inputs, inputs)
         if self.is_async_predict:
             async for x in self.predictor.predict(**kwargs):
-                assert util.check_value(self.output.type, x), (
+                assert util.check_value(self.output.type, x, None), (
                     f'incompatible output: {x}'
                 )
                 yield x
         else:
             for x in self.predictor.predict(**kwargs):
-                assert util.check_value(self.output.type, x), (
+                assert util.check_value(self.output.type, x, None), (
                     f'incompatible output: {x}'
                 )
                 yield x
