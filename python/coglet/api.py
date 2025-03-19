@@ -1,7 +1,44 @@
+import dataclasses
 import pathlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Iterator, List, Optional, TypeVar, Union
+from typing import Any, Generic, Iterator, List, Optional, Type, TypeVar, Union
+
+########################################
+# Custom encoding
+########################################
+
+T = TypeVar('T')
+
+
+class Coder(Generic[T]):
+    @abstractmethod
+    def encode(self, x: T) -> Any:
+        pass
+
+    @abstractmethod
+    def decode(self, x: Any) -> T:
+        pass
+
+
+class DataclassCoder(Coder[T], Generic[T]):
+    def __init__(self, cls: Type[T]):
+        assert dataclasses.is_dataclass(cls)
+        self.cls = cls
+
+    def encode(self, x: T) -> dict[str, Any]:
+        return dataclasses.asdict(x)  # type: ignore
+
+    def decode(self, x: dict[str, Any]) -> T:
+        x = self._from_dict(self.cls, x)
+        return self.cls(**x)  # type: ignore
+
+    def _from_dict(self, t, d: dict[str, Any]) -> Any:
+        for f in dataclasses.fields(t):
+            if dataclasses.is_dataclass(f.type) and f.name in d:
+                d[f.name] = f.type(**self._from_dict(f.type, d[f.name]))  # type: ignore
+        return d
+
 
 ########################################
 # Data types
