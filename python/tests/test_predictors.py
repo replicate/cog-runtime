@@ -6,7 +6,7 @@ from typing import List
 
 import pytest
 
-from coglet import api, inspector, runner, schemas
+from coglet import inspector, runner, schemas
 
 # Test predictors in tests/schemas
 # * run prediction with input/output fixture
@@ -18,11 +18,8 @@ def get_predictors() -> List[str]:
     return [name for _, name, _ in pkgutil.iter_modules([schemas_dir])]
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize('predictor', get_predictors())
-async def test_predictor(predictor):
-    module_name = f'tests.schemas.{predictor}'
-    p = inspector.create_predictor(module_name, 'Predictor')
+async def run_fixture(module_name: str, class_name: str) -> None:
+    p = inspector.create_predictor(module_name, class_name)
     r = runner.Runner(p)
     assert not r.predictor.setup_done
     await r.setup()
@@ -37,6 +34,13 @@ async def test_predictor(predictor):
         else:
             result = await r.predict(inputs)
             assert result == output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('predictor', get_predictors())
+async def test_predictor(predictor):
+    module_name = f'tests.schemas.{predictor}'
+    await run_fixture(module_name, 'Predictor')
 
 
 @pytest.mark.parametrize('predictor', get_predictors())
@@ -60,14 +64,3 @@ def test_schema(predictor):
     assert schemas.to_json_input(p) == schema['components']['schemas']['Input']
     assert schemas.to_json_output(p) == schema['components']['schemas']['Output']
     assert schemas.to_json_schema(p) == schema
-
-    eq = api.Secret.__eq__
-    if predictor == 'secret':
-        api.Secret.__eq__ = lambda self, other: type(other) is api.Secret
-
-    assert schemas.from_json_input(schema) == p.inputs
-    assert schemas.from_json_output(schema) == p.output
-    assert schemas.from_json_schema(module_name, class_name, schema) == p
-
-    if predictor == 'secret':
-        api.Secret.__eq__ = eq

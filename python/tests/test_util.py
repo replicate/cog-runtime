@@ -1,56 +1,74 @@
-from typing import List
+from typing import List, Optional
 
 from coglet import adt, api, util
 
 
-def test_check_cog_type():
-    assert util.check_cog_type(int) == (adt.Type.INTEGER, False)
-    assert util.check_cog_type(str) == (adt.Type.STRING, False)
-    assert util.check_cog_type(list[int]) == (adt.Type.INTEGER, True)
-    assert util.check_cog_type(List[int]) == (adt.Type.INTEGER, True)
+def test_get_field_type():
+    assert util.get_field_type(int) == adt.FieldType(
+        primitive=adt.PrimitiveType.INTEGER, repetition=adt.Repetition.REQUIRED
+    )
+    assert util.get_field_type(str) == adt.FieldType(
+        primitive=adt.PrimitiveType.STRING, repetition=adt.Repetition.REQUIRED
+    )
+    assert util.get_field_type(Optional[int]) == adt.FieldType(
+        primitive=adt.PrimitiveType.INTEGER, repetition=adt.Repetition.OPTIONAL
+    )
+    assert util.get_field_type(Optional[int]) == adt.FieldType(
+        primitive=adt.PrimitiveType.INTEGER, repetition=adt.Repetition.OPTIONAL
+    )
+    assert util.get_field_type(list[int]) == adt.FieldType(
+        primitive=adt.PrimitiveType.INTEGER, repetition=adt.Repetition.REPEATED
+    )
+    assert util.get_field_type(List[int]) == adt.FieldType(
+        primitive=adt.PrimitiveType.INTEGER, repetition=adt.Repetition.REPEATED
+    )
 
 
 def test_check_value():
-    assert util.check_value(adt.Type.BOOL, True)
-    assert not util.check_value(adt.Type.BOOL, 1)
-    assert util.check_value(adt.Type.FLOAT, 1)
-    assert util.check_value(adt.Type.FLOAT, 3.14)
-    assert not util.check_value(adt.Type.FLOAT, 'foo')
-    assert util.check_value(adt.Type.INTEGER, 1)
-    assert not util.check_value(adt.Type.INTEGER, 3.14)
-    assert util.check_value(adt.Type.STRING, 'foo')
-    assert not util.check_value(adt.Type.STRING, 1)
-    assert util.check_value(adt.Type.PATH, api.Path('foo'))
-    assert util.check_value(adt.Type.PATH, 'foo')
-    assert not util.check_value(adt.Type.PATH, 1)
-    assert util.check_value(adt.Type.SECRET, api.Secret('foo'))
-    assert util.check_value(adt.Type.SECRET, 'foo')
-    assert not util.check_value(adt.Type.SECRET, 1)
+    assert util.check_value(adt.PrimitiveType.BOOL, True)
+    assert not util.check_value(adt.PrimitiveType.BOOL, 1)
+    assert util.check_value(adt.PrimitiveType.FLOAT, 1)
+    assert util.check_value(adt.PrimitiveType.FLOAT, 3.14)
+    assert not util.check_value(adt.PrimitiveType.FLOAT, 'foo')
+    assert util.check_value(adt.PrimitiveType.INTEGER, 1)
+    assert not util.check_value(adt.PrimitiveType.INTEGER, 3.14)
+    assert util.check_value(adt.PrimitiveType.STRING, 'foo')
+    assert not util.check_value(adt.PrimitiveType.STRING, 1)
+    assert util.check_value(adt.PrimitiveType.PATH, api.Path('foo'))
+    assert util.check_value(adt.PrimitiveType.PATH, 'foo')
+    assert not util.check_value(adt.PrimitiveType.PATH, 1)
+    assert util.check_value(adt.PrimitiveType.SECRET, api.Secret('foo'))
+    assert util.check_value(adt.PrimitiveType.SECRET, 'foo')
+    assert not util.check_value(adt.PrimitiveType.SECRET, 1)
 
 
 def test_json_value():
-    assert util.json_value(adt.Type.BOOL, True)
-    assert not util.json_value(adt.Type.BOOL, False)
-    assert util.json_value(adt.Type.FLOAT, 1) == 1.0
-    assert util.json_value(adt.Type.FLOAT, 1.2) == 1.2
-    assert util.json_value(adt.Type.INTEGER, 3) == 3
-    assert util.json_value(adt.Type.STRING, 'foo') == 'foo'
-    assert util.json_value(adt.Type.PATH, 'foo.txt') == 'foo.txt'
-    assert util.json_value(adt.Type.PATH, api.Path('bar.txt')) == 'bar.txt'
-    assert util.json_value(adt.Type.SECRET, 'foo') == 'foo'
-    assert util.json_value(adt.Type.SECRET, api.Secret('bar')) == '**********'
+    assert util.json_value(adt.PrimitiveType.BOOL, True)
+    assert not util.json_value(adt.PrimitiveType.BOOL, False)
+    assert util.json_value(adt.PrimitiveType.FLOAT, 1) == 1.0
+    assert util.json_value(adt.PrimitiveType.FLOAT, 1.2) == 1.2
+    assert util.json_value(adt.PrimitiveType.INTEGER, 3) == 3
+    assert util.json_value(adt.PrimitiveType.STRING, 'foo') == 'foo'
+    assert util.json_value(adt.PrimitiveType.PATH, 'foo.txt') == 'foo.txt'
+    assert util.json_value(adt.PrimitiveType.PATH, api.Path('bar.txt')) == 'bar.txt'
+    assert util.json_value(adt.PrimitiveType.SECRET, 'foo') == 'foo'
+    assert util.json_value(adt.PrimitiveType.SECRET, api.Secret('bar')) == '**********'
 
 
 def test_normalize_value():
-    assert util.normalize_value(adt.Type.BOOL, True)
-    assert not util.normalize_value(adt.Type.BOOL, False)
-    assert util.normalize_value(adt.Type.FLOAT, 1) == 1.0
-    assert util.normalize_value(adt.Type.FLOAT, 1.2) == 1.2
-    assert util.normalize_value(adt.Type.INTEGER, 3) == 3
-    assert util.normalize_value(adt.Type.STRING, 'foo') == 'foo'
-    assert util.normalize_value(adt.Type.PATH, 'foo.txt') == api.Path('foo.txt')
-    assert util.normalize_value(adt.Type.PATH, api.Path('bar.txt')) == api.Path(
-        'bar.txt'
+    assert util.normalize_value(adt.PrimitiveType.BOOL, True)
+    assert not util.normalize_value(adt.PrimitiveType.BOOL, False)
+    assert util.normalize_value(adt.PrimitiveType.FLOAT, 1) == 1.0
+    assert util.normalize_value(adt.PrimitiveType.FLOAT, 1.2) == 1.2
+    assert util.normalize_value(adt.PrimitiveType.INTEGER, 3) == 3
+    assert util.normalize_value(adt.PrimitiveType.STRING, 'foo') == 'foo'
+    assert util.normalize_value(adt.PrimitiveType.PATH, 'foo.txt') == api.Path(
+        'foo.txt'
     )
-    assert util.normalize_value(adt.Type.SECRET, 'foo') == api.Secret('foo')
-    assert util.normalize_value(adt.Type.SECRET, api.Secret('bar')) == api.Secret('bar')
+    assert util.normalize_value(
+        adt.PrimitiveType.PATH, api.Path('bar.txt')
+    ) == api.Path('bar.txt')
+    assert util.normalize_value(adt.PrimitiveType.SECRET, 'foo') == api.Secret('foo')
+    assert util.normalize_value(
+        adt.PrimitiveType.SECRET, api.Secret('bar')
+    ) == api.Secret('bar')
