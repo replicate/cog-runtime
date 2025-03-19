@@ -6,7 +6,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 from coglet import api
 
 
-class Type(Enum):
+class PrimitiveType(Enum):
     BOOL = 1
     FLOAT = 2
     INTEGER = 3
@@ -15,10 +15,22 @@ class Type(Enum):
     SECRET = 6
 
 
-NUMERIC_TYPES = {Type.FLOAT, Type.INTEGER}
-PATH_TYPES = {Type.STRING, Type.PATH}
-SECRET_TYPES = {Type.STRING, Type.SECRET}
-CHOICE_TYPES = {Type.INTEGER, Type.STRING}
+class Repetition(Enum):
+    REQUIRED = 1
+    OPTIONAL = 2
+    REPEATED = 3
+
+
+@dataclass(frozen=True)
+class FieldType:
+    primitive: PrimitiveType
+    repetition: Repetition
+
+
+NUMERIC_TYPES = {PrimitiveType.FLOAT, PrimitiveType.INTEGER}
+PATH_TYPES = {PrimitiveType.STRING, PrimitiveType.PATH}
+SECRET_TYPES = {PrimitiveType.STRING, PrimitiveType.SECRET}
+CHOICE_TYPES = {PrimitiveType.INTEGER, PrimitiveType.STRING}
 
 
 class Kind(Enum):
@@ -37,31 +49,31 @@ ARRAY_KINDS = {
 
 # Python types to Cog types
 PYTHON_TO_COG = {
-    bool: Type.BOOL,
-    float: Type.FLOAT,
-    int: Type.INTEGER,
-    str: Type.STRING,
-    api.Path: Type.PATH,
-    api.Secret: Type.SECRET,
+    bool: PrimitiveType.BOOL,
+    float: PrimitiveType.FLOAT,
+    int: PrimitiveType.INTEGER,
+    str: PrimitiveType.STRING,
+    api.Path: PrimitiveType.PATH,
+    api.Secret: PrimitiveType.SECRET,
 }
 
 # Cog types to JSON types
 COG_TO_JSON = {
-    Type.BOOL: 'boolean',
-    Type.FLOAT: 'number',
-    Type.INTEGER: 'integer',
-    Type.STRING: 'string',
-    Type.PATH: 'string',
-    Type.SECRET: 'string',
+    PrimitiveType.BOOL: 'boolean',
+    PrimitiveType.FLOAT: 'number',
+    PrimitiveType.INTEGER: 'integer',
+    PrimitiveType.STRING: 'string',
+    PrimitiveType.PATH: 'string',
+    PrimitiveType.SECRET: 'string',
 }
 
 # JSON types to Cog types
 # PATH and SECRET depend on format field
 JSON_TO_COG = {
-    'boolean': Type.BOOL,
-    'number': Type.FLOAT,
-    'integer': Type.INTEGER,
-    'string': Type.STRING,
+    'boolean': PrimitiveType.BOOL,
+    'number': PrimitiveType.FLOAT,
+    'integer': PrimitiveType.INTEGER,
+    'string': PrimitiveType.STRING,
 }
 
 # Python container types to Cog types
@@ -76,8 +88,7 @@ CONTAINER_TO_COG = {
 class Input:
     name: str
     order: int
-    type: Type
-    is_list: bool
+    type: FieldType
     default: Any = None
     description: Optional[str] = None
     ge: Optional[Union[int, float]] = None
@@ -91,8 +102,8 @@ class Input:
 @dataclass(frozen=True)
 class Output:
     kind: Kind
-    type: Optional[Type] = None
-    fields: Optional[Dict[str, Type]] = None
+    type: Optional[PrimitiveType] = None
+    fields: Optional[Dict[str, FieldType]] = None
 
 
 @dataclass(frozen=True)

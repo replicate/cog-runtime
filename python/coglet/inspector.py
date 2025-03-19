@@ -36,12 +36,11 @@ def _validate_predict(f: Callable) -> None:
     assert spec.annotations.get('return') is not None, 'predict() must not return None'
 
 
-def _validate_input(
-    name: str, cog_t: adt.Type, is_list: bool, cog_in: api.Input
-) -> None:
+def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
     defaults = []
+    cog_t = ft.primitive
     if cog_in.default is not None:
-        if is_list:
+        if ft.repetition is adt.Repetition.REPEATED:
             assert type(cog_in.default) is list, (
                 f'default must be a list for input: {name}'
             )
@@ -67,7 +66,7 @@ def _validate_input(
             )
 
     if cog_in.min_length is not None or cog_in.max_length is not None:
-        assert cog_t is adt.Type.STRING, (
+        assert cog_t is adt.PrimitiveType.STRING, (
             f'incompatible input type for min_length/max_length: {name}'
         )
         if cog_in.min_length is not None:
@@ -80,7 +79,9 @@ def _validate_input(
             )
 
     if cog_in.regex is not None:
-        assert cog_t is adt.Type.STRING, f'incompatible input type for regex: {name}'
+        assert cog_t is adt.PrimitiveType.STRING, (
+            f'incompatible input type for regex: {name}'
+        )
         regex = re.compile(cog_in.regex)
         assert all(regex.match(x) for x in defaults), (
             f'not all defaults match regex for input: {name}'
@@ -103,29 +104,28 @@ def _validate_input(
 def _input_adt(
     order: int, name: str, tpe: type, cog_in: Optional[api.Input]
 ) -> adt.Input:
-    cog_t, is_list = util.check_cog_type(tpe)
-    assert cog_t is not None, f'unsupported input type for {name}'
+    ft = util.get_field_type(tpe)
     if cog_in is None:
         return adt.Input(
             name=name,
             order=order,
-            type=cog_t,
-            is_list=is_list,
+            type=ft,
         )
     else:
-        _validate_input(name, cog_t, is_list, cog_in)
+        _validate_input(name, ft, cog_in)
         if cog_in.default is None:
             default = None
         else:
-            if is_list:
-                default = [util.normalize_value(cog_t, x) for x in cog_in.default]
+            if ft.repetition is adt.Repetition.REPEATED:
+                default = [
+                    util.normalize_value(ft.primitive, x) for x in cog_in.default
+                ]
             else:
-                default = util.normalize_value(cog_t, cog_in.default)
+                default = util.normalize_value(ft.primitive, cog_in.default)
         return adt.Input(
             name=name,
             order=order,
-            type=cog_t,
-            is_list=is_list,
+            type=ft,
             default=default,
             description=cog_in.description,
             ge=float(cog_in.ge) if cog_in.ge is not None else None,
@@ -142,9 +142,11 @@ def _output_adt(tpe: type) -> adt.Output:
         assert tpe.__name__ == 'Output', 'output type must be named Output'
         fields = {}
         for name, t in tpe.__annotations__.items():
-            cog_t, is_list = util.check_cog_type(t)
-            assert not is_list, f'output field must not be list: {name}'
-            fields[name] = cog_t
+            ft = util.get_field_type(t)
+            assert ft.repetition is not adt.Repetition.REPEATED, (
+                f'output field must not be list: {name}'
+            )
+            fields[name] = ft
         return adt.Output(kind=adt.Kind.OBJECT, fields=fields)
 
     kind = adt.CONTAINER_TO_COG.get(typing.get_origin(tpe)) or adt.Kind.SINGLE
@@ -201,8 +203,8 @@ def check_input(
     for name, value in inputs.items():
         assert name in adt_ins, f'unknown field: {name}'
         adt_in = adt_ins[name]
-        cog_t = adt_in.type
-        if adt_in.is_list:
+        cog_t = adt_in.type.primitive
+        if adt_in.type.repetition is adt.Repetition.REPEATED:
             assert all(util.check_value(cog_t, v) for v in value), (
                 f'incompatible value for field: {name}={value}'
             )
@@ -215,12 +217,18 @@ def check_input(
         kwargs[name] = value
     for name, adt_in in adt_ins.items():
         if name not in kwargs:
-            assert adt_in.default is not None, (
-                f'missing default value for field: {name}'
-            )
+            # default=None is only allowed on `Optional[<type>]`
+            if adt_in.type.repetition is not adt.Repetition.OPTIONAL:
+                assert adt_in.default is not None or adt_in, (
+                    f'missing default value for field: {name}'
+                )
             kwargs[name] = adt_in.default
 
-        values = kwargs[name] if adt_in.is_list else [kwargs[name]]
+        values = (
+            kwargs[name]
+            if adt_in.type.repetition is adt.Repetition.REPEATED
+            else [kwargs[name]]
+        )
         v = kwargs[name]
         if adt_in.ge is not None:
             assert (x >= adt_in.ge for x in values), (
@@ -264,15 +272,20 @@ def check_output(adt_out: adt.Output, output: Any) -> Any:
             )
             output[i] = util.normalize_value(adt_out.type, x)
         return output
-    elif adt_out.kind == adt.Kind.OBJECT:
+    elif adt_out.kind is adt.Kind.OBJECT:
         assert adt_out.fields is not None, 'missing output fields'
         for name, tpe in adt_out.fields.items():
             assert hasattr(output, name), f'missing output field: {name}'
             value = getattr(output, name)
-            assert util.check_value(tpe, value), (
-                f'incompatible output for field: {name}={value}'
-            )
-            setattr(output, name, util.normalize_value(tpe, value))
+            if value is None:
+                assert tpe.repetition is adt.Repetition.OPTIONAL, (
+                    f'missing value for output field: {name}'
+                )
+            else:
+                assert util.check_value(tpe.primitive, value), (
+                    f'incompatible output for field: {name}={value}'
+                )
+            setattr(output, name, util.normalize_value(tpe.primitive, value))
         return output
 
 
