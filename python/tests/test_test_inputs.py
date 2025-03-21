@@ -4,7 +4,7 @@ from typing import List
 
 import pytest
 
-from coglet import inspector, runner
+from coglet import inspector, runner, scope
 
 
 def get_predictors() -> List[str]:
@@ -19,4 +19,6 @@ async def test_test_inputs(predictor):
     p = inspector.create_predictor(module_name, 'Predictor')
     r = runner.Runner(p)
 
+    # Some predictors calls current_scope() and requires ctx_pid
+    scope.ctx_pid.set(predictor)
     assert await r.test()

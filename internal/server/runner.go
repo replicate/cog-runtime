@@ -453,7 +453,10 @@ func (r *Runner) handleResponses() {
 		} else if pr.response.Status.IsCompleted() {
 			if pr.response.Status == PredictionSucceeded {
 				t := util.ParseTime(pr.response.CompletedAt).Sub(util.ParseTime(pr.response.StartedAt)).Seconds()
-				pr.response.Metrics = PredictionMetrics{PredictTime: t}
+				if pr.response.Metrics == nil {
+					pr.response.Metrics = make(map[string]any)
+				}
+				pr.response.Metrics["predict_time"] = t
 			}
 			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendWebhook(WebhookCompleted)

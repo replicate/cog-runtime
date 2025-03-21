@@ -2,7 +2,7 @@ import os
 import sys
 import time
 
-from cog import BasePredictor
+from cog import BasePredictor, current_scope
 from cog.server.exceptions import CancelationException
 
 
@@ -40,6 +40,8 @@ class Predictor(BasePredictor):
                 sys.exit(1)
             print('completed prediction')
             time.sleep(0.1)
+            current_scope().record_metric('i', i)
+            current_scope().record_metric('s_len', len(s))
             return f'*{s}*'
         except CancelationException as e:
             print('prediction canceled')
