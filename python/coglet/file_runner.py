@@ -174,50 +174,53 @@ class FileRunner:
         # Write partial response, e.g. starting, processing, if webhook is set
         is_async = 'webhook' in req
         epoch = 0
-        try:
-            if is_async:
-                self._respond(pid, epoch, resp)
-                epoch += 1
+        with api.scope(api.Scope(record_metric=lambda _, _2: None)):
+            print("MAIN SCOPE:")
+            print(api._current_scope.get())
+            try:
+                if is_async:
+                    self._respond(pid, epoch, resp)
+                    epoch += 1
 
-            if self.runner.is_iter():
-                resp['output'] = []
-                resp['status'] = 'processing'
-                self.ctx_pid.set(pid)
-                async for o in self.runner.predict_iter(req['input']):
+                if self.runner.is_iter():
+                    resp['output'] = []
+                    resp['status'] = 'processing'
+                    self.ctx_pid.set(pid)
+                    async for o in self.runner.predict_iter(req['input']):
+                        # Test JSON serialization in case of invalid output
+                        json.dumps(o, default=output_json)
+
+                        resp['output'].append(o)
+                        if is_async:
+                            self._respond(pid, epoch, resp)
+                            epoch += 1
+                else:
+                    self.ctx_pid.set(pid)
+                    o = await self.runner.predict(req['input'])
                     # Test JSON serialization in case of invalid output
                     json.dumps(o, default=output_json)
+                    resp['output'] = o
+                self.ctx_pid.set(None)
 
-                    resp['output'].append(o)
-                    if is_async:
-                        self._respond(pid, epoch, resp)
-                        epoch += 1
-            else:
-                self.ctx_pid.set(pid)
-                o = await self.runner.predict(req['input'])
-                # Test JSON serialization in case of invalid output
-                json.dumps(o, default=output_json)
-                resp['output'] = o
-            self.ctx_pid.set(None)
-
-            resp['status'] = 'succeeded'
-            self.logger.info('prediction completed: id=%s', pid)
-        except api.CancelationException:
-            resp['status'] = 'canceled'
-            self.ctx_pid.set(None)
-            self.logger.error('prediction canceled: id=%s', pid)
-        except asyncio.CancelledError:
-            resp['status'] = 'canceled'
-            self.ctx_pid.set(None)
-            self.logger.error('prediction canceled: id=%s', pid)
-        except Exception as e:
-            resp['error'] = str(e)
-            resp['status'] = 'failed'
-            self.ctx_pid.set(None)
-            self.logger.exception('prediction failed: id=%s %s', pid, e)
-        finally:
-            resp['completed_at'] = util.now_iso()
-        self._respond(pid, epoch, resp)
-        epoch += 1
+                resp['status'] = 'succeeded'
+                self.logger.info('prediction completed: id=%s', pid)
+            except api.CancelationException:
+                resp['status'] = 'canceled'
+                self.ctx_pid.set(None)
+                self.logger.error('prediction canceled: id=%s', pid)
+            except asyncio.CancelledError:
+                resp['status'] = 'canceled'
+                self.ctx_pid.set(None)
+                self.logger.error('prediction canceled: id=%s', pid)
+            except Exception as e:
+                resp['error'] = str(e)
+                resp['status'] = 'failed'
+                self.ctx_pid.set(None)
+                self.logger.exception('prediction failed: id=%s %s', pid, e)
+            finally:
+                resp['completed_at'] = util.now_iso()
+            self._respond(pid, epoch, resp)
+            epoch += 1
 
     def _respond(
         self,

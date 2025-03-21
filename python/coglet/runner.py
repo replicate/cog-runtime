@@ -57,6 +57,8 @@ class Runner:
 
     async def predict(self, inputs: Dict[str, Any]) -> Any:
         assert not self.is_iter(), 'predict returns iterator, call predict_iter instead'
+        print("INNER SCOPE:")
+        print(api._current_scope.get())
         kwargs = inspector.check_input(self.inputs, inputs)
         if self.is_async_predict:
             output = await self.predictor.predict(**kwargs)
