@@ -10,7 +10,7 @@ class Output(BaseModel):
 
 
 class Predictor(BasePredictor):
-    test_inputs = {'p': '/etc/hostname'}
+    test_inputs = {'p': '/etc/hosts'}
 
     def predict(self, p: Path) -> Output:
         time.sleep(0.1)

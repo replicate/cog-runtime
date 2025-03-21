@@ -5,7 +5,7 @@ from cog import BasePredictor, Path
 
 
 class Predictor(BasePredictor):
-    test_inputs = {'p': '/etc/hostname'}
+    test_inputs = {'p': '/etc/hosts'}
 
     def predict(self, p: Path) -> Path:
         time.sleep(0.1)

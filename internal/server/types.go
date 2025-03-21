@@ -90,19 +90,15 @@ type PredictionRequest struct {
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
 }
 
-type PredictionMetrics struct {
-	PredictTime float64 `json:"predict_time"`
-}
-
 type PredictionResponse struct {
-	Input       any               `json:"input"`
-	Output      any               `json:"output,omitempty"`
-	Id          string            `json:"id"`
-	CreatedAt   string            `json:"created_at,omitempty"`
-	StartedAt   string            `json:"started_at,omitempty"`
-	CompletedAt string            `json:"completed_at,omitempty"`
-	Logs        string            `json:"logs,omitempty"`
-	Error       string            `json:"error,omitempty"`
-	Status      PredictionStatus  `json:"status,omitempty"`
-	Metrics     PredictionMetrics `json:"metrics,omitempty"`
+	Input       any              `json:"input"`
+	Output      any              `json:"output,omitempty"`
+	Id          string           `json:"id"`
+	CreatedAt   string           `json:"created_at,omitempty"`
+	StartedAt   string           `json:"started_at,omitempty"`
+	CompletedAt string           `json:"completed_at,omitempty"`
+	Logs        string           `json:"logs,omitempty"`
+	Error       string           `json:"error,omitempty"`
+	Status      PredictionStatus `json:"status,omitempty"`
+	Metrics     map[string]any   `json:"metrics,omitempty"`
 }

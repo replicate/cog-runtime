@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from cog import BasePredictor
+from cog import BasePredictor, current_scope
 
 
 class Predictor(BasePredictor):
@@ -26,6 +26,8 @@ class Predictor(BasePredictor):
                 await asyncio.sleep(0.6)
             print('completed async prediction')
             await asyncio.sleep(0.1)
+            current_scope().record_metric('i', i)
+            current_scope().record_metric('s_len', len(s))
             return f'*{s}*'
         except asyncio.CancelledError as e:
             print('prediction canceled')

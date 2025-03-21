@@ -1,7 +1,9 @@
 import pathlib
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Iterator, List, Optional, TypeVar, Union
+from typing import Any, Iterator, List, Optional, TypeVar, Union, Callable, Generator
 
 ########################################
 # Data types
@@ -78,3 +80,57 @@ class BasePredictor(ABC):
     @abstractmethod
     def predict(self, **kwargs: Any) -> Any:
         return NotImplemented
+
+
+########################################
+# Scope
+########################################
+
+
+class Scope:
+    _record_metric: Callable[[str, Union[float, int]], None]
+    _tag: Optional[str] = None
+
+    def __init__(self, record_metric: Callable[[str, Union[float, int]], None], tag: Optional[str] = None):
+        self._record_metric = record_metric
+        self._tag = tag
+
+    @property
+    def record_metric(self) -> Callable[[str, Union[float, int]], None]:
+        return self._record_metric
+
+    def copy(self, **kwargs: Any) -> 'Scope':
+        return Scope(record_metric=self.record_metric, **kwargs)
+
+
+_current_scope: ContextVar[Optional[Scope]] = ContextVar("scope", default=None)
+
+
+def current_scope() -> Scope:
+    return _get_current_scope()
+
+
+def _get_current_scope() -> Scope:
+    s = _current_scope.get()
+    if s is None:
+        raise RuntimeError("No scope available")
+    return s
+
+
+@contextmanager
+def scope(sc: Scope) -> Generator[None, None, None]:
+    s = _current_scope.set(sc)
+    try:
+        yield
+    finally:
+        _current_scope.reset(s)
+
+
+@contextmanager
+def evolve_scope(**kwargs: Any) -> Generator[None, None, None]:
+    new_scope = _get_current_scope().copy(**kwargs)
+    s = _current_scope.set(new_scope)
+    try:
+        yield
+    finally:
+        _current_scope.reset(s)

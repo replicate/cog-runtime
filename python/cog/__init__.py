@@ -7,6 +7,7 @@ from coglet.api import (
     Input,
     Path,
     Secret,
+    current_scope,
 )
 
 __version__ = coglet.__version__
@@ -19,5 +20,6 @@ __all__ = [
     'Input',
     'Path',
     'Secret',
+    "current_scope",
     '__version__',
 ]

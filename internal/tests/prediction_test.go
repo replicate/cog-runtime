@@ -25,6 +25,8 @@ func TestPredictionSucceeded(t *testing.T) {
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
+	// assert.Equal(t, resp.Metrics["i"], 1)
+	// assert.Equal(t, resp.Metrics["s"], 3)
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
