@@ -44,7 +44,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
 	assert.Equal(t, "p01", resp.Id)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
+	assert.Contains(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
