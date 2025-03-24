@@ -1,5 +1,4 @@
 import asyncio
-import contextvars
 import inspect
 import json
 import logging
@@ -10,7 +9,7 @@ import signal
 import sys
 from typing import Any, Dict, Optional
 
-from coglet import api, inspector, runner, schemas, util
+from coglet import api, inspector, runner, schemas, scope, util
 
 
 class FileRunner:
@@ -32,14 +31,12 @@ class FileRunner:
         working_dir: str,
         module_name: str,
         class_name: str,
-        ctx_pid: contextvars.ContextVar[Optional[str]],
     ):
         self.logger = logger
         self.working_dir = working_dir
         self.module_name = module_name
         self.class_name = class_name
         self.runner: Optional[runner.Runner] = None
-        self.ctx_pid = ctx_pid
         self.isatty = sys.stdout.isatty()
 
     async def start(self) -> int:
@@ -89,7 +86,7 @@ class FileRunner:
 
         def _cancel_handler(signum, _) -> None:
             # ctx_pid is set when we are inside a prediction
-            if signum == signal.SIGUSR1 and self.ctx_pid.get() is not None:
+            if signum == signal.SIGUSR1 and scope.ctx_pid.get() is not None:
                 raise api.CancelationException()
 
         if self.runner is not None and self.runner.is_async_predict:
@@ -182,7 +179,7 @@ class FileRunner:
             if self.runner.is_iter():
                 resp['output'] = []
                 resp['status'] = 'processing'
-                self.ctx_pid.set(pid)
+                scope.ctx_pid.set(pid)
                 async for o in self.runner.predict_iter(req['input']):
                     # Test JSON serialization in case of invalid output
                     json.dumps(o, default=output_json)
@@ -192,31 +189,32 @@ class FileRunner:
                         self._respond(pid, epoch, resp)
                         epoch += 1
             else:
-                self.ctx_pid.set(pid)
+                scope.ctx_pid.set(pid)
                 o = await self.runner.predict(req['input'])
                 # Test JSON serialization in case of invalid output
                 json.dumps(o, default=output_json)
                 resp['output'] = o
-            self.ctx_pid.set(None)
+            scope.ctx_pid.set(None)
 
             resp['status'] = 'succeeded'
             self.logger.info('prediction completed: id=%s', pid)
         except api.CancelationException:
             resp['status'] = 'canceled'
-            self.ctx_pid.set(None)
+            scope.ctx_pid.set(None)
             self.logger.error('prediction canceled: id=%s', pid)
         except asyncio.CancelledError:
             resp['status'] = 'canceled'
-            self.ctx_pid.set(None)
+            scope.ctx_pid.set(None)
             self.logger.error('prediction canceled: id=%s', pid)
         except Exception as e:
             resp['error'] = str(e)
             resp['status'] = 'failed'
-            self.ctx_pid.set(None)
+            scope.ctx_pid.set(None)
             self.logger.exception('prediction failed: id=%s %s', pid, e)
         finally:
             resp['completed_at'] = util.now_iso()
         self._respond(pid, epoch, resp)
+        scope.metrics.pop(pid)
         epoch += 1
 
     def _respond(
@@ -225,6 +223,11 @@ class FileRunner:
         epoch: int,
         resp: Dict[str, Any],
     ) -> None:
+        m = scope.metrics.get(pid)
+        if m is not None:
+            if 'metrics' not in resp:
+                resp['metrics'] = {}
+            resp['metrics'].update(m)
         resp_path = os.path.join(
             self.working_dir, self.RESPONSE_FMT.format(pid=pid, epoch=epoch)
         )

@@ -24,7 +24,9 @@ func TestPredictionSucceeded(t *testing.T) {
 	resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
+	assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
+	assert.Equal(t, 1.0, resp.Metrics["i"])
+	assert.Equal(t, 3.0, resp.Metrics["s_len"])
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
@@ -42,7 +44,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
 	assert.Equal(t, "p01", resp.Id)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
+	assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
@@ -134,7 +136,7 @@ func TestPredictionConcurrency(t *testing.T) {
 	<-done1
 	assert.Equal(t, server.PredictionSucceeded, resp1.Status)
 	assert.Equal(t, "*bar*", resp1.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp1.Logs)
+	assert.Contains(t, resp1.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 
 	<-done2
 

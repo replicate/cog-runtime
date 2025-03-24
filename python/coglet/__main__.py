@@ -1,6 +1,5 @@
 import argparse
 import asyncio
-import contextvars
 import importlib
 import json
 import logging
@@ -8,9 +7,9 @@ import os
 import os.path
 import sys
 import time
-from typing import Callable, Dict, Optional, Tuple
+from typing import Optional, Tuple
 
-from coglet import file_runner
+from coglet import file_runner, scope
 
 
 def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, str]]:
@@ -63,47 +62,11 @@ def main() -> int:
     )
     logger.addHandler(handler)
 
-    _ctx_pid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-        'pid', default=None
-    )
-
     _stdout_write = sys.stdout.write
     _stderr_write = sys.stderr.write
 
-    def _ctx_write(write_fn) -> Callable[[str], int]:
-        buf: Dict[str, str] = {}
-
-        def _write(s: str) -> int:
-            if len(s) == 0:
-                return 0
-            pid = _ctx_pid.get()
-            prefix = f'[pid={pid}] ' if pid is not None else ''
-            if pid is None:
-                pid = 'logger'
-            n = 0
-            s = s.replace('\r', '\n')
-            if s[-1] == '\n':
-                b = buf.pop(pid, '')
-                out = b + s[:-1].replace('\n', f'\n{prefix}') + '\n'
-                n += write_fn(out)
-                buf[pid] = prefix
-            elif '\n' in s:
-                b = buf.pop(pid, '')
-                lines = s.replace('\n', f'\n{prefix}').split('\n')
-                n += write_fn(b + lines[0] + '\n')
-                for line in lines[1:-1]:
-                    n += write_fn(b + line + '\n')
-                buf[pid] = lines[-1]
-            else:
-                if pid not in buf:
-                    buf[pid] = prefix
-                buf[pid] += s.replace('\n', f'\n{prefix}')
-            return n
-
-        return _write
-
-    sys.stdout.write = _ctx_write(_stdout_write)  # type: ignore
-    sys.stderr.write = _ctx_write(_stderr_write)  # type: ignore
+    sys.stdout.write = scope.ctx_write(_stdout_write)  # type: ignore
+    sys.stderr.write = scope.ctx_write(_stderr_write)  # type: ignore
 
     args = parser.parse_args()
 
@@ -118,7 +81,6 @@ def main() -> int:
             working_dir=args.working_dir,
             module_name=module_name,
             class_name=class_name,
-            ctx_pid=_ctx_pid,
         ).start()
     )
 
