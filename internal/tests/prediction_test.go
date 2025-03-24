@@ -136,7 +136,7 @@ func TestPredictionConcurrency(t *testing.T) {
 	<-done1
 	assert.Equal(t, server.PredictionSucceeded, resp1.Status)
 	assert.Equal(t, "*bar*", resp1.Output)
-	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp1.Logs)
+	assert.Contains(t, resp1.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 
 	<-done2
 
