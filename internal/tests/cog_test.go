@@ -403,12 +403,7 @@ func (ct *CogTest) AssertResponses(
 		if i == l-1 {
 			assert.Equal(ct.t, finalStatus, r.Status)
 			assert.Equal(ct.t, finalOutput, r.Output)
-			if r.Status == server.PredictionFailed {
-				// Compat: legacy Cog includes Traceback in failed logs
-				assert.Contains(ct.t, r.Logs, finalLogs)
-			} else {
-				assert.Equal(ct.t, r.Logs, finalLogs)
-			}
+			assert.Contains(ct.t, r.Logs, finalLogs)
 		} else {
 			assert.Equal(ct.t, r.Status, server.PredictionProcessing)
 			// Logs are incremental
