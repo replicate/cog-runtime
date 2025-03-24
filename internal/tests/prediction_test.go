@@ -24,7 +24,7 @@ func TestPredictionSucceeded(t *testing.T) {
 	resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
-	assert.Contains(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
+	assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 	assert.Equal(t, 1.0, resp.Metrics["i"])
 	assert.Equal(t, 3.0, resp.Metrics["s_len"])
 
@@ -44,7 +44,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
 	assert.Equal(t, "p01", resp.Id)
-	assert.Contains(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", resp.Logs)
+	assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
