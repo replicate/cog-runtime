@@ -2,9 +2,9 @@ import importlib
 import inspect
 import re
 import typing
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Iterator, Optional
 
-from coglet import adt, api, util
+from coglet import adt, api
 
 
 def _check_parent(child: type, parent: type) -> bool:
@@ -41,28 +41,20 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
     cog_t = ft.primitive
     if cog_in.default is not None:
         if ft.repetition is adt.Repetition.REPEATED:
-            assert type(cog_in.default) is list, (
-                f'default must be a list for input: {name}'
-            )
-            assert all(util.check_value(cog_t, v) for v in cog_in.default), (
-                f'incompatible default for input: {name}]'
-            )
-            defaults = cog_in.default
+            defaults = ft.normalize(cog_in.default)
         else:
-            assert util.check_value(cog_t, cog_in.default), (
-                f'incompatible default for input: {name}'
-            )
-            defaults = [cog_in.default]
+            defaults = [ft.normalize(cog_in.default)]
 
+    numeric_types = {adt.PrimitiveType.FLOAT, adt.PrimitiveType.INTEGER}
     if cog_in.ge is not None or cog_in.le is not None:
-        assert cog_t in adt.NUMERIC_TYPES, f'incompatible input type for ge/le: {name}'
+        assert cog_t in numeric_types, f'incompatible input type for ge/le: {name}'
         if cog_in.ge is not None:
             assert all(x >= cog_in.ge for x in defaults), (
-                f'not all defaults >= {cog_in.ge} for input: {name}'
+                f'default conflict with ge={cog_in.ge} for input: {name}'
             )
         if cog_in.le is not None:
             assert all(x <= cog_in.le for x in defaults), (
-                f'not all defaults <= {cog_in.ge} for input: {name}'
+                f'default conflict with le={cog_in.ge} for input: {name}'
             )
 
     if cog_in.min_length is not None or cog_in.max_length is not None:
@@ -71,11 +63,11 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
         )
         if cog_in.min_length is not None:
             assert all(len(x) >= cog_in.min_length for x in defaults), (
-                f'not all defaults have len(x) >= {cog_in.min_length} for input: {name}'
+                f'default conflict with min_length={cog_in.min_length} for input: {name}'
             )
         if cog_in.max_length is not None:
             assert all(len(x) <= cog_in.max_length for x in defaults), (
-                f'not all defaults have len(x) <= {cog_in.min_length} for input: {name}'
+                f'default conflict with max_length={cog_in.min_length} for input: {name}'
             )
 
     if cog_in.regex is not None:
@@ -84,11 +76,12 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
         )
         regex = re.compile(cog_in.regex)
         assert all(regex.match(x) for x in defaults), (
-            f'not all defaults match regex for input: {name}'
+            f'default not a regex match for input: {name}'
         )
 
+    choice_types = {adt.PrimitiveType.INTEGER, adt.PrimitiveType.STRING}
     if cog_in.choices is not None:
-        assert cog_t in adt.CHOICE_TYPES, f'incompatible input type for choices: {name}'
+        assert cog_t in choice_types, f'incompatible input type for choices: {name}'
         assert len(cog_in.choices) >= 2, f'choices must have >= 2 elements: {name}'
         assert cog_in.ge is None and cog_in.le is None, (
             f'choices and ge/le are mutually exclusive: {name}'
@@ -96,15 +89,15 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
         assert cog_in.min_length is None and cog_in.max_length is None, (
             f'choices and min_length/max_length are mutually exclusive: {name}'
         )
-        assert all(adt.PYTHON_TO_COG.get(type(x)) is cog_t for x in cog_in.choices), (
-            f'not all choices have the same type as input: {name}'
-        )
+        assert all(
+            adt.PrimitiveType.from_type(type(x)) is cog_t for x in cog_in.choices
+        ), f'not all choices have the same type as input: {name}'
 
 
 def _input_adt(
     order: int, name: str, tpe: type, cog_in: Optional[api.Input]
 ) -> adt.Input:
-    ft = util.get_field_type(tpe)
+    ft = adt.FieldType.from_type(tpe)
     if cog_in is None:
         return adt.Input(
             name=name,
@@ -113,15 +106,7 @@ def _input_adt(
         )
     else:
         _validate_input(name, ft, cog_in)
-        if cog_in.default is None:
-            default = None
-        else:
-            if ft.repetition is adt.Repetition.REPEATED:
-                default = [
-                    util.normalize_value(ft.primitive, x) for x in cog_in.default
-                ]
-            else:
-                default = util.normalize_value(ft.primitive, cog_in.default)
+        default = None if cog_in.default is None else ft.normalize(cog_in.default)
         return adt.Input(
             name=name,
             order=order,
@@ -142,24 +127,44 @@ def _output_adt(tpe: type) -> adt.Output:
         assert tpe.__name__ == 'Output', 'output type must be named Output'
         fields = {}
         for name, t in tpe.__annotations__.items():
-            ft = util.get_field_type(t)
+            ft = adt.FieldType.from_type(t)
             assert ft.repetition is not adt.Repetition.REPEATED, (
                 f'output field must not be list: {name}'
             )
             fields[name] = ft
         return adt.Output(kind=adt.Kind.OBJECT, fields=fields)
 
-    kind = adt.CONTAINER_TO_COG.get(typing.get_origin(tpe)) or adt.Kind.SINGLE
-    elem_t = tpe
-    if kind is not adt.Kind.SINGLE:
+    origin = typing.get_origin(tpe)
+    kind = None
+    if origin is typing.get_origin(Iterator):
+        kind = adt.Kind.ITERATOR
         t_args = typing.get_args(tpe)
-        assert len(t_args) == 1, 'repeated type must have one type argument'
-        elem_t = t_args[0]
-        if kind is adt.Kind.CONCAT_ITERATOR:
-            assert elem_t is str, 'ConcatenateIterator must have str element'
-    out_t = adt.PYTHON_TO_COG.get(elem_t)
-    assert out_t is not None, f'unsupported output type {tpe}'
-    return adt.Output(kind=kind, type=out_t)
+        assert len(t_args) == 1, 'iterator type must have one type argument'
+        ft = adt.FieldType.from_type(t_args[0])
+        assert ft.repetition is adt.Repetition.REQUIRED
+        elem_t = ft.primitive
+    elif origin is api.ConcatenateIterator:
+        kind = adt.Kind.CONCAT_ITERATOR
+        t_args = typing.get_args(tpe)
+        assert len(t_args) == 1, 'iterator type must have one type argument'
+        ft = adt.FieldType.from_type(t_args[0])
+        assert ft.repetition is adt.Repetition.REQUIRED
+        elem_t = ft.primitive
+        assert elem_t is adt.PrimitiveType.STRING, (
+            'ConcatenateIterator must have str element'
+        )
+    else:
+        ft = adt.FieldType.from_type(tpe)
+        assert ft.repetition is not adt.Repetition.OPTIONAL, (
+            'output must not be Optional'
+        )
+        if ft.repetition == adt.Repetition.REQUIRED:
+            kind = adt.Kind.SINGLE
+        elif ft.repetition == adt.Repetition.REPEATED:
+            kind = adt.Kind.LIST
+        elem_t = ft.primitive
+    assert kind is not None
+    return adt.Output(kind=kind, type=elem_t)
 
 
 def _predictor_adt(module_name: str, class_name: str, f: Callable) -> adt.Predictor:
@@ -203,18 +208,7 @@ def check_input(
     for name, value in inputs.items():
         assert name in adt_ins, f'unknown field: {name}'
         adt_in = adt_ins[name]
-        cog_t = adt_in.type.primitive
-        if adt_in.type.repetition is adt.Repetition.REPEATED:
-            assert all(util.check_value(cog_t, v) for v in value), (
-                f'incompatible value for field: {name}={value}'
-            )
-            value = [util.normalize_value(cog_t, v) for v in value]
-        else:
-            assert util.check_value(cog_t, value), (
-                f'incompatible value for field: {name}={value}'
-            )
-            value = util.normalize_value(cog_t, value)
-        kwargs[name] = value
+        kwargs[name] = adt_in.type.normalize(value)
     for name, adt_in in adt_ins.items():
         if name not in kwargs:
             # default=None is only allowed on `Optional[<type>]`
@@ -256,37 +250,6 @@ def check_input(
                 f'validation failure: choices for field: {name}={v}'
             )
     return kwargs
-
-
-def check_output(adt_out: adt.Output, output: Any) -> Any:
-    if adt_out.kind is adt.Kind.SINGLE:
-        assert adt_out.type is not None, 'missing output type'
-        assert util.check_value(adt_out.type, output), f'incompatible output: {output}'
-        return util.normalize_value(adt_out.type, output)
-    elif adt_out.kind is adt.Kind.LIST:
-        assert adt_out.type is not None, 'missing output type'
-        assert type(output) is list, 'output is not list'
-        for i, x in enumerate(output):
-            assert util.check_value(adt_out.type, x), (
-                f'incompatible output element: {x}'
-            )
-            output[i] = util.normalize_value(adt_out.type, x)
-        return output
-    elif adt_out.kind is adt.Kind.OBJECT:
-        assert adt_out.fields is not None, 'missing output fields'
-        for name, tpe in adt_out.fields.items():
-            assert hasattr(output, name), f'missing output field: {name}'
-            value = getattr(output, name)
-            if value is None:
-                assert tpe.repetition is adt.Repetition.OPTIONAL, (
-                    f'missing value for output field: {name}'
-                )
-            else:
-                assert util.check_value(tpe.primitive, value), (
-                    f'incompatible output for field: {name}={value}'
-                )
-            setattr(output, name, util.normalize_value(tpe.primitive, value))
-        return output
 
 
 def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
