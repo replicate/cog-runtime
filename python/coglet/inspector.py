@@ -2,7 +2,9 @@ import importlib
 import inspect
 import re
 import typing
-from typing import Any, Callable, Dict, Iterator, Optional
+import warnings
+from types import ModuleType
+from typing import Any, Callable, Dict, Iterator, Optional, Type
 
 from coglet import adt, api
 
@@ -136,21 +138,20 @@ def _output_adt(tpe: type) -> adt.Output:
 
     origin = typing.get_origin(tpe)
     kind = None
+    ft = None
     if origin is typing.get_origin(Iterator):
         kind = adt.Kind.ITERATOR
         t_args = typing.get_args(tpe)
         assert len(t_args) == 1, 'iterator type must have one type argument'
         ft = adt.FieldType.from_type(t_args[0])
         assert ft.repetition is adt.Repetition.REQUIRED
-        elem_t = ft.primitive
     elif origin is api.ConcatenateIterator:
         kind = adt.Kind.CONCAT_ITERATOR
         t_args = typing.get_args(tpe)
         assert len(t_args) == 1, 'iterator type must have one type argument'
         ft = adt.FieldType.from_type(t_args[0])
         assert ft.repetition is adt.Repetition.REQUIRED
-        elem_t = ft.primitive
-        assert elem_t is adt.PrimitiveType.STRING, (
+        assert ft.primitive is adt.PrimitiveType.STRING, (
             'ConcatenateIterator must have str element'
         )
     else:
@@ -162,9 +163,8 @@ def _output_adt(tpe: type) -> adt.Output:
             kind = adt.Kind.SINGLE
         elif ft.repetition == adt.Repetition.REPEATED:
             kind = adt.Kind.LIST
-        elem_t = ft.primitive
     assert kind is not None
-    return adt.Output(kind=kind, type=elem_t)
+    return adt.Output(kind=kind, type=ft.primitive, coder=ft.coder)
 
 
 def _predictor_adt(module_name: str, class_name: str, f: Callable) -> adt.Predictor:
@@ -252,6 +252,31 @@ def check_input(
     return kwargs
 
 
+def _is_coder(cls: Type) -> bool:
+    return (
+        inspect.isclass(cls) and cls is not api.Coder and _check_parent(cls, api.Coder)
+    )
+
+
+def _find_coders(module: ModuleType) -> None:
+    found = False
+    # from cog.coders.some_coders import SomeCoder
+    for _, c in inspect.getmembers(module, _is_coder):
+        warnings.warn(f'Registering coder: {c}')
+        found = True
+        api.Coder.register(c)
+    # from cog.coders import some_coders
+    for _, m in inspect.getmembers(module, inspect.ismodule):
+        for _, c in inspect.getmembers(m, _is_coder):
+            warnings.warn(f'Registering coder: {c}')
+            found = True
+            api.Coder.register(c)
+    if found:
+        warnings.warn(
+            'Coders are experimental and might change or be removed without warning.'
+        )
+
+
 def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
     module = importlib.import_module(module_name)
     fullname = f'{module_name}.{class_name}'
@@ -265,6 +290,8 @@ def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
     assert hasattr(cls, 'setup'), f'setup method not found: {fullname}'
     assert hasattr(cls, 'predict'), f'predict method not found: {fullname}'
     _validate_setup(_unwrap(getattr(cls, 'setup')))
+    # Find coders users by module before validating predict function
+    _find_coders(module)
     return _predictor_adt(module_name, class_name, _unwrap(getattr(cls, 'predict')))
 
 

@@ -24,8 +24,8 @@ class Runner:
         inputs = inspector.get_test_inputs(self.predictor, self.inputs)
         if self.is_iter():
             output = []
-            async for o in self.predict_iter(inputs):
-                output.append(o)
+            async for x in self.predict_iter(inputs):
+                output.append(x)
         else:
             output = await self.predict(inputs)
         return output
