@@ -32,6 +32,12 @@ func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, e
 					return nil, err
 				}
 				xs[i] = o
+			} else {
+				o, err := handlePath(xs[i], paths, fn)
+				if err != nil {
+					return nil, err
+				}
+				xs[i] = o
 			}
 		}
 		return xs, nil
@@ -39,6 +45,12 @@ func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, e
 		for key, value := range m {
 			if s, ok := value.(string); ok {
 				o, err := fn(s, paths)
+				if err != nil {
+					return nil, err
+				}
+				m[key] = o
+			} else {
+				o, err := handlePath(m[key], paths, fn)
 				if err != nil {
 					return nil, err
 				}

@@ -1,7 +1,9 @@
+import dataclasses
+import inspect
 import typing
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from coglet import api
 
@@ -13,6 +15,7 @@ class PrimitiveType(Enum):
     STRING = auto()
     PATH = auto()
     SECRET = auto()
+    CUSTOM = auto()
 
     @staticmethod
     def _python_type() -> dict:
@@ -23,6 +26,7 @@ class PrimitiveType(Enum):
             PrimitiveType.STRING: str,
             PrimitiveType.PATH: api.Path,
             PrimitiveType.SECRET: api.Secret,
+            PrimitiveType.CUSTOM: Any,
         }
 
     @staticmethod
@@ -34,6 +38,7 @@ class PrimitiveType(Enum):
             PrimitiveType.STRING: 'string',
             PrimitiveType.PATH: 'string',
             PrimitiveType.SECRET: 'string',
+            PrimitiveType.CUSTOM: 'object',
         }
 
     @staticmethod
@@ -48,13 +53,16 @@ class PrimitiveType(Enum):
         }
 
     @staticmethod
-    def from_type(tpe: type) -> Optional[Any]:
-        return PrimitiveType._adt_type().get(tpe)
+    def from_type(tpe: type) -> Any:
+        return PrimitiveType._adt_type().get(tpe, PrimitiveType.CUSTOM)
 
     def normalize(self, value: Any) -> Any:
         pt = PrimitiveType._python_type()[self]
-        # String-ly types, only upcast
-        if self in {self.PATH, self.SECRET}:
+        if self is PrimitiveType.CUSTOM:
+            # Custom type, leave as is
+            return value
+        elif self in {self.PATH, self.SECRET}:
+            # String-ly types, only upcast
             return value if type(value) is pt else pt(value)
         else:
             v = pt(value)
@@ -71,11 +79,12 @@ class PrimitiveType(Enum):
             jt['x-cog-secret'] = True
         return jt
 
-    def json_value(self, value: Any) -> Any:
+    def json_encode(self, value: Any) -> Any:
         if self is self.FLOAT:
             return float(value)
         elif self in {self.PATH, self.SECRET}:
-            return str(value)
+            # Leave these as is and let file runner handle special encoding
+            return value
         else:
             return value
 
@@ -90,6 +99,7 @@ class Repetition(Enum):
 class FieldType:
     primitive: PrimitiveType
     repetition: Repetition
+    coder: Optional[api.Coder]
 
     @staticmethod
     def from_type(tpe: type):
@@ -109,8 +119,12 @@ class FieldType:
             elem_t = tpe
             repetition = Repetition.REQUIRED
         cog_t = PrimitiveType.from_type(elem_t)
-        assert cog_t is not None, f'unsupported Cog type {elem_t}'
-        return FieldType(primitive=cog_t, repetition=repetition)
+        coder = None
+        if cog_t is PrimitiveType.CUSTOM:
+            coder = api.Coder.lookup(elem_t)
+            assert coder is not None, f'unsupported Cog type {elem_t}'
+
+        return FieldType(primitive=cog_t, repetition=repetition, coder=coder)
 
     def normalize(self, value: Any) -> Any:
         if self.repetition is Repetition.REQUIRED:
@@ -125,6 +139,26 @@ class FieldType:
             return {'type': 'array', 'items': self.primitive.json_type()}
         else:
             return self.primitive.json_type()
+
+    def json_encode(self, value: Any) -> Any:
+        f: Callable[[Any], Any] = self.primitive.json_encode
+        if self.primitive is PrimitiveType.CUSTOM:
+            assert self.coder is not None
+            f = self.coder.encode
+        if self.repetition is Repetition.REPEATED:
+            return [f(x) for x in value]
+        else:
+            return f(value)
+
+    def json_decode(self, value: Any) -> Any:
+        if self.primitive is not PrimitiveType.CUSTOM:
+            return value
+        assert self.coder is not None
+        f = self.coder.decode
+        if self.repetition is Repetition.REPEATED:
+            return [f(x) for x in value]
+        else:
+            return f(value)
 
 
 @dataclass(frozen=True)
@@ -155,28 +189,7 @@ class Output:
     kind: Kind
     type: Optional[PrimitiveType] = None
     fields: Optional[Dict[str, FieldType]] = None
-
-    def normalize(self, value: Any) -> Any:
-        if self.kind is Kind.SINGLE:
-            assert self.type is not None
-            return self.type.normalize(value)
-        elif self.kind is Kind.LIST:
-            assert self.type is not None
-            return [self.type.normalize(x) for x in value]
-        elif self.kind in {Kind.ITERATOR, Kind.CONCAT_ITERATOR}:
-            assert self.type is not None
-            return self.type.normalize(value)
-        elif self.kind is Kind.OBJECT:
-            assert self.fields is not None
-            for name, tpe in self.fields.items():
-                assert hasattr(value, name), f'missing output field: {name}'
-                v = getattr(value, name)
-                if v is None:
-                    assert tpe.repetition is Repetition.OPTIONAL, (
-                        f'missing value for output field: {name}'
-                    )
-                setattr(value, name, tpe.normalize(v))
-            return value
+    coder: Optional[api.Coder] = None
 
     def json_type(self) -> dict[str, Any]:
         jt: dict[str, Any] = {'title': 'Output'}
@@ -219,6 +232,48 @@ class Output:
                 }
             )
         return jt
+
+    def _transform(self, value: Any, json: bool) -> Any:
+        if self.kind in {Kind.SINGLE, Kind.ITERATOR, Kind.CONCAT_ITERATOR}:
+            assert self.type is not None
+            f = self.type.json_encode if json else self.type.normalize
+            return f(value)
+        elif self.kind is Kind.LIST:
+            assert self.type is not None
+            f = self.type.json_encode if json else self.type.normalize
+            return [f(x) for x in value]
+        elif self.kind is Kind.OBJECT:
+            assert self.fields is not None
+            for name, ft in self.fields.items():
+                f = ft.json_encode if json else ft.normalize
+                assert hasattr(value, name), f'missing output field: {name} {value}'
+                v = getattr(value, name)
+                if v is None:
+                    assert ft.repetition is Repetition.OPTIONAL, (
+                        f'missing value for output field: {name}'
+                    )
+                setattr(value, name, f(v))
+            return value
+
+    def normalize(self, value: Any) -> Any:
+        return self._transform(value, json=False)
+
+    def json_encode(self, value: Any) -> Any:
+        if self.coder is not None:
+            return self.coder.encode(value)
+        o = self._transform(value, json=True)
+        if self.kind is Kind.OBJECT:
+            # Further expand Output into dict
+            tpe = type(o)
+            assert tpe.__name__ == 'Output' and any(
+                c is api.BaseModel for c in inspect.getmro(tpe)
+            )
+            r = {}
+            for f in dataclasses.fields(o):
+                r[f.name] = getattr(o, f.name)
+            return r
+        else:
+            return o
 
 
 @dataclass(frozen=True)

@@ -26,30 +26,20 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
         # Legacy Cog does not include <name> in "required" fields or set "default" value
         # This allows None to be passed to `str` or `List[str]` which is incorrect
 
-        # <name>: <type>
-        if adt_in.type.repetition is adt.Repetition.REQUIRED:
-            if adt_in.default is None:
-                # default=None or unspecified: actual "required" field in schema
+        # <name>:<type> = Input() - "required"
+        # <name>:<type> = Input(default=<value>) - not "required", has "default"
+        # <name>:Optional[<type>] = Input() - not "required", default to None
+        # <name>:Optional[<type>] = Input(default=<value>) - not "required", has "default"
+        # <name>:list[<type>] = Input() - "required"
+        # <name>:list[<type>] = Input(default=[<value>]) - not "required", has "default"
+        if adt_in.default is None:
+            if adt_in.type.repetition in {
+                adt.Repetition.REQUIRED,
+                adt.Repetition.REPEATED,
+            }:
                 required.append(name)
-            else:
-                prop['default'] = adt_in.type.primitive.json_value(adt_in.default)
-        # <name>: Optional[<type>]
-        elif adt_in.type.repetition is adt.Repetition.OPTIONAL:
-            if adt_in.default is None:
-                # default=None or unspecified: not "required" field in schema and defaults to None
-                pass
-            else:
-                prop['default'] = adt_in.type.primitive.json_value(adt_in.default)
-        # <name>: Optional[<type>]
-        elif adt_in.type.repetition is adt.Repetition.REPEATED:
-            if adt_in.default is None:
-                # default=None or unspecified: actual "required" field in schema
-                required.append(name)
-            else:
-                # default=[] is a valid default
-                prop['default'] = [
-                    adt_in.type.primitive.json_value(x) for x in adt_in.default
-                ]
+        else:
+            prop['default'] = adt_in.type.json_encode(adt_in.default)
 
         if adt_in.description is not None:
             prop['description'] = adt_in.description
