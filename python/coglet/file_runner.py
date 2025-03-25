@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import json
 import logging
 import os
@@ -176,23 +175,28 @@ class FileRunner:
                 self._respond(pid, epoch, resp)
                 epoch += 1
 
+            input = req['input']
+            for k, v in input.items():
+                input[k] = self.runner.inputs[k].type.json_decode(v)
+
             if self.runner.is_iter():
                 resp['output'] = []
                 resp['status'] = 'processing'
                 scope.ctx_pid.set(pid)
-                async for o in self.runner.predict_iter(req['input']):
+                async for o in self.runner.predict_iter(input):
                     # Test JSON serialization in case of invalid output
-                    json.dumps(o, default=output_json)
+                    json.dumps(o, default=util.output_json)
 
-                    resp['output'].append(o)
+                    resp['output'].append(self.runner.output.json_encode(o))
                     if is_async:
                         self._respond(pid, epoch, resp)
                         epoch += 1
             else:
                 scope.ctx_pid.set(pid)
-                o = await self.runner.predict(req['input'])
+                o = await self.runner.predict(input)
+                o = self.runner.output.json_encode(o)
                 # Test JSON serialization in case of invalid output
-                json.dumps(o, default=output_json)
+                json.dumps(o, default=util.output_json)
                 resp['output'] = o
             scope.ctx_pid.set(None)
 
@@ -233,23 +237,9 @@ class FileRunner:
             self.working_dir, self.RESPONSE_FMT.format(pid=pid, epoch=epoch)
         )
         with open(resp_path, 'w') as f:
-            json.dump(resp, f, default=output_json)
+            json.dump(resp, f, default=util.output_json)
         self._signal(FileRunner.SIG_OUTPUT)
 
     def _signal(self, signum: int) -> None:
         if not self.isatty:
             os.kill(os.getppid(), signum)
-
-
-def output_json(obj):
-    tpe = type(obj)
-    if tpe is api.Path:
-        return f'file://{obj.absolute()}'
-    elif tpe is api.Secret:
-        return obj.get_secret_value()
-    elif tpe.__name__ == 'Output' and any(
-        c is api.BaseModel for c in inspect.getmro(tpe)
-    ):
-        return obj.__dict__
-    else:
-        raise TypeError(f'Object of type {tpe} is not JSON serializable')

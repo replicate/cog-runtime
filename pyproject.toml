@@ -22,10 +22,15 @@ dev = [
 ]
 
 test = [
+    'openai',
     'pytest-cov',
     'pytest',
     'pytest-asyncio',
     'tqdm',
+]
+
+provided = [
+    'pydantic',
 ]
 
 [build-system]
