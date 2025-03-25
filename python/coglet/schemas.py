@@ -2,17 +2,7 @@ import json
 import os.path
 from typing import Any, Dict
 
-from coglet import adt, util
-
-
-def _to_json_type(cog_t: adt.PrimitiveType, prop: Dict[str, Any]) -> None:
-    prop['type'] = adt.COG_TO_JSON[cog_t]
-    if cog_t is adt.PrimitiveType.PATH:
-        prop['format'] = 'uri'
-    elif cog_t is adt.PrimitiveType.SECRET:
-        prop['format'] = 'password'
-        prop['writeOnly'] = True
-        prop['x-cog-secret'] = True
+from coglet import adt
 
 
 def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
@@ -30,28 +20,7 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
             prop['allOf'] = [{'$ref': f'#/components/schemas/{name}'}]
         else:
             prop['title'] = name.replace('_', ' ').title()
-            json_t = adt.COG_TO_JSON[adt_in.type.primitive]
-            if adt_in.type.repetition is adt.Repetition.REPEATED:
-                prop['type'] = 'array'
-                prop['items'] = {'type': json_t}
-            else:
-                prop['type'] = json_t
-        if adt_in.type.primitive is adt.PrimitiveType.PATH:
-            p = (
-                prop['items']
-                if adt_in.type.repetition is adt.Repetition.REPEATED
-                else prop
-            )
-            p['format'] = 'uri'
-        elif adt_in.type.primitive is adt.PrimitiveType.SECRET:
-            p = (
-                prop['items']
-                if adt_in.type.repetition is adt.Repetition.REPEATED
-                else prop
-            )
-            p['format'] = 'password'
-            p['writeOnly'] = True
-            p['x-cog-secret'] = True
+            prop.update(adt_in.type.json_type())
 
         # With <name>: <type> = Input(default=None)
         # Legacy Cog does not include <name> in "required" fields or set "default" value
@@ -63,14 +32,14 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
                 # default=None or unspecified: actual "required" field in schema
                 required.append(name)
             else:
-                prop['default'] = util.json_value(adt_in.type.primitive, adt_in.default)
+                prop['default'] = adt_in.type.primitive.json_value(adt_in.default)
         # <name>: Optional[<type>]
         elif adt_in.type.repetition is adt.Repetition.OPTIONAL:
             if adt_in.default is None:
                 # default=None or unspecified: not "required" field in schema and defaults to None
                 pass
             else:
-                prop['default'] = util.json_value(adt_in.type.primitive, adt_in.default)
+                prop['default'] = adt_in.type.primitive.json_value(adt_in.default)
         # <name>: Optional[<type>]
         elif adt_in.type.repetition is adt.Repetition.REPEATED:
             if adt_in.default is None:
@@ -79,7 +48,7 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
             else:
                 # default=[] is a valid default
                 prop['default'] = [
-                    util.json_value(adt_in.type.primitive, x) for x in adt_in.default
+                    adt_in.type.primitive.json_value(x) for x in adt_in.default
                 ]
 
         if adt_in.description is not None:
@@ -105,48 +74,18 @@ def to_json_enums(predictor: adt.Predictor) -> Dict[str, Any]:
     for name, adt_in in predictor.inputs.items():
         if adt_in.choices is None:
             continue
-        enums[name] = {
+        t = {
             'title': name,
-            'type': adt.COG_TO_JSON[adt_in.type.primitive],
             'description': 'An enumeration.',
             'enum': adt_in.choices,
         }
+        t.update(adt_in.type.primitive.json_type())
+        enums[name] = t
     return enums
 
 
 def to_json_output(predictor: adt.Predictor) -> Dict[str, Any]:
-    out_schema: Dict[str, Any] = {
-        'title': 'Output',
-    }
-    output = predictor.output
-    if output.kind is adt.Kind.SINGLE or output.kind in adt.ARRAY_KINDS:
-        assert output.type is not None
-        if output.kind is adt.Kind.SINGLE:
-            _to_json_type(output.type, out_schema)
-        else:
-            out_schema['type'] = 'array'
-            out_schema['items'] = {}
-            _to_json_type(output.type, out_schema['items'])
-
-        if output.kind is adt.Kind.ITERATOR:
-            out_schema['x-cog-array-type'] = 'iterator'
-        elif output.kind is adt.Kind.CONCAT_ITERATOR:
-            out_schema['x-cog-array-display'] = 'concatenate'
-            out_schema['x-cog-array-type'] = 'iterator'
-    elif output.kind is adt.Kind.OBJECT:
-        assert output.fields is not None
-        out_schema['type'] = 'object'
-        props = {}
-        required = []
-        for name, cog_t in output.fields.items():
-            props[name] = {
-                'title': name.replace('_', ' ').title(),
-            }
-            _to_json_type(cog_t.primitive, props[name])
-            required.append(name)
-        out_schema['properties'] = props
-        out_schema['required'] = required
-    return out_schema
+    return predictor.output.json_type()
 
 
 def to_json_schema(predictor: adt.Predictor) -> Dict[str, Any]:

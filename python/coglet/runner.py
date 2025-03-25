@@ -4,7 +4,7 @@ import os
 import os.path
 from typing import Any, AsyncGenerator, Dict
 
-from coglet import adt, api, inspector, util
+from coglet import adt, api, inspector
 
 
 # Reflectively run a Cog predictor
@@ -62,7 +62,7 @@ class Runner:
             output = await self.predictor.predict(**kwargs)
         else:
             output = self.predictor.predict(**kwargs)
-        return inspector.check_output(self.output, output)
+        return self.output.normalize(output)
 
     async def predict_iter(self, inputs: Dict[str, Any]) -> AsyncGenerator[Any, None]:
         assert self.is_iter(), 'predict does not return iterator, call predict instead'
@@ -71,13 +71,7 @@ class Runner:
         kwargs = inspector.check_input(self.inputs, inputs)
         if self.is_async_predict:
             async for x in self.predictor.predict(**kwargs):
-                assert util.check_value(self.output.type, x), (
-                    f'incompatible output: {x}'
-                )
-                yield x
+                yield self.output.normalize(x)
         else:
             for x in self.predictor.predict(**kwargs):
-                assert util.check_value(self.output.type, x), (
-                    f'incompatible output: {x}'
-                )
-                yield x
+                yield self.output.normalize(x)
