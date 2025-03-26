@@ -214,7 +214,8 @@ class FileRunner:
         finally:
             resp['completed_at'] = util.now_iso()
         self._respond(pid, epoch, resp)
-        scope.metrics.pop(pid)
+        if pid in scope.metrics:
+            scope.metrics.pop(pid)
         epoch += 1
 
     def _respond(
