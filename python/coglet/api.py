@@ -1,7 +1,42 @@
 import pathlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Iterator, List, Optional, TypeVar, Union
+from typing import Any, Iterator, List, Optional, Type, TypeVar, Union
+
+########################################
+# Custom encoding
+########################################
+
+
+# Encoding between a custom type and JSON dict[str, Any]
+class Coder:
+    _coders: set = set()
+
+    @staticmethod
+    def register(coder) -> None:
+        Coder._coders.add(coder)
+
+    @staticmethod
+    def lookup(tpe: Type) -> Optional[Any]:
+        for cls in Coder._coders:
+            c = cls.factory(tpe)
+            if c is not None:
+                return c
+        return None
+
+    @staticmethod
+    @abstractmethod
+    def factory(cls: Type) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def encode(self, x: Any) -> dict[str, Any]:
+        pass
+
+    @abstractmethod
+    def decode(self, x: dict[str, Any]) -> Any:
+        pass
+
 
 ########################################
 # Data types

@@ -6,7 +6,7 @@ from typing import List
 
 import pytest
 
-from coglet import inspector, runner, schemas
+from coglet import inspector, runner, schemas, util
 
 # Test predictors in tests/schemas
 # * run prediction with input/output fixture
@@ -61,6 +61,11 @@ def test_schema(predictor):
         # List[Secret] missing defaults
         props['ss']['default'] = ['**********', '**********']
 
-    assert schemas.to_json_input(p) == schema['components']['schemas']['Input']
-    assert schemas.to_json_output(p) == schema['components']['schemas']['Output']
-    assert schemas.to_json_schema(p) == schema
+    # Round trip schema to encode Path & Secret
+    def rt(s):
+        return json.loads(json.dumps(s, default=util.schema_json))
+
+    assert rt(schemas.to_json_input(p)) == schema['components']['schemas']['Input']
+    assert rt(schemas.to_json_output(p)) == schema['components']['schemas']['Output']
+
+    assert rt(schemas.to_json_schema(p)) == schema
