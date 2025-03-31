@@ -260,7 +260,10 @@ class Output:
 
     def json_encode(self, value: Any) -> Any:
         if self.coder is not None:
-            return self.coder.encode(value)
+            if self.kind is Kind.LIST:
+                return [self.coder.encode(x) for x in value]
+            else:
+                return self.coder.encode(value)
         o = self._transform(value, json=True)
         if self.kind is Kind.OBJECT:
             # Further expand Output into dict

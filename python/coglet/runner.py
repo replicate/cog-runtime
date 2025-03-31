@@ -25,9 +25,11 @@ class Runner:
         if self.is_iter():
             output = []
             async for x in self.predict_iter(inputs):
+                self.output.json_encode(x)
                 output.append(x)
         else:
             output = await self.predict(inputs)
+            self.output.json_encode(output)
         return output
 
     async def setup(self) -> None:
