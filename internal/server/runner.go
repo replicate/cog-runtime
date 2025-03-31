@@ -505,6 +505,7 @@ func (r *Runner) log(line string) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		r.logs = append(r.logs, line)
+		r.setupResult.Logs = util.JoinLogs(r.logs)
 	}
 	fmt.Println(line)
 }
