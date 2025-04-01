@@ -13,7 +13,7 @@ from coglet import file_runner, scope
 
 
 def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, str]]:
-    if os.environ.get('R8_TORCH_VERSION') is not None:
+    if os.environ.get('R8_TORCH_VERSION', '') != '':
         logger.info('eagerly importing torch')
         importlib.import_module('torch')
 
