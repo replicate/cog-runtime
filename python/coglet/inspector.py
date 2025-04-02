@@ -4,7 +4,7 @@ import re
 import typing
 import warnings
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterator, Optional, Type
+from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Type
 
 from coglet import adt, api
 
@@ -139,13 +139,13 @@ def _output_adt(tpe: type) -> adt.Output:
     origin = typing.get_origin(tpe)
     kind = None
     ft = None
-    if origin is typing.get_origin(Iterator):
+    if origin in {typing.get_origin(Iterator), typing.get_origin(AsyncIterator)}:
         kind = adt.Kind.ITERATOR
         t_args = typing.get_args(tpe)
         assert len(t_args) == 1, 'iterator type must have one type argument'
         ft = adt.FieldType.from_type(t_args[0])
         assert ft.repetition is adt.Repetition.REQUIRED
-    elif origin is api.ConcatenateIterator:
+    elif origin in {api.ConcatenateIterator, api.AsyncConcatenateIterator}:
         kind = adt.Kind.CONCAT_ITERATOR
         t_args = typing.get_args(tpe)
         assert len(t_args) == 1, 'iterator type must have one type argument'
