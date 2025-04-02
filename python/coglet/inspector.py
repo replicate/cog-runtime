@@ -145,7 +145,7 @@ def _output_adt(tpe: type) -> adt.Output:
         assert len(t_args) == 1, 'iterator type must have one type argument'
         ft = adt.FieldType.from_type(t_args[0])
         assert ft.repetition is adt.Repetition.REQUIRED
-    elif origin is api.ConcatenateIterator:
+    elif origin in (api.ConcatenateIterator, api.AsyncConcatenateIterator):
         kind = adt.Kind.CONCAT_ITERATOR
         t_args = typing.get_args(tpe)
         assert len(t_args) == 1, 'iterator type must have one type argument'

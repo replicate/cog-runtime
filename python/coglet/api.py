@@ -1,7 +1,7 @@
 import pathlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Iterator, List, Optional, Type, TypeVar, Union
+from typing import Any, AsyncIterator, Iterator, List, Optional, Type, TypeVar, Union
 
 ########################################
 # Custom encoding
@@ -71,6 +71,11 @@ _T_co = TypeVar('_T_co', covariant=True)
 class ConcatenateIterator(Iterator[_T_co]):
     @abstractmethod
     def __next__(self) -> _T_co: ...
+
+
+class AsyncConcatenateIterator(AsyncIterator[_T_co]):
+    @abstractmethod
+    async def __anext__(self) -> _T_co: ...
 
 
 ########################################
