@@ -1,13 +1,12 @@
 import asyncio
-from typing import AsyncIterator
 
-from cog import BasePredictor
+from cog import AsyncConcatenateIterator, BasePredictor
 
 
 class Predictor(BasePredictor):
     test_inputs = {'i': 3, 's': 'foo'}
 
-    async def predict(self, i: int, s: str) -> AsyncIterator[str]:
+    async def predict(self, i: int, s: str) -> AsyncConcatenateIterator[str]:
         await asyncio.sleep(0.1)
         print('starting prediction')
         if i > 0:
