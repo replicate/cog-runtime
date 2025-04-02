@@ -355,6 +355,9 @@ func (r *Runner) handleSignals() {
 				if _, err := os.Stat(path.Join(r.workingDir, "async_predict")); err == nil {
 					r.asyncPredict = true
 				}
+				if err := r.handleReadinessProbe(); err != nil {
+					log.Errorw("fail to write ready file", "err", err)
+				}
 			}
 			log.Info("runner is ready")
 			r.mu.Lock()
@@ -367,6 +370,20 @@ func (r *Runner) handleSignals() {
 			r.mu.Unlock()
 		}
 	}
+}
+
+func (r *Runner) handleReadinessProbe() error {
+	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+		return nil
+	}
+	dir := "/var/run/cog"
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path.Join(dir, "ready"), nil, 0o600); err != nil {
+		return err
+	}
+	return nil
 }
 
 ////////////////////
