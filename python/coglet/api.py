@@ -118,3 +118,12 @@ class BasePredictor(ABC):
     @abstractmethod
     def predict(self, **kwargs: Any) -> Any:
         return NotImplemented
+
+
+########################################
+# Logging
+########################################
+
+
+class ExperimentalFeatureWarning(Warning):
+    pass
