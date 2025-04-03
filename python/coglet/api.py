@@ -125,5 +125,7 @@ class BasePredictor(ABC):
 ########################################
 
 
+# Compat: for current_scope warning
+# https://github.com/replicate/cog/blob/main/python/cog/types.py#L41
 class ExperimentalFeatureWarning(Warning):
     pass
