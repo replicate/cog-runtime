@@ -372,6 +372,8 @@ func (r *Runner) handleSignals() {
 	}
 }
 
+// Compat: signal for K8S pod readiness probe
+// https://github.com/replicate/cog/blob/main/python/cog/server/probes.py
 func (r *Runner) handleReadinessProbe() error {
 	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
 		return nil
