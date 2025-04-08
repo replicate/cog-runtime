@@ -26,9 +26,9 @@ class DataclassCoder(api.Coder):
             v = getattr(x, f.name)
             # Keep Path and Secret as is and let json.dumps(default=fn) handle them
             if f.type is api.Path:
-                v = api.Path(v)
+                v = api.Path(v) if type(v) is str else v
             elif f.type is api.Secret:
-                v = api.Secret(v)
+                v = api.Secret(v) if type(v) is str else v
             elif dataclasses.is_dataclass(v):
                 v = self._to_dict(f.type, v)  # type: ignore
             r[f.name] = v
@@ -44,10 +44,12 @@ class DataclassCoder(api.Coder):
             if f.name not in x:
                 continue
             elif f.type is api.Path:
-                r[f.name] = api.Path(x[f.name])
+                r[f.name] = api.Path(x[f.name]) if type(x[f.name]) is str else x[f.name]
             # Secret is a dataclass and must be handled before other dataclasses
             elif f.type is api.Secret:
-                r[f.name] = api.Secret(x[f.name])
+                r[f.name] = (
+                    api.Secret(x[f.name]) if type(x[f.name]) is str else x[f.name]
+                )
             elif dataclasses.is_dataclass(f.type):
                 kwargs = self._from_dict(f.type, x[f.name])  # type: ignore
                 r[f.name] = f.type(**kwargs)  # type: ignore
