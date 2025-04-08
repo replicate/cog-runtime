@@ -22,6 +22,10 @@ class Runner:
 
     async def test(self) -> Any:
         inputs = inspector.get_test_inputs(self.predictor, self.inputs)
+        for k, v in inputs.items():
+            tpe = self.inputs[k].type
+            w = tpe.json_decode(tpe.json_encode(v))
+            assert w == v, f'test input {k} does not encode properly'
         if self.is_iter():
             output = []
             async for x in self.predict_iter(inputs):
