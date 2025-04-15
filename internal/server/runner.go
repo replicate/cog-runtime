@@ -12,5 +12,9 @@ type Runner interface {
 }
 
 func NewRunner(cfg *Config) Runner {
+	if cfg.UseProcedureMode {
+		return NewProcedureRunner(cfg)
+	}
+
 	return NewPredictionRunner(cfg)
 }

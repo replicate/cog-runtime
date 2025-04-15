@@ -6,4 +6,5 @@ type Config struct {
 	WorkingDir            string `ff:"long: working-dir, nodefault, usage: working directory"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
+	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use procedure-specific runner"`
 }
