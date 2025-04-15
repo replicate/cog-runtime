@@ -50,25 +50,15 @@ func schemaCommand() *ff.Command {
 func serverCommand() *ff.Command {
 	log := logger.Sugar()
 
-	var cfg server.Config
+	cfg := &server.Config{}
 	flags := ff.NewFlagSet("server")
-	must.Do(flags.AddStruct(&cfg))
+	must.Do(flags.AddStruct(cfg))
 
 	return &ff.Command{
 		Name:  "server",
 		Usage: "server [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			workingDir := cfg.WorkingDir
-			if workingDir == "" {
-				workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
-			}
-			log.Infow("configuration",
-				"working-dir", workingDir,
-				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
-				"upload-url", cfg.UploadUrl,
-			)
-
 			ctx, cancel := context.WithCancel(ctx)
 			go func() {
 				ch := make(chan os.Signal, 1)
@@ -80,7 +70,7 @@ func serverCommand() *ff.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr)
-			r := server.NewRunner(workingDir, cfg.AwaitExplicitShutdown, cfg.UploadUrl)
+			r := server.NewRunner(cfg)
 			must.Do(r.Start())
 			s := server.NewServer(addr, r)
 			go func() {

@@ -106,11 +106,23 @@ type PredictionRunner struct {
 	mu                    sync.Mutex
 }
 
-func NewRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) Runner {
-	return NewPredictionRunner(workingDir, awaitExplicitShutdown, uploadUrl)
+func NewRunner(cfg *Config) Runner {
+	return NewPredictionRunner(cfg)
 }
 
-func NewPredictionRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) Runner {
+func NewPredictionRunner(cfg *Config) Runner {
+	log := logger.Sugar()
+
+	workingDir := cfg.WorkingDir
+	if workingDir == "" {
+		workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
+	}
+	log.Infow("configuration",
+		"working-dir", workingDir,
+		"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
+		"upload-url", cfg.UploadUrl,
+	)
+
 	args := []string{
 		"-u",
 		"-m", "coglet",
@@ -122,8 +134,8 @@ func NewPredictionRunner(workingDir string, awaitExplicitShutdown bool, uploadUr
 		cmd:                   *cmd,
 		status:                StatusStarting,
 		pending:               make(map[string]*PendingPrediction),
-		awaitExplicitShutdown: awaitExplicitShutdown,
-		uploadUrl:             uploadUrl,
+		awaitExplicitShutdown: cfg.AwaitExplicitShutdown,
+		uploadUrl:             cfg.UploadUrl,
 	}
 }
 
