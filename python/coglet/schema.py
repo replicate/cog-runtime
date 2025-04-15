@@ -33,7 +33,7 @@ def main():
 
         # Check that test_inputs exists and is valid
         module = importlib.import_module(p.module_name)
-        cls = getattr(module, p.class_name)
+        cls = getattr(module, p.predictor_name)
         inspector.get_test_inputs(cls, p.inputs)
 
         schema = schemas.to_json_schema(p)
