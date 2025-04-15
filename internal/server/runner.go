@@ -79,7 +79,18 @@ func (pr *PendingPrediction) sendResponse() {
 	pr.c <- pr.response
 }
 
-type Runner struct {
+type Runner interface {
+	Cancel(string) error
+	ExitCode() int
+	Predict(PredictionRequest) (chan PredictionResponse, error)
+	Schema() string
+	SetupResult() SetupResult
+	Shutdown() error
+	Start() error
+	Status() Status
+}
+
+type PredictionRunner struct {
 	workingDir            string
 	cmd                   exec.Cmd
 	status                Status
@@ -95,14 +106,18 @@ type Runner struct {
 	mu                    sync.Mutex
 }
 
-func NewRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) *Runner {
+func NewRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) Runner {
+	return NewPredictionRunner(workingDir, awaitExplicitShutdown, uploadUrl)
+}
+
+func NewPredictionRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) Runner {
 	args := []string{
 		"-u",
 		"-m", "coglet",
 		"--working-dir", workingDir,
 	}
 	cmd := exec.Command("python3", args...)
-	return &Runner{
+	return &PredictionRunner{
 		workingDir:            workingDir,
 		cmd:                   *cmd,
 		status:                StatusStarting,
@@ -112,7 +127,11 @@ func NewRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) 
 	}
 }
 
-func (r *Runner) Start() error {
+func (r *PredictionRunner) Schema() string           { return r.schema }
+func (r *PredictionRunner) SetupResult() SetupResult { return r.setupResult }
+func (r *PredictionRunner) Status() Status           { return r.status }
+
+func (r *PredictionRunner) Start() error {
 	log := logger.Sugar()
 	cmdStart := make(chan bool)
 	if err := r.setupLogging(cmdStart); err != nil {
@@ -135,7 +154,7 @@ func (r *Runner) Start() error {
 	return nil
 }
 
-func (r *Runner) Shutdown() error {
+func (r *PredictionRunner) Shutdown() error {
 	log := logger.Sugar()
 	log.Infow("shutdown requested")
 	r.mu.Lock()
@@ -153,18 +172,18 @@ func (r *Runner) Shutdown() error {
 	}
 }
 
-func (r *Runner) ExitCode() int {
+func (r *PredictionRunner) ExitCode() int {
 	return r.cmd.ProcessState.ExitCode()
 }
 
-func (r *Runner) stop() error {
+func (r *PredictionRunner) stop() error {
 	return syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 }
 
 ////////////////////
 // Prediction
 
-func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error) {
+func (r *PredictionRunner) Predict(req PredictionRequest) (chan PredictionResponse, error) {
 	log := logger.Sugar()
 	if r.status == StatusSetupFailed {
 		log.Errorw("prediction rejected: setup failed")
@@ -229,7 +248,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	return pr.c, nil
 }
 
-func (r *Runner) cancel(pid string) error {
+func (r *PredictionRunner) Cancel(pid string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.pending[pid]; !ok {
@@ -249,7 +268,7 @@ func (r *Runner) cancel(pid string) error {
 ////////////////////
 // Background tasks
 
-func (r *Runner) config() {
+func (r *PredictionRunner) config() {
 	log := logger.Sugar()
 
 	// Wait until user files become available and pass config to Python runner
@@ -298,7 +317,7 @@ func (r *Runner) config() {
 	must.Do(json.NewEncoder(f).Encode(conf))
 }
 
-func (r *Runner) wait() {
+func (r *PredictionRunner) wait() {
 	log := logger.Sugar()
 	err := r.cmd.Wait()
 	if err != nil {
@@ -340,7 +359,7 @@ func (r *Runner) wait() {
 	}
 }
 
-func (r *Runner) handleSignals() {
+func (r *PredictionRunner) handleSignals() {
 	log := logger.Sugar()
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, SigOutput, SigReady, SigBusy)
@@ -374,7 +393,7 @@ func (r *Runner) handleSignals() {
 
 // Compat: signal for K8S pod readiness probe
 // https://github.com/replicate/cog/blob/main/python/cog/server/probes.py
-func (r *Runner) handleReadinessProbe() error {
+func (r *PredictionRunner) handleReadinessProbe() error {
 	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
 		return nil
 	}
@@ -391,7 +410,7 @@ func (r *Runner) handleReadinessProbe() error {
 ////////////////////
 // IO handling
 
-func (r *Runner) updateSchema() {
+func (r *PredictionRunner) updateSchema() {
 	log := logger.Sugar()
 	log.Infow("updating OpenAPI schema")
 	p := path.Join(r.workingDir, "openapi.json")
@@ -401,7 +420,7 @@ func (r *Runner) updateSchema() {
 	r.schema = schema
 }
 
-func (r *Runner) updateSetupResult() {
+func (r *PredictionRunner) updateSetupResult() {
 	log := logger.Sugar()
 	log.Infow("updating setup result")
 	logs := r.rotateLogs()
@@ -420,7 +439,7 @@ func (r *Runner) updateSetupResult() {
 	}
 }
 
-func (r *Runner) handleResponses() {
+func (r *PredictionRunner) handleResponses() {
 	log := logger.Sugar()
 	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
 		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
@@ -490,7 +509,7 @@ func (r *Runner) handleResponses() {
 	}
 }
 
-func (r *Runner) readJson(filename string, v any) error {
+func (r *PredictionRunner) readJson(filename string, v any) error {
 	log := logger.Sugar()
 	p := path.Join(r.workingDir, filename)
 	bs, err := os.ReadFile(p)
@@ -504,7 +523,7 @@ func (r *Runner) readJson(filename string, v any) error {
 ////////////////////
 // Log handling
 
-func (r *Runner) log(line string) {
+func (r *PredictionRunner) log(line string) {
 	log := logger.Sugar()
 	if m := LOG_REGEX.FindStringSubmatch(line); m != nil {
 		pid := m[1]
@@ -529,7 +548,7 @@ func (r *Runner) log(line string) {
 	fmt.Println(line)
 }
 
-func (r *Runner) rotateLogs() string {
+func (r *PredictionRunner) rotateLogs() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	logs := util.JoinLogs(r.logs)
@@ -537,7 +556,7 @@ func (r *Runner) rotateLogs() string {
 	return logs
 }
 
-func (r *Runner) setupLogging(cmdStart chan bool) error {
+func (r *PredictionRunner) setupLogging(cmdStart chan bool) error {
 	scan := func(f func() (io.ReadCloser, error)) error {
 		reader, err := f()
 		if err != nil {
