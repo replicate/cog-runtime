@@ -15,8 +15,8 @@ async def test_predictor(predictor: tuple[str, str]):
 
 def test_repetition_schema():
     module_name = 'tests.cases.repetition'
-    class_name = 'Predictor'
-    p = inspector.create_predictor(module_name, class_name)
+    predictor_name = 'Predictor'
+    p = inspector.create_predictor(module_name, predictor_name)
 
     schema = schemas.to_json_schema(p)
     schema_in = schema['components']['schemas']['Input']
