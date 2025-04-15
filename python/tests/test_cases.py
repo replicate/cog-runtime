@@ -4,8 +4,19 @@ from coglet import inspector, schemas
 
 from .test_predictors import run_fixture
 
+predictors = [
+    pytest.param('procedure', 'predict'),
+    pytest.param('repetition', 'Predictor'),
+]
 
-def test_repetition():
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('module,predictor', predictors)
+async def test_predictor(module: str, predictor: str):
+    await run_fixture(f'tests.cases.{module}', predictor)
+
+
+def test_repetition_schema():
     module_name = 'tests.cases.repetition'
     class_name = 'Predictor'
     p = inspector.create_predictor(module_name, class_name)
@@ -22,8 +33,3 @@ def test_repetition():
             assert 'default' in prop
         else:
             assert 'default' not in prop
-
-
-@pytest.mark.asyncio
-async def test_repetition_fixture():
-    await run_fixture('tests.cases.repetition', 'Predictor')
