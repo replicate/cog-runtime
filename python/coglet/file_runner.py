@@ -29,12 +29,12 @@ class FileRunner:
         logger: logging.Logger,
         working_dir: str,
         module_name: str,
-        class_name: str,
+        predictor_name: str,
     ):
         self.logger = logger
         self.working_dir = working_dir
         self.module_name = module_name
-        self.class_name = class_name
+        self.predictor_name = predictor_name
         self.runner: Optional[runner.Runner] = None
         self.isatty = sys.stdout.isatty()
 
@@ -43,7 +43,7 @@ class FileRunner:
             'starting file runner: working_dir=%s, predict=%s.%s',
             self.working_dir,
             self.module_name,
-            self.class_name,
+            self.predictor_name,
         )
 
         os.makedirs(self.working_dir, exist_ok=True)
@@ -60,7 +60,7 @@ class FileRunner:
         self.logger.info('setup started')
         setup_result: Dict[str, Any] = {'started_at': util.now_iso()}
         try:
-            p = inspector.create_predictor(self.module_name, self.class_name)
+            p = inspector.create_predictor(self.module_name, self.predictor_name)
             with open(openapi_file, 'w') as f:
                 schema = schemas.to_json_schema(p)
                 json.dump(schema, f)

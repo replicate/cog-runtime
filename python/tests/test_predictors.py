@@ -18,8 +18,8 @@ def get_predictors() -> List[str]:
     return [name for _, name, _ in pkgutil.iter_modules([schemas_dir])]
 
 
-async def run_fixture(module_name: str, class_name: str) -> None:
-    p = inspector.create_predictor(module_name, class_name)
+async def run_fixture(module_name: str, predictor_name: str) -> None:
+    p = inspector.create_predictor(module_name, predictor_name)
     r = runner.Runner(p)
     assert not r.predictor.setup_done
     await r.setup()
@@ -46,8 +46,8 @@ async def test_predictor(predictor):
 @pytest.mark.parametrize('predictor', get_predictors())
 def test_schema(predictor):
     module_name = f'tests.schemas.{predictor}'
-    class_name = 'Predictor'
-    p = inspector.create_predictor(module_name, class_name)
+    predictor_name = 'Predictor'
+    p = inspector.create_predictor(module_name, predictor_name)
 
     path = os.path.join(os.path.dirname(__file__), 'schemas', f'{predictor}.json')
     with open(path, 'r') as f:
