@@ -30,10 +30,12 @@ def _validate_setup(f: Callable) -> None:
     assert spec.annotations.get('return') is None, 'setup() must return None'
 
 
-def _validate_predict(f: Callable) -> None:
+def _validate_predict(f: Callable, is_class_fn: bool) -> None:
     assert inspect.isfunction(f), f'not a function: {f}'
     spec = inspect.getfullargspec(f)
-    assert spec.args[0] == 'self', "predict() must have 'self' first argument"
+
+    if is_class_fn:
+        assert spec.args[0] == 'self', "predict() must have 'self' first argument"
     assert spec.varargs is None, 'predict() must not have *args'
     assert spec.varkw is None, 'predict() must not have **kwargs'
     assert spec.kwonlyargs == [], 'predict() must not have keyword-only args'
@@ -193,10 +195,13 @@ def _output_adt(tpe: type) -> adt.Output:
     return adt.Output(kind=kind, type=ft.primitive, coder=ft.coder)
 
 
-def _predictor_adt(module_name: str, class_name: str, f: Callable) -> adt.Predictor:
-    _validate_predict(f)
+def _predictor_adt(
+    module_name: str, predictor_name: str, f: Callable, is_class_fn: bool
+) -> adt.Predictor:
+    _validate_predict(f, is_class_fn)
     spec = inspect.getfullargspec(f)
-    names = spec.args[1:]
+    # 1st argument is self for class fn
+    names = spec.args[1:] if is_class_fn else spec.args
     defaults = spec.defaults if spec.defaults is not None else []
     cog_ins = [None] * (len(names) - len(defaults)) + list(defaults)
     inputs = {}
@@ -205,7 +210,7 @@ def _predictor_adt(module_name: str, class_name: str, f: Callable) -> adt.Predic
         assert tpe is not None, f'missing type annotation for {name}'
         inputs[name] = _input_adt(i, name, tpe, cog_in)
     output = _output_adt(spec.annotations['return'])
-    return adt.Predictor(module_name, class_name, inputs, output)
+    return adt.Predictor(module_name, predictor_name, inputs, output)
 
 
 # setup and predict might be decorated
@@ -303,22 +308,31 @@ def _find_coders(module: ModuleType) -> None:
         )
 
 
-def create_predictor(module_name: str, class_name: str) -> adt.Predictor:
+def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
     module = importlib.import_module(module_name)
-    fullname = f'{module_name}.{class_name}'
-    assert hasattr(module, class_name), f'class not found: {fullname}'
-    cls = getattr(module, class_name)
-    assert inspect.isclass(cls), f'not a class: {fullname}'
-    assert _check_parent(cls, api.BasePredictor), (
-        f'predictor {fullname} does not inherit cog.BasePredictor'
-    )
+    fullname = f'{module_name}.{predictor_name}'
+    assert hasattr(module, predictor_name), f'predictor not found: {fullname}'
+    p = getattr(module, predictor_name)
+    if inspect.isclass(p):
+        assert _check_parent(p, api.BasePredictor), (
+            f'predictor {fullname} does not inherit cog.BasePredictor'
+        )
 
-    assert hasattr(cls, 'setup'), f'setup method not found: {fullname}'
-    assert hasattr(cls, 'predict'), f'predict method not found: {fullname}'
-    _validate_setup(_unwrap(getattr(cls, 'setup')))
+        assert hasattr(p, 'setup'), f'setup method not found: {fullname}'
+        assert hasattr(p, 'predict'), f'predict method not found: {fullname}'
+        _validate_setup(_unwrap(getattr(p, 'setup')))
+        predict_fn = _unwrap(getattr(p, 'predict'))
+        is_class_fn = True
+    elif inspect.isfunction(p):
+        predict_fn = _unwrap(p)
+        is_class_fn = False
+    else:
+        raise RuntimeError(f'invalid predictor {fullname}')
+
     # Find coders users by module before validating predict function
     _find_coders(module)
-    return _predictor_adt(module_name, class_name, _unwrap(getattr(cls, 'predict')))
+
+    return _predictor_adt(module_name, predictor_name, predict_fn, is_class_fn)
 
 
 def get_test_inputs(
