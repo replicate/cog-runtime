@@ -19,14 +19,6 @@ import (
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-type ServerConfig struct {
-	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
-	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
-	WorkingDir            string `ff:"long: working-dir, nodefault, usage: working directory"`
-	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
-	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
-}
-
 var logger = logging.New("cog")
 
 func schemaCommand() *ff.Command {
@@ -58,7 +50,7 @@ func schemaCommand() *ff.Command {
 func serverCommand() *ff.Command {
 	log := logger.Sugar()
 
-	var cfg ServerConfig
+	var cfg server.Config
 	flags := ff.NewFlagSet("server")
 	must.Do(flags.AddStruct(&cfg))
 

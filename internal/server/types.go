@@ -41,7 +41,7 @@ const SigOutput = syscall.SIGHUP
 const SigReady = syscall.SIGUSR1
 const SigBusy = syscall.SIGUSR2
 
-type Config struct {
+type PredictionConfig struct {
 	ModuleName string `json:"module_name,omitempty"`
 	ClassName  string `json:"class_name,omitempty"`
 }

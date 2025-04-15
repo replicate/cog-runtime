@@ -311,7 +311,7 @@ func (r *PredictionRunner) config() {
 		className = c
 		r.maxConcurrency = y.Concurrency.Max
 	}
-	conf := Config{ModuleName: moduleName, ClassName: className}
+	conf := PredictionConfig{ModuleName: moduleName, ClassName: className}
 	confFile := path.Join(r.workingDir, "config.json")
 	f := must.Get(os.Create(confFile))
 	must.Do(json.NewEncoder(f).Encode(conf))
