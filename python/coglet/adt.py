@@ -282,6 +282,6 @@ class Output:
 @dataclass(frozen=True)
 class Predictor:
     module_name: str
-    class_name: str
+    predictor_name: str  # class or function
     inputs: Dict[str, Input]
     output: Output
