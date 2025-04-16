@@ -291,24 +291,24 @@ func (r *PredictionRunner) config() {
 
 	// For testing only, set by CogTest, to avoid creating a one-off cog.yaml
 	moduleName := os.Getenv("COG_MODULE_NAME")
-	className := os.Getenv("COG_CLASS_NAME")
+	predictorName := os.Getenv("COG_PREDICTOR_NAME")
 
-	if moduleName == "" || className == "" {
+	if moduleName == "" || predictorName == "" {
 		y, err := util.ReadCogYaml()
 		if err != nil {
 			log.Errorw("failed to read cog.yaml", "err", err)
 			panic(err)
 		}
-		m, c, err := y.PredictModuleAndClass()
+		m, c, err := y.PredictModuleAndPredictor()
 		if err != nil {
 			log.Errorw("failed to parse predict", "err", err)
 			panic(err)
 		}
 		moduleName = m
-		className = c
+		predictorName = c
 		r.maxConcurrency = y.Concurrency.Max
 	}
-	conf := PredictionConfig{ModuleName: moduleName, ClassName: className}
+	conf := PredictionConfig{ModuleName: moduleName, PredictorName: predictorName}
 	confFile := path.Join(r.workingDir, "config.json")
 	f := must.Get(os.Create(confFile))
 	must.Do(json.NewEncoder(f).Encode(conf))

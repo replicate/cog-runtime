@@ -4,11 +4,19 @@ from coglet import inspector, schemas
 
 from .test_predictors import run_fixture
 
+predictors = [('procedure', 'predict'), ('repetition', 'Predictor')]
 
-def test_repetition():
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('predictor', predictors)
+async def test_predictor(predictor: tuple[str, str]):
+    await run_fixture(f'tests.cases.{predictor[0]}', predictor[1])
+
+
+def test_repetition_schema():
     module_name = 'tests.cases.repetition'
-    class_name = 'Predictor'
-    p = inspector.create_predictor(module_name, class_name)
+    predictor_name = 'Predictor'
+    p = inspector.create_predictor(module_name, predictor_name)
 
     schema = schemas.to_json_schema(p)
     schema_in = schema['components']['schemas']['Input']
@@ -22,8 +30,3 @@ def test_repetition():
             assert 'default' in prop
         else:
             assert 'default' not in prop
-
-
-@pytest.mark.asyncio
-async def test_repetition_fixture():
-    await run_fixture('tests.cases.repetition', 'Predictor')

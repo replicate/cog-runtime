@@ -36,7 +36,7 @@ func schemaCommand() *ff.Command {
 				log.Errorw("failed to read cog.yaml", "err", err)
 				return err
 			}
-			m, c, err := y.PredictModuleAndClass()
+			m, c, err := y.PredictModuleAndPredictor()
 			if err != nil {
 				log.Errorw("failed to parse predict", "err", err)
 				return err
@@ -107,7 +107,7 @@ func testCommand() *ff.Command {
 				log.Errorw("failed to read cog.yaml", "err", err)
 				return err
 			}
-			m, c, err := y.PredictModuleAndClass()
+			m, c, err := y.PredictModuleAndPredictor()
 			if err != nil {
 				log.Errorw("failed to parse predict", "err", err)
 				return err

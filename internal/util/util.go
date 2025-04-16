@@ -36,14 +36,14 @@ func ReadCogYaml() (*CogYaml, error) {
 	return &cogYaml, nil
 }
 
-func (y *CogYaml) PredictModuleAndClass() (string, string, error) {
+func (y *CogYaml) PredictModuleAndPredictor() (string, string, error) {
 	parts := strings.Split(y.Predict, ":")
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid predict: %s", y.Predict)
 	}
 	moduleName := strings.TrimSuffix(parts[0], ".py")
-	className := parts[1]
-	return moduleName, className, nil
+	predictorName := parts[1]
+	return moduleName, predictorName, nil
 }
 
 // api.git: internal/logic/id.go
