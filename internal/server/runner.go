@@ -3,7 +3,7 @@ package server
 type Runner interface {
 	Cancel(string) error
 	ExitCode() int
-	Predict(PredictionRequest) (chan PredictionResponse, error)
+	Predict(*PredictionRequest) (chan *PredictionResponse, error)
 	Schema() string
 	SetupResult() SetupResult
 	Shutdown() error
@@ -11,7 +11,7 @@ type Runner interface {
 	Status() Status
 }
 
-func NewRunner(cfg *Config) Runner {
+func NewRunner(cfg *Config) (Runner, error) {
 	if cfg.UseProcedureMode {
 		return NewProcedureRunner(cfg)
 	}

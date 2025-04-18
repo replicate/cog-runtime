@@ -60,8 +60,8 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return
 	}
-	var req PredictionRequest
-	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), &req); err != nil {
+	req := &PredictionRequest{}
+	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

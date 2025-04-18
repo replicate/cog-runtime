@@ -1,11 +1,13 @@
 module github.com/replicate/cog-runtime
 
 go 1.23.3
+
 require (
 	github.com/gabriel-vasile/mimetype v1.4.8
 	github.com/peterbourgon/ff/v4 v4.0.0-alpha.4
 	github.com/replicate/go v0.0.0-20241101110715-45e9ae8c2040
 	github.com/stretchr/testify v1.10.0
+	golang.org/x/sync v0.13.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

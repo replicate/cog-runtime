@@ -70,7 +70,10 @@ func serverCommand() *ff.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr)
-			r := server.NewRunner(cfg)
+			r, err := server.NewRunner(cfg)
+			if err != nil {
+				log.Fatalw("failed to build runner", "err", err)
+			}
 			must.Do(r.Start())
 			s := server.NewServer(addr, r)
 			go func() {

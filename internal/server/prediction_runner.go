@@ -2,17 +2,14 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path"
 	"regexp"
-	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -26,58 +23,6 @@ import (
 var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
 var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
 var CANCEL_FMT = "cancel-%s"
-
-type PendingPrediction struct {
-	request     PredictionRequest
-	response    PredictionResponse
-	lastUpdated time.Time
-	inputPaths  []string
-	mu          sync.Mutex
-	c           chan PredictionResponse
-}
-
-func (pr *PendingPrediction) appendLogLine(line string) {
-	pr.mu.Lock()
-	defer pr.mu.Unlock()
-	pr.response.Logs += fmt.Sprintln(line)
-}
-
-func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
-	pr.mu.Lock()
-	defer pr.mu.Unlock()
-	if pr.request.Webhook == "" {
-		return
-	}
-	if len(pr.request.WebhookEventsFilter) > 0 && !slices.Contains(pr.request.WebhookEventsFilter, event) {
-		return
-	}
-	if event == WebhookLogs || event == WebhookOutput {
-		if time.Since(pr.lastUpdated) < 500*time.Millisecond {
-			return
-		}
-		pr.lastUpdated = time.Now()
-	}
-
-	log := logger.Sugar()
-	log.Infow("sending webhook", "url", pr.request.Webhook, "response", pr.response)
-	body := bytes.NewBuffer(must.Get(json.Marshal(pr.response)))
-	req := must.Get(http.NewRequest("POST", pr.request.Webhook, body))
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Errorw("failed to send webhook", "error", err)
-	} else if resp.StatusCode != 200 {
-		body := string(must.Get(io.ReadAll(resp.Body)))
-		log.Errorw("failed to send webhook", "code", resp.StatusCode, "body", body)
-	}
-}
-
-func (pr *PendingPrediction) sendResponse() {
-	if pr.c == nil {
-		return
-	}
-	pr.c <- pr.response
-}
 
 type PredictionRunner struct {
 	workingDir            string
@@ -95,13 +40,18 @@ type PredictionRunner struct {
 	mu                    sync.Mutex
 }
 
-func NewPredictionRunner(cfg *Config) Runner {
+func NewPredictionRunner(cfg *Config) (Runner, error) {
 	log := logger.Sugar()
 
 	workingDir := cfg.WorkingDir
 	if workingDir == "" {
-		workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
+		if v, err := os.MkdirTemp("", "cog-server-"); err != nil {
+			return nil, err
+		} else {
+			workingDir = v
+		}
 	}
+
 	log.Infow("configuration",
 		"working-dir", workingDir,
 		"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
@@ -121,7 +71,7 @@ func NewPredictionRunner(cfg *Config) Runner {
 		pending:               make(map[string]*PendingPrediction),
 		awaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 		uploadUrl:             cfg.UploadUrl,
-	}
+	}, nil
 }
 
 func (r *PredictionRunner) Schema() string           { return r.schema }
@@ -180,7 +130,7 @@ func (r *PredictionRunner) stop() error {
 ////////////////////
 // Prediction
 
-func (r *PredictionRunner) Predict(req PredictionRequest) (chan PredictionResponse, error) {
+func (r *PredictionRunner) Predict(req *PredictionRequest) (chan *PredictionResponse, error) {
 	log := logger.Sugar()
 	if r.status == StatusSetupFailed {
 		log.Errorw("prediction rejected: setup failed")
@@ -226,22 +176,22 @@ func (r *PredictionRunner) Predict(req PredictionRequest) (chan PredictionRespon
 
 	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
 	must.Do(os.WriteFile(reqPath, must.Get(json.Marshal(req)), 0644))
-	resp := PredictionResponse{
+	resp := &PredictionResponse{
 		Input:     req.Input,
 		Id:        req.Id,
 		CreatedAt: req.CreatedAt,
 	}
-	pr := PendingPrediction{
-		request:    req,
-		response:   resp,
+	pr := &PendingPrediction{
+		request:    *req,
+		response:   *resp,
 		inputPaths: inputPaths,
 	}
 	if req.Webhook == "" {
-		pr.c = make(chan PredictionResponse, 1)
+		pr.c = make(chan *PredictionResponse, 1)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pending[req.Id] = &pr
+	r.pending[req.Id] = pr
 	return pr.c, nil
 }
 

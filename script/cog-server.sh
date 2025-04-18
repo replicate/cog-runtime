@@ -27,6 +27,7 @@ if [ -z "${PYTHON:-}" ]; then
     if [ -n "${PORT:-}" ]; then
         args+=(--port "$PORT")
     fi
+    set +o nounset
     go run "$base_dir/cmd/cog/main.go" server "${args[@]}" "$@"
 else
     "$base_dir/.venv-legacy/bin/python3" -m cog.server.http "$@"
