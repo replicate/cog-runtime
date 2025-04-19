@@ -51,9 +51,18 @@ def main() -> int:
     parser.add_argument(
         '--working-dir', metavar='DIR', required=True, help='working directory'
     )
+    parser.add_argument(
+        '--procedure-mode',
+        action='store_true',
+        default=False,
+        help='run in a style favorable to procedures',
+    )
 
     logger = logging.getLogger('coglet')
     logger.setLevel(logging.INFO)
+    if os.environ.get('LOG_LEVEL', '').strip().lower() == 'debug':
+        logger.setLevel(logging.DEBUG)
+
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(
         logging.Formatter(
@@ -81,6 +90,7 @@ def main() -> int:
             working_dir=args.working_dir,
             module_name=module_name,
             predictor_name=predictor_name,
+            procedure_mode=args.procedure_mode,
         ).start()
     )
 

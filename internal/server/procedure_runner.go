@@ -28,6 +28,7 @@ var (
 type ProcedureRunner struct {
 	workingDir            string
 	cmd                   *exec.Cmd
+	eg                    *errgroup.Group
 	status                Status
 	schema                string
 	setupResult           SetupResult
@@ -93,6 +94,12 @@ func (r *ProcedureRunner) setup() error {
 		r.ctxCancel()
 	}
 
+	if r.eg != nil {
+		if err := r.eg.Wait(); err != nil {
+			log.Errorw("failed to wait for previous errgroup", "err", err)
+		}
+	}
+
 	log.Debugw("resetting context and cancel func")
 	ctx, cancel := context.WithCancel(context.Background())
 	r.ctx = ctx
@@ -118,6 +125,7 @@ func (r *ProcedureRunner) setup() error {
 		"--working-dir", r.workingDir,
 		"--procedure-mode",
 	)
+	r.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
 
 	cmdStart := make(chan bool)
 	if err := r.setupLogging(cmdStart); err != nil {
@@ -138,11 +146,12 @@ func (r *ProcedureRunner) setup() error {
 	close(cmdStart)
 
 	eg, _ := errgroup.WithContext(r.ctx)
+	r.eg = eg
 
-	eg.Go(r.config)
-	eg.Go(r.wait)
+	r.eg.Go(r.config)
+	r.eg.Go(r.wait)
 
-	return eg.Wait()
+	return nil
 }
 
 func (r *ProcedureRunner) Shutdown() error {
@@ -276,6 +285,8 @@ func (r *ProcedureRunner) Cancel(pid string) error {
 func (r *ProcedureRunner) config() error {
 	log := logger.Sugar()
 
+	log.Debug("configuring child runner")
+
 	if waitFile, ok := os.LookupEnv("COG_WAIT_FILE"); ok && waitFile != "" {
 		log.Debugw("waiting until user files become available and then passing config to python runner")
 
@@ -347,11 +358,15 @@ func (r *ProcedureRunner) config() error {
 		return fmt.Errorf("failed to encode config to json: %w", err)
 	}
 
+	log.Debug("done configuring child runner")
+
 	return nil
 }
 
 func (r *ProcedureRunner) wait() error {
 	log := logger.Sugar()
+
+	log.Debugw("waiting on command", "cmd_path", r.cmd.Path, "cmd_args", r.cmd.Args)
 
 	if err := r.cmd.Wait(); err != nil {
 		runnerLogs := r.rotateLogs()
