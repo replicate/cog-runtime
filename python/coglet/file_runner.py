@@ -30,13 +30,11 @@ class FileRunner:
         working_dir: str,
         module_name: str,
         predictor_name: str,
-        procedure_mode: bool,
     ):
         self.logger = logger
         self.working_dir = working_dir
         self.module_name = module_name
         self.predictor_name = predictor_name
-        self.procedure_mode = procedure_mode
         self.runner: Optional[runner.Runner] = None
         self.isatty = sys.stdout.isatty()
 

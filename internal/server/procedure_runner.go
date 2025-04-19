@@ -123,7 +123,6 @@ func (r *ProcedureRunner) setup() error {
 		"-u",
 		"-m", "coglet",
 		"--working-dir", r.workingDir,
-		"--procedure-mode",
 	)
 	r.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
 
