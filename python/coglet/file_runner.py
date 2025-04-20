@@ -60,16 +60,17 @@ class FileRunner:
         self.logger.info('setup started')
         setup_result: Dict[str, Any] = {'started_at': util.now_iso()}
         try:
-            p = inspector.create_predictor(self.module_name, self.predictor_name)
-            # FIXME: reuse frozen schema?
-            with open(openapi_file, 'w') as f:
-                schema = schemas.to_json_schema(p)
-                json.dump(schema, f)
-            self.runner = runner.Runner(p)
+            with util.chdir(self.working_dir):
+                p = inspector.create_predictor(self.module_name, self.predictor_name)
+                # FIXME: reuse frozen schema?
+                with open(openapi_file, 'w') as f:
+                    schema = schemas.to_json_schema(p)
+                    json.dump(schema, f)
+                self.runner = runner.Runner(p)
 
-            await self.runner.setup()
-            self.logger.info('setup completed')
-            setup_result['status'] = 'succeeded'
+                await self.runner.setup()
+                self.logger.info('setup completed')
+                setup_result['status'] = 'succeeded'
         except Exception as e:
             self.logger.exception('setup failed: %s', e)
             setup_result['status'] = 'failed'

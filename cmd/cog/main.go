@@ -79,7 +79,9 @@ func serverCommand() *ff.Command {
 			go func() {
 				<-ctx.Done()
 				must.Do(r.Shutdown())
-				must.Do(s.Shutdown(ctx))
+				if err := s.Shutdown(ctx); err != nil && !errors.Is(err, context.Canceled) {
+					panic(err)
+				}
 			}()
 			if err := s.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
 				if r.ExitCode() == 0 {

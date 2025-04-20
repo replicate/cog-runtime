@@ -56,6 +56,8 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
+	log := logger.Sugar()
+
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return
@@ -100,10 +102,12 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if c == nil {
+		log.Debug("response channel is nil; sending async response")
 		w.WriteHeader(http.StatusAccepted)
 		resp := PredictionResponse{Id: req.Id, Status: "starting"}
 		must.Get(w.Write(must.Get(json.Marshal(resp))))
 	} else {
+		log.Debug("waiting for response on channel")
 		resp := <-c
 		w.WriteHeader(http.StatusOK)
 		must.Get(w.Write(must.Get(json.Marshal(resp))))

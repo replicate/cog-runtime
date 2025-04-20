@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"crypto/md5" // nolint:gosec
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,21 +24,32 @@ import (
 
 var (
 	errInvalidSetupStatus = errors.New("invalid setup status")
+
+	ErrMissingProcedureSourceURL = errors.New("missing procedure source url")
+	ErrMissingProcedureToken     = errors.New("missing procedure token")
 )
 
 type ProcedureRunner struct {
-	workingDir            string
-	cmd                   *exec.Cmd
-	eg                    *errgroup.Group
-	status                Status
-	schema                string
-	setupResult           SetupResult
-	logs                  []string
-	pending               map[string]*PendingPrediction
+	workingDir   string
+	schema       string
+	pendingName  string
+	procedureKey string
+	uploadUrl    string
+
+	logs []string
+
+	setupResult SetupResult
+	status      Status
+
+	pending *PendingPrediction
+	cmd     *exec.Cmd
+	eg      *errgroup.Group
+
 	awaitExplicitShutdown bool
-	uploadUrl             string
 	shutdownRequested     bool
-	mu                    sync.Mutex
+	debug                 bool
+
+	mu sync.Mutex
 
 	ctx       context.Context
 	ctxCancel context.CancelFunc
@@ -55,18 +67,28 @@ func NewProcedureRunner(cfg *Config) (Runner, error) {
 		}
 	}
 
-	log.Infow("configuration",
+	log.Infow(
+		"configuration",
 		"working-dir", workingDir,
 		"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
 		"upload-url", cfg.UploadUrl,
 	)
 
+	now := util.NowIso()
+
 	return &ProcedureRunner{
 		workingDir:            workingDir,
 		status:                StatusStarting,
-		pending:               map[string]*PendingPrediction{},
 		awaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 		uploadUrl:             cfg.UploadUrl,
+
+		// NOTE: procedures do not have a schema or run a setup per se
+		schema: "{}",
+		setupResult: SetupResult{
+			StartedAt:   now,
+			CompletedAt: now,
+			Status:      SetupSucceeded,
+		},
 	}, nil
 }
 
@@ -75,17 +97,15 @@ func (r *ProcedureRunner) SetupResult() SetupResult { return r.setupResult }
 func (r *ProcedureRunner) Status() Status           { return r.status }
 
 func (r *ProcedureRunner) Start() error {
-	if err := r.setup(); err != nil {
-		return err
-	}
-
 	go r.handleSignals()
 
 	return nil
 }
 
-func (r *ProcedureRunner) setup() error {
+func (r *ProcedureRunner) setup(proc *ProcedureRequest) error {
 	log := logger.Sugar()
+
+	log.Debugw("running setup for procedure", "proc", proc)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -95,15 +115,19 @@ func (r *ProcedureRunner) setup() error {
 	}
 
 	if r.eg != nil {
+		log.Debug("waiting on previous errgroup")
+
 		if err := r.eg.Wait(); err != nil {
 			log.Errorw("failed to wait for previous errgroup", "err", err)
 		}
 	}
 
-	log.Debugw("resetting context and cancel func")
+	log.Debug("resetting context, cancel func, and errgroup")
 	ctx, cancel := context.WithCancel(context.Background())
 	r.ctx = ctx
 	r.ctxCancel = cancel
+	eg, _ := errgroup.WithContext(r.ctx)
+	r.eg = eg
 
 	if r.cmd != nil && r.cmd.Process != nil {
 		log.Debugw("terminating previous command (best effort)")
@@ -117,23 +141,47 @@ func (r *ProcedureRunner) setup() error {
 		}
 	}
 
+	r.procedureKey = fmt.Sprintf("%x", md5.Sum([]byte(proc.ProcedureSourceURL)))
+	procWorkingDir := filepath.Join(r.workingDir, r.procedureKey)
+
+	if _, err := os.Stat(filepath.Join(procWorkingDir, "cog.yaml")); err != nil {
+		log.Debugw("cog.yaml does not exist; copying procedure source", "dest", procWorkingDir)
+
+		if err := os.MkdirAll(procWorkingDir, 0o700); err != nil {
+			return err
+		}
+
+		if err := os.CopyFS(
+			procWorkingDir,
+			os.DirFS(strings.TrimPrefix(proc.ProcedureSourceURL, "file://")),
+		); err != nil {
+			return err
+		}
+	}
+
 	r.cmd = exec.CommandContext(
 		r.ctx,
 		"python3",
 		"-u",
 		"-m", "coglet",
-		"--working-dir", r.workingDir,
+		"--working-dir", procWorkingDir,
 	)
-	r.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
+
+	r.cmd.Env = append(
+		os.Environ(),
+		fmt.Sprintf("PYTHONPATH=%s:%s", procWorkingDir, os.Getenv("PYTHONPATH")),
+	)
+
+	if r.debug {
+		r.cmd.Env = append(os.Environ(), "LOG_LEVEL=debug")
+	}
 
 	cmdStart := make(chan bool)
 	if err := r.setupLogging(cmdStart); err != nil {
 		log.Errorw("failed to setup logging", "error", err)
+
 		return err
 	}
-
-	// Placeholder in case setup crashes
-	r.setupResult = SetupResult{StartedAt: util.NowIso()}
 
 	if err := r.cmd.Start(); err != nil {
 		log.Errorw("failed to start command", "error", err, "cmd", r.cmd.Path, "args", r.cmd.Args)
@@ -144,10 +192,9 @@ func (r *ProcedureRunner) setup() error {
 
 	close(cmdStart)
 
-	eg, _ := errgroup.WithContext(r.ctx)
-	r.eg = eg
-
-	r.eg.Go(r.config)
+	r.eg.Go(func() error {
+		return r.config(procWorkingDir)
+	})
 	r.eg.Go(r.wait)
 
 	return nil
@@ -162,19 +209,23 @@ func (r *ProcedureRunner) Shutdown() error {
 	r.shutdownRequested = true
 	r.mu.Unlock()
 
-	if r.cmd.ProcessState != nil {
+	if r.cmd != nil && r.cmd.ProcessState != nil {
 		// Python process already exited
 		// Terminate HTTP server
 		return r.stop()
 	} else {
 		// Otherwise signal Python process to stop
 		// FIXME: kill process after grace period
-		p := filepath.Join(r.workingDir, "stop")
+		p := filepath.Join(r.workingDir, r.procedureKey, "stop")
 		return os.WriteFile(p, []byte{}, 0644)
 	}
 }
 
 func (r *ProcedureRunner) ExitCode() int {
+	if r.cmd == nil || r.cmd.ProcessState == nil {
+		return 255
+	}
+
 	return r.cmd.ProcessState.ExitCode()
 }
 
@@ -204,37 +255,103 @@ func (r *ProcedureRunner) Predict(req *PredictionRequest) (chan *PredictionRespo
 
 	r.mu.Lock()
 
-	if len(r.pending) >= 1 {
+	if r.pending != nil {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: Already running a prediction")
+
 		return nil, ErrConflict
 	}
 
-	if _, ok := r.pending[req.Id]; ok {
+	if req.Id == r.pendingName {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: prediction exists", "id", req.Id)
+
 		return nil, ErrExists
 	}
 
 	r.mu.Unlock()
 
-	log.Infow("received prediction request", "id", req.Id)
+	inputJSONBytes, err := json.Marshal(req.Input)
+	if err != nil {
+		log.Errorw("failed to re-marshal prediction input", "err", err)
+
+		return nil, err
+	}
+
+	proc := &ProcedureRequest{}
+	if err := json.Unmarshal(inputJSONBytes, proc); err != nil {
+		log.Errorw("input could not be unmarshaled into procedure", "err", err)
+
+		return nil, err
+	}
+
+	proc.ProcedureSourceURL = strings.TrimSpace(proc.ProcedureSourceURL)
+	proc.Token = strings.TrimSpace(proc.Token)
+
+	if proc.ProcedureSourceURL == "" {
+		log.Errorw("missing procedure source url", "err", ErrMissingProcedureSourceURL)
+
+		return nil, ErrMissingProcedureSourceURL
+	}
+
+	if proc.Token == "" {
+		log.Errorw("missing procedure token", "err", ErrMissingProcedureToken)
+
+		return nil, ErrMissingProcedureToken
+	}
+
+	procInputsString := ""
+	if err := json.Unmarshal(proc.InputsJSON, &procInputsString); err != nil {
+		log.Errorw("nested procedure inputs could not be unmarshaled into string", "err", err)
+
+		return nil, err
+	}
+
+	procInputs := map[string]any{}
+	if err := json.Unmarshal([]byte(procInputsString), &procInputs); err != nil {
+		log.Errorw("nested procedure inputs could not be unmarshaled", "err", err)
+
+		return nil, err
+	}
+
+	log.Infow(
+		"received procedure request",
+		"id", req.Id,
+		"procedure_source_url", proc.ProcedureSourceURL,
+	)
+
+	curProcedureKey := fmt.Sprintf("%x", md5.Sum([]byte(proc.ProcedureSourceURL)))
+	if curProcedureKey != r.procedureKey || r.cmd == nil {
+		if err := r.setup(proc); err != nil {
+			log.Errorw("failed to setup procedure", "err", err)
+
+			return nil, err
+		}
+	} else {
+		log.Debug("reusing matching procedure environment", "key", r.procedureKey)
+	}
 
 	inputPaths := []string{}
 
-	input, err := handlePath(req.Input, &inputPaths, base64ToInput)
+	log.Debug("handling base64 input paths")
+
+	input, err := handlePath(procInputs, &inputPaths, base64ToInput)
 	if err != nil {
 		return nil, err
 	}
 
-	input, err = handlePath(req.Input, &inputPaths, urlToInput)
+	log.Debug("handling url input paths")
+
+	input, err = handlePath(procInputs, &inputPaths, urlToInput)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Input = input
 
-	reqPath := filepath.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
+	reqPath := filepath.Join(r.workingDir, r.procedureKey, fmt.Sprintf("request-%s.json", req.Id))
+
+	log.Debugw("writing procedure request file", "path", reqPath)
 
 	jsonBytes, err := json.Marshal(req)
 	if err != nil {
@@ -257,12 +374,16 @@ func (r *ProcedureRunner) Predict(req *PredictionRequest) (chan *PredictionRespo
 	}
 
 	if req.Webhook == "" {
+		log.Debug("assigning prediction response channel to pending prediction")
+
 		pr.c = make(chan *PredictionResponse, 1)
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pending[req.Id] = pr
+
+	log.Debug("assigning pending procedure")
+	r.pending = pr
 
 	return pr.c, nil
 }
@@ -271,7 +392,7 @@ func (r *ProcedureRunner) Cancel(pid string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, ok := r.pending[pid]; !ok {
+	if pid != r.pendingName {
 		return ErrNotFound
 	}
 
@@ -281,7 +402,7 @@ func (r *ProcedureRunner) Cancel(pid string) error {
 ////////////////////
 // Background tasks
 
-func (r *ProcedureRunner) config() error {
+func (r *ProcedureRunner) config(procWorkingDir string) error {
 	log := logger.Sugar()
 
 	log.Debug("configuring child runner")
@@ -321,6 +442,25 @@ func (r *ProcedureRunner) config() error {
 	predictorName := os.Getenv("COG_PREDICTOR_NAME")
 
 	if moduleName == "" || predictorName == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			log.Errorw("failed to get current working directory", "err", err)
+
+			return err
+		}
+
+		if err := os.Chdir(procWorkingDir); err != nil {
+			log.Errorw("failed to change working directory", "err", err, "dir", procWorkingDir)
+
+			return err
+		}
+
+		defer func() {
+			if err := os.Chdir(wd); err != nil {
+				log.Errorw("failed to change working directory", "err", err, "dir", wd)
+			}
+		}()
+
 		y, err := util.ReadCogYaml()
 		if err != nil {
 			log.Errorw("failed to read cog.yaml", "err", err)
@@ -340,7 +480,7 @@ func (r *ProcedureRunner) config() error {
 	}
 
 	conf := PredictionConfig{ModuleName: moduleName, PredictorName: predictorName}
-	confFile := filepath.Join(r.workingDir, "config.json")
+	confFile := filepath.Join(procWorkingDir, "config.json")
 
 	f, err := os.Create(confFile)
 	if err != nil {
@@ -377,42 +517,28 @@ func (r *ProcedureRunner) wait() error {
 			"logs", runnerLogs,
 		)
 
-		for _, pr := range r.pending {
-			pr.mu.Lock()
+		r.pending.mu.Lock()
 
-			now := util.NowIso()
-			if pr.response.StartedAt == "" {
-				pr.response.StartedAt = now
-			}
-			pr.response.CompletedAt = now
-			pr.response.Logs += runnerLogs
-			pr.response.Error = "prediction failed"
-			pr.response.Status = PredictionFailed
-
-			pr.mu.Unlock()
-
-			pr.sendWebhook(WebhookCompleted)
-			pr.sendResponse()
+		now := util.NowIso()
+		if r.pending.response.StartedAt == "" {
+			r.pending.response.StartedAt = now
 		}
+		r.pending.response.CompletedAt = now
+		r.pending.response.Logs += runnerLogs
+		r.pending.response.Error = "prediction failed"
+		r.pending.response.Status = PredictionFailed
 
-		r.mu.Lock()
+		r.pending.mu.Unlock()
 
-		if r.status == StatusStarting {
-			r.status = StatusSetupFailed
-			r.setupResult.CompletedAt = util.NowIso()
-			r.setupResult.Status = SetupFailed
-			r.setupResult.Logs = runnerLogs
-		} else {
-			r.status = StatusDefunct
-		}
-
-		r.mu.Unlock()
+		r.pending.sendWebhook(WebhookCompleted)
+		r.pending.sendResponse()
 	} else {
 		log.Infow("python runner exited successfully", "pid", r.cmd.Process.Pid)
-		r.mu.Lock()
-		r.status = StatusDefunct
-		r.mu.Unlock()
 	}
+
+	log.Debug("setting pending and cmd to nil")
+	r.pending = nil
+	r.cmd = nil
 
 	if !r.awaitExplicitShutdown || r.shutdownRequested {
 		return r.stop()
@@ -436,14 +562,6 @@ func (r *ProcedureRunner) handleSignals() {
 			}
 		} else if s == SigReady {
 			if r.status == StatusStarting {
-				if err := r.updateSchema(); err != nil {
-					log.Errorw("failed to update schema", "err", err)
-				}
-
-				if err := r.updateSetupResult(); err != nil {
-					log.Errorw("failed to update setup result", "err", err)
-				}
-
 				if err := r.handleReadinessProbe(); err != nil {
 					log.Errorw("fail to write ready file", "err", err)
 				}
@@ -487,57 +605,12 @@ func (r *ProcedureRunner) handleReadinessProbe() error {
 ////////////////////
 // IO handling
 
-func (r *ProcedureRunner) updateSchema() error {
-	log := logger.Sugar()
-
-	log.Infow("updating OpenAPI schema")
-
-	if schemaBytes, err := os.ReadFile(filepath.Join(r.workingDir, "openapi.json")); err != nil {
-		return err
-	} else {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		r.schema = string(schemaBytes)
-	}
-
-	return nil
-}
-
-func (r *ProcedureRunner) updateSetupResult() error {
-	log := logger.Sugar()
-
-	log.Infow("updating setup result")
-
-	logs := r.rotateLogs()
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if err := r.readJson("setup_result.json", &r.setupResult); err != nil {
-		return err
-	}
-
-	r.setupResult.Logs = logs
-
-	if r.setupResult.Status == SetupSucceeded {
-		log.Infow("setup succeeded")
-		r.status = StatusReady
-	} else if r.setupResult.Status == SetupFailed {
-		log.Errorw("setup failed")
-		r.status = StatusSetupFailed
-	} else {
-		return fmt.Errorf("status=%v: %w", r.setupResult.Status, errInvalidSetupStatus)
-	}
-
-	return nil
-}
-
 func (r *ProcedureRunner) handleResponses() error {
 	log := logger.Sugar()
 
-	dirEnts, err := os.ReadDir(r.workingDir)
+	dirEnts, err := os.ReadDir(filepath.Join(r.workingDir, r.procedureKey))
 	if err != nil {
-		return fmt.Errorf("failed to read working dir entries %v: %w", r.workingDir, err)
+		return fmt.Errorf("failed to read working dir entries %v: %w", filepath.Join(r.workingDir, r.procedureKey), err)
 	}
 
 	for _, entry := range dirEnts {
@@ -549,42 +622,41 @@ func (r *ProcedureRunner) handleResponses() error {
 		pid := m[1]
 
 		r.mu.Lock()
-		pr, ok := r.pending[pid]
-		if !ok {
+		if pid != r.pendingName {
 			r.mu.Unlock()
 			continue
 		}
 		r.mu.Unlock()
 
 		log.Infow("received prediction response", "id", pid)
-		pr.mu.Lock()
+		r.pending.mu.Lock()
 
-		if err := r.readJson(entry.Name(), &pr.response); err != nil {
-			pr.mu.Unlock()
+		if err := r.readJson(entry.Name(), &r.pending.response); err != nil {
+			r.pending.mu.Unlock()
 			return fmt.Errorf("failed to read output json from %v: %w", entry.Name(), err)
 		}
 
 		// Delete response immediately to avoid duplicates
-		if err := os.Remove(filepath.Join(r.workingDir, entry.Name())); err != nil {
-			pr.mu.Unlock()
+		if err := os.Remove(filepath.Join(r.workingDir, r.procedureKey, entry.Name())); err != nil {
+			r.pending.mu.Unlock()
 			return fmt.Errorf("failed to remove output %v: %w", entry.Name(), err)
 		}
 
 		paths := []string{}
 		outputFn := outputToBase64
 
-		if pr.request.OutputFilePrefix != "" {
-			outputFn = outputToUpload(pr.request.OutputFilePrefix, pr.response.Id)
+		if r.pending.request.OutputFilePrefix != "" {
+			outputFn = outputToUpload(r.pending.request.OutputFilePrefix, r.pending.response.Id)
 		} else if r.uploadUrl != "" {
-			outputFn = outputToUpload(r.uploadUrl, pr.response.Id)
+			outputFn = outputToUpload(r.uploadUrl, r.pending.response.Id)
 		}
 
-		if output, err := handlePath(pr.response.Output, &paths, outputFn); err != nil {
+		if output, err := handlePath(r.pending.response.Output, &paths, outputFn); err != nil {
 			log.Errorw("failed to handle output", "id", pid, "error", err)
-			pr.response.Status = PredictionFailed
-			pr.response.Error = err.Error()
+			r.pending.response.Status = PredictionFailed
+			r.pending.response.Error = err.Error()
 		} else {
-			pr.response.Output = output
+			r.pending.response.Output = output
 		}
 
 		for _, p := range paths {
@@ -593,45 +665,46 @@ func (r *ProcedureRunner) handleResponses() error {
 			}
 		}
 
-		pr.mu.Unlock()
+		r.pending.mu.Unlock()
 
-		if pr.response.Status == PredictionStarting {
-			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
+		if r.pending.response.Status == PredictionStarting {
+			log.Infow("prediction started", "id", r.pending.request.Id, "status", r.pending.response.Status)
 
 			// NOTE: for compatibility since legacy Cog never sends "start" event
-			pr.response.Status = PredictionProcessing
-			pr.sendWebhook(WebhookStart)
-		} else if pr.response.Status == PredictionProcessing {
-			log.Infow("prediction processing", "id", pr.request.Id, "status", pr.response.Status)
+			r.pending.response.Status = PredictionProcessing
+			r.pending.sendWebhook(WebhookStart)
+		} else if r.pending.response.Status == PredictionProcessing {
+			log.Infow("prediction processing", "id", r.pending.request.Id, "status", r.pending.response.Status)
 
-			pr.sendWebhook(WebhookOutput)
-		} else if pr.response.Status.IsCompleted() {
-			if pr.response.Status == PredictionSucceeded {
-				predictTimeSeconds := util.ParseTime(pr.response.CompletedAt).Sub(util.ParseTime(pr.response.StartedAt)).Seconds()
+			r.pending.sendWebhook(WebhookOutput)
+		} else if r.pending.response.Status.IsCompleted() {
+			if r.pending.response.Status == PredictionSucceeded {
+				predictTimeSeconds := util.ParseTime(r.pending.response.CompletedAt).Sub(util.ParseTime(r.pending.response.StartedAt)).Seconds()
 
-				if pr.response.Metrics == nil {
-					pr.response.Metrics = map[string]any{}
+				if r.pending.response.Metrics == nil {
+					r.pending.response.Metrics = map[string]any{}
 				}
 
-				pr.response.Metrics["predict_time"] = predictTimeSeconds
+				r.pending.response.Metrics["predict_time"] = predictTimeSeconds
 			}
 
-			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
+			log.Infow("prediction completed", "id", r.pending.request.Id, "status", r.pending.response.Status)
 
-			if err := pr.sendWebhook(WebhookCompleted); err != nil {
+			if err := r.pending.sendWebhook(WebhookCompleted); err != nil {
 				return err
 			}
 
-			pr.sendResponse()
+			r.pending.sendResponse()
 
-			for _, p := range pr.inputPaths {
+			for _, p := range r.pending.inputPaths {
 				if err := os.Remove(p); err != nil {
 					log.Errorw("failed to remove path", "path", p, "err", err)
 				}
 			}
 
 			r.mu.Lock()
-			delete(r.pending, pid)
+			r.pendingName = ""
+			r.pending = nil
 			r.mu.Unlock()
 		}
 	}
@@ -641,7 +714,7 @@ func (r *ProcedureRunner) handleResponses() error {
 
 func (r *ProcedureRunner) readJson(filename string, v any) error {
 	log := logger.Sugar()
-	p := filepath.Join(r.workingDir, filename)
+	p := filepath.Join(r.workingDir, r.procedureKey, filename)
 	bs, err := os.ReadFile(p)
 	if err != nil {
 		log.Errorw("failed to read JSON file", "filename", filename, "error", err)
@@ -663,11 +736,11 @@ func (r *ProcedureRunner) log(line string) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 
-		if pr, ok := r.pending[pid]; ok {
-			pr.appendLogLine(msg)
+		if pid == r.pendingName {
+			r.pending.appendLogLine(msg)
 			// In case log is received before "starting" response
-			if pr.response.Status != "" {
-				if err := pr.sendWebhook(WebhookLogs); err != nil {
+			if r.pending.response.Status != "" {
+				if err := r.pending.sendWebhook(WebhookLogs); err != nil {
 					log.Errorw("failed to send early log webhook", "err", err)
 				}
 			}
