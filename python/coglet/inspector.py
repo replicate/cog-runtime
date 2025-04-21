@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import os
 import re
 import typing
 import warnings
@@ -102,7 +103,8 @@ def _input_adt(
     order: int, name: str, tpe: type, cog_in: Optional[api.Input]
 ) -> adt.Input:
     ft = adt.FieldType.from_type(tpe)
-    if cog_in is None:
+    # FIXME: figure out how to return usable `adt.Input` for procedures
+    if cog_in is None or os.environ.get('_HACK_PROCEDURE_MODE') == 'ohyeah':
         return adt.Input(
             name=name,
             order=order,
@@ -283,7 +285,14 @@ def _find_coders(module: ModuleType) -> None:
 
 
 def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
-    module = importlib.import_module(module_name)
+    # FIXME: figure out how to satisfy the `run_state('load')` requirement without
+    # depending on `cog.ext.pipelines`.
+    try:
+        from cog.ext.pipelines import run_state
+        with run_state("load"):
+            module = importlib.import_module(module_name)
+    except ImportError:
+        module = importlib.import_module(module_name)
     fullname = f'{module_name}.{predictor_name}'
     assert hasattr(module, predictor_name), f'predictor not found: {fullname}'
     p = getattr(module, predictor_name)

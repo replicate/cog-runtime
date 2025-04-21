@@ -170,6 +170,7 @@ func (r *ProcedureRunner) setup(proc *ProcedureRequest) error {
 	r.cmd.Env = append(
 		os.Environ(),
 		fmt.Sprintf("PYTHONPATH=%s:%s", procWorkingDir, os.Getenv("PYTHONPATH")),
+		"_HACK_PROCEDURE_MODE=ohyeah",
 	)
 
 	if r.debug {
