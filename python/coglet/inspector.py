@@ -288,8 +288,9 @@ def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
     # FIXME: figure out how to satisfy the `run_state('load')` requirement without
     # depending on `cog.ext.pipelines`.
     try:
-        from cog.ext.pipelines import run_state
-        with run_state("load"):
+        from cog.ext.pipelines import run_state  # type: ignore
+
+        with run_state('load'):
             module = importlib.import_module(module_name)
     except ImportError:
         module = importlib.import_module(module_name)

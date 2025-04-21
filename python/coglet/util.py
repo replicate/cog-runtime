@@ -1,5 +1,4 @@
 import contextlib
-
 from datetime import datetime, timezone
 
 from coglet import api
@@ -36,12 +35,12 @@ def schema_json(obj):
         raise TypeError(f'Object of type {tpe} is not JSON serializable')
 
 
-if hasattr(contextlib, "chdir"):
+if hasattr(contextlib, 'chdir'):
     chdir = contextlib.chdir
 else:
     import os
 
-    class chdir(contextlib.AbstractContextManager):
+    class chdir(contextlib.AbstractContextManager):  # type: ignore
         """Non thread-safe context manager to change the current working directory."""
 
         def __init__(self, path):
