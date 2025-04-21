@@ -382,8 +382,9 @@ func (r *ProcedureRunner) Predict(req *PredictionRequest) (chan *PredictionRespo
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	log.Debug("assigning pending procedure")
+	log.Debugw("assigning pending procedure", "name", req.Id)
 	r.pending = pr
+	r.pendingName = req.Id
 
 	return pr.c, nil
 }
@@ -608,10 +609,16 @@ func (r *ProcedureRunner) handleReadinessProbe() error {
 func (r *ProcedureRunner) handleResponses() error {
 	log := logger.Sugar()
 
-	dirEnts, err := os.ReadDir(filepath.Join(r.workingDir, r.procedureKey))
+	procWorkingDir := filepath.Join(r.workingDir, r.procedureKey)
+
+	log.Debugw("reading directory for output", "directory", procWorkingDir)
+
+	dirEnts, err := os.ReadDir(procWorkingDir)
 	if err != nil {
-		return fmt.Errorf("failed to read working dir entries %v: %w", filepath.Join(r.workingDir, r.procedureKey), err)
+		return fmt.Errorf("failed to read working dir entries %v: %w", procWorkingDir, err)
 	}
+
+	log.Debugw("considering directory entries", "length", len(dirEnts))
 
 	for _, entry := range dirEnts {
 		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
@@ -623,6 +630,8 @@ func (r *ProcedureRunner) handleResponses() error {
 
 		r.mu.Lock()
 		if pid != r.pendingName {
+			log.Debugw("response id does not match pending name", "pid", pid, "pending_name", r.pendingName)
+
 			r.mu.Unlock()
 			continue
 		}
@@ -637,7 +646,7 @@ func (r *ProcedureRunner) handleResponses() error {
 		}
 
 		// Delete response immediately to avoid duplicates
-		if err := os.Remove(filepath.Join(r.workingDir, r.procedureKey, entry.Name())); err != nil {
+		if err := os.Remove(filepath.Join(procWorkingDir, entry.Name())); err != nil {
 			r.pending.mu.Unlock()
 			return fmt.Errorf("failed to remove output %v: %w", entry.Name(), err)
 		}

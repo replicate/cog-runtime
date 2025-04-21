@@ -243,4 +243,5 @@ class FileRunner:
 
     def _signal(self, signum: int) -> None:
         if not self.isatty:
+            self.logger.debug('sending signal=%r to parent pid', signum)
             os.kill(os.getppid(), signum)
