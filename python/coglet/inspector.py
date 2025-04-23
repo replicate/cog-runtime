@@ -16,10 +16,13 @@ def _check_parent(child: type, parent: type) -> bool:
 def _validate_setup(f: Callable) -> None:
     assert inspect.isfunction(f), f'not a function {f}'
     spec = inspect.getfullargspec(f)
-    assert spec.args == ['self'] or spec.args == [
+    non_default_parameter_args = spec.args
+    if spec.defaults is not None:
+        non_default_parameter_args = non_default_parameter_args[:-len(spec.defaults)]
+    assert non_default_parameter_args == ['self'] or non_default_parameter_args == [
         'self',
         'weights',
-    ], f'unexpected setup() arguments: {spec.args}'
+    ], f'unexpected setup() arguments: {non_default_parameter_args}'
     assert spec.varargs is None, 'setup() must not have *args'
     assert spec.varkw is None, 'setup() must not have **kwargs'
     assert spec.kwonlyargs == [], 'setup() must not have keyword-only args'
