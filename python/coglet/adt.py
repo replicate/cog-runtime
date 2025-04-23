@@ -254,6 +254,7 @@ class Output:
                     )
                 setattr(value, name, f(v))
             return value
+        raise RuntimeError(f'unsupported output kind {self.kind}')
 
     def normalize(self, value: Any) -> Any:
         return self._transform(value, json=False)
