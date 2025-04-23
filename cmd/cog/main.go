@@ -19,14 +19,6 @@ import (
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-type ServerConfig struct {
-	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
-	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
-	WorkingDir            string `ff:"long: working-dir, nodefault, usage: working directory"`
-	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
-	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
-}
-
 var logger = logging.New("cog")
 
 func schemaCommand() *ff.Command {
@@ -44,7 +36,7 @@ func schemaCommand() *ff.Command {
 				log.Errorw("failed to read cog.yaml", "err", err)
 				return err
 			}
-			m, c, err := y.PredictModuleAndClass()
+			m, c, err := y.PredictModuleAndPredictor()
 			if err != nil {
 				log.Errorw("failed to parse predict", "err", err)
 				return err
@@ -58,25 +50,15 @@ func schemaCommand() *ff.Command {
 func serverCommand() *ff.Command {
 	log := logger.Sugar()
 
-	var cfg ServerConfig
+	cfg := &server.Config{}
 	flags := ff.NewFlagSet("server")
-	must.Do(flags.AddStruct(&cfg))
+	must.Do(flags.AddStruct(cfg))
 
 	return &ff.Command{
 		Name:  "server",
 		Usage: "server [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			workingDir := cfg.WorkingDir
-			if workingDir == "" {
-				workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
-			}
-			log.Infow("configuration",
-				"working-dir", workingDir,
-				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
-				"upload-url", cfg.UploadUrl,
-			)
-
 			ctx, cancel := context.WithCancel(ctx)
 			go func() {
 				ch := make(chan os.Signal, 1)
@@ -88,13 +70,18 @@ func serverCommand() *ff.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr)
-			r := server.NewRunner(workingDir, cfg.AwaitExplicitShutdown, cfg.UploadUrl)
+			r, err := server.NewRunner(cfg)
+			if err != nil {
+				log.Fatalw("failed to build runner", "err", err)
+			}
 			must.Do(r.Start())
 			s := server.NewServer(addr, r)
 			go func() {
 				<-ctx.Done()
 				must.Do(r.Shutdown())
-				must.Do(s.Shutdown(ctx))
+				if err := s.Shutdown(ctx); err != nil && !errors.Is(err, context.Canceled) {
+					panic(err)
+				}
 			}()
 			if err := s.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
 				if r.ExitCode() == 0 {
@@ -125,7 +112,7 @@ func testCommand() *ff.Command {
 				log.Errorw("failed to read cog.yaml", "err", err)
 				return err
 			}
-			m, c, err := y.PredictModuleAndClass()
+			m, c, err := y.PredictModuleAndPredictor()
 			if err != nil {
 				log.Errorw("failed to parse predict", "err", err)
 				return err

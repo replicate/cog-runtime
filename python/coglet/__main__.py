@@ -28,7 +28,7 @@ def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, s
                 conf = json.load(f)
                 os.unlink(conf_file)
             module_name = conf['module_name']
-            class_name = conf['class_name']
+            predictor_name = conf['predictor_name']
 
             # Add user venv to PYTHONPATH
             pv = f'python{sys.version_info.major}.{sys.version_info.minor}'
@@ -38,7 +38,7 @@ def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, s
                 sys.path.append(venv)
                 # In case the model forks Python interpreter
                 os.environ['PYTHONPATH'] = ':'.join(sys.path)
-            return module_name, class_name
+            return module_name, predictor_name
         time.sleep(0.01)
         elapsed += 0.01
 
@@ -54,6 +54,9 @@ def main() -> int:
 
     logger = logging.getLogger('coglet')
     logger.setLevel(logging.INFO)
+    if os.environ.get('LOG_LEVEL', '').strip().lower() == 'debug':
+        logger.setLevel(logging.DEBUG)
+
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(
         logging.Formatter(
@@ -73,14 +76,14 @@ def main() -> int:
     tup = pre_setup(logger, args.working_dir)
     if tup is None:
         return -1
-    module_name, class_name = tup
+    module_name, predictor_name = tup
 
     return asyncio.run(
         file_runner.FileRunner(
             logger=logger,
             working_dir=args.working_dir,
             module_name=module_name,
-            class_name=class_name,
+            predictor_name=predictor_name,
         ).start()
     )
 

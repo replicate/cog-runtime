@@ -16,7 +16,7 @@ import (
 var logger = logging.New("cog-http-server")
 
 type Handler struct {
-	runner *Runner
+	runner Runner
 }
 
 func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
@@ -24,9 +24,10 @@ func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	sr := h.runner.SetupResult()
 	hc := HealthCheck{
-		Status: h.runner.status.String(),
-		Setup:  &h.runner.setupResult,
+		Status: h.runner.Status().String(),
+		Setup:  &sr,
 	}
 
 	if bs, err := json.Marshal(hc); err != nil {
@@ -38,11 +39,11 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
-	if h.runner.schema == "" {
+	if h.runner.Schema() == "" {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		must.Get(w.Write([]byte(h.runner.schema)))
+		must.Get(w.Write([]byte(h.runner.Schema())))
 	}
 }
 
@@ -55,12 +56,14 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
+	log := logger.Sugar()
+
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return
 	}
-	var req PredictionRequest
-	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), &req); err != nil {
+	req := &PredictionRequest{}
+	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -80,7 +83,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		req.Id = util.PredictionId()
 	}
 
-	c, err := h.runner.predict(req)
+	c, err := h.runner.Predict(req)
 	if errors.Is(err, ErrConflict) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -99,10 +102,12 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if c == nil {
+		log.Debug("response channel is nil; sending async response")
 		w.WriteHeader(http.StatusAccepted)
 		resp := PredictionResponse{Id: req.Id, Status: "starting"}
 		must.Get(w.Write(must.Get(json.Marshal(resp))))
 	} else {
+		log.Debug("waiting for response on channel")
 		resp := <-c
 		w.WriteHeader(http.StatusOK)
 		must.Get(w.Write(must.Get(json.Marshal(resp))))
@@ -111,7 +116,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := h.runner.cancel(id); err == nil {
+	if err := h.runner.Cancel(id); err == nil {
 		w.WriteHeader(http.StatusOK)
 	} else if errors.Is(err, ErrNotFound) {
 		http.Error(w, err.Error(), http.StatusNotFound)

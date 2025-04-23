@@ -2,20 +2,41 @@ import importlib
 import inspect
 import os
 import os.path
-from typing import Any, AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Callable, Dict
 
 from coglet import adt, api, inspector
+
+
+class ProcedurePredictor(api.BasePredictor):
+    setup_done = False
+
+    def __init__(self, _predict: Callable):
+        self._predict = _predict
+
+    def setup(self) -> None:  # type: ignore
+        self.setup_done = True
+
+    def predict(self, **kwargs: Any) -> Any:
+        return self._predict(**kwargs)
 
 
 # Reflectively run a Cog predictor
 # async by default and just run non-async setup/predict by blocking the caller
 class Runner:
     def __init__(self, predictor: adt.Predictor):
-        module = importlib.import_module(predictor.module_name)
-        cls = getattr(module, predictor.class_name)
         self.inputs = predictor.inputs
         self.output = predictor.output
-        self.predictor = cls()
+
+        module = importlib.import_module(predictor.module_name)
+        p = getattr(module, predictor.predictor_name)
+        if inspect.isclass(p):
+            self.predictor = p()
+        elif inspect.isfunction(p):
+            self.predictor = ProcedurePredictor(p)
+        else:
+            raise RuntimeError(
+                f'invalid predictor {predictor.module_name}.{predictor.predictor_name}'
+            )
         self.is_async_predict = inspect.iscoroutinefunction(
             self.predictor.predict
         ) or inspect.isasyncgenfunction(self.predictor.predict)

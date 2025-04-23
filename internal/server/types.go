@@ -1,6 +1,9 @@
 package server
 
-import "syscall"
+import (
+	"encoding/json"
+	"syscall"
+)
 
 type Status int
 
@@ -41,9 +44,9 @@ const SigOutput = syscall.SIGHUP
 const SigReady = syscall.SIGUSR1
 const SigBusy = syscall.SIGUSR2
 
-type Config struct {
-	ModuleName string `json:"module_name,omitempty"`
-	ClassName  string `json:"class_name,omitempty"`
+type PredictionConfig struct {
+	ModuleName    string `json:"module_name,omitempty"`
+	PredictorName string `json:"predictor_name,omitempty"`
 }
 
 type PredictionStatus string
@@ -88,6 +91,12 @@ type PredictionRequest struct {
 	Webhook             string         `json:"webhook,omitempty"`
 	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
+}
+
+type ProcedureRequest struct {
+	Token              string          `json:"token"`
+	ProcedureSourceURL string          `json:"procedure_source_url"`
+	InputsJSON         json.RawMessage `json:"inputs_json"`
 }
 
 type PredictionResponse struct {
