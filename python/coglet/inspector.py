@@ -18,7 +18,7 @@ def _validate_setup(f: Callable) -> None:
     spec = inspect.getfullargspec(f)
     non_default_parameter_args = spec.args
     if spec.defaults is not None:
-        non_default_parameter_args = non_default_parameter_args[:-len(spec.defaults)]
+        non_default_parameter_args = non_default_parameter_args[: -len(spec.defaults)]
     assert non_default_parameter_args == ['self'] or non_default_parameter_args == [
         'self',
         'weights',
