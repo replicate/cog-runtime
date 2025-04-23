@@ -127,7 +127,28 @@ def _input_adt(
         )
 
 
+# Mimic PrimitiveType behavior to support Any output type
+class AnyType:
+    def normalize(self, value: Any) -> Any:
+        return value
+
+    def json_type(selfself) -> dict[str, Any]:
+        # Compat: legacy Cog does not even add {"type": "object"}
+        return {}
+
+    def json_encode(self, value: Any) -> Any:
+        return value
+
+
+_any_type = AnyType()
+
+
 def _output_adt(tpe: type) -> adt.Output:
+    if tpe is Any:
+        print(
+            'Warning: use of Any as output type is error prone and highly-discouraged'
+        )
+        return adt.Output(kind=adt.Kind.SINGLE, type=_any_type)  # type: ignore
     if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
         assert tpe.__name__ == 'Output', 'output type must be named Output'
         fields = {}
@@ -141,7 +162,6 @@ def _output_adt(tpe: type) -> adt.Output:
 
     origin = typing.get_origin(tpe)
     kind = None
-    ft = None
     if origin in {typing.get_origin(Iterator), typing.get_origin(AsyncIterator)}:
         kind = adt.Kind.ITERATOR
         t_args = typing.get_args(tpe)
