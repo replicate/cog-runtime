@@ -107,6 +107,9 @@ class FieldType:
             t_args = typing.get_args(tpe)
             assert len(t_args) == 1, 'list must have one type argument'
             elem_t = t_args[0]
+            # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
+            nested_t = typing.get_origin(elem_t)
+            assert nested_t is None, f'List cannot have nested type {nested_t}'
             repetition = Repetition.REPEATED
         elif typing.get_origin(tpe) is Union:
             t_args = typing.get_args(tpe)
@@ -114,6 +117,9 @@ class FieldType:
                 f'unsupported union type {tpe}'
             )
             elem_t = t_args[0] if t_args[1] is type(None) else t_args[0]
+            # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
+            nested_t = typing.get_origin(elem_t)
+            assert nested_t is None, f'Optional cannot have nested type {nested_t}'
             repetition = Repetition.OPTIONAL
         else:
             elem_t = tpe
