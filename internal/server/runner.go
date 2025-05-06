@@ -135,16 +135,16 @@ func (r *Runner) Start() error {
 	return nil
 }
 
-func (r *Runner) Shutdown() error {
+func (r *Runner) Stop(shutdown bool) error {
 	log := logger.Sugar()
-	log.Infow("shutdown requested")
+	log.Infow("stop requested")
 	r.mu.Lock()
-	r.shutdownRequested = true
+	r.shutdownRequested = shutdown
 	r.mu.Unlock()
-	if r.cmd.ProcessState != nil {
+	if r.cmd.ProcessState != nil && shutdown {
 		// Python process already exited
-		// Terminate HTTP server
-		return r.stop()
+		// Shutdown HTTP server
+		return r.shutdown()
 	} else {
 		// Otherwise signal Python process to stop
 		// FIXME: kill process after grace period
@@ -157,7 +157,8 @@ func (r *Runner) ExitCode() int {
 	return r.cmd.ProcessState.ExitCode()
 }
 
-func (r *Runner) stop() error {
+func (r *Runner) shutdown() error {
+	// SIGTERM self to shut down HTTP server
 	return syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 }
 
@@ -336,7 +337,7 @@ func (r *Runner) wait() {
 		r.mu.Unlock()
 	}
 	if !r.awaitExplicitShutdown || r.shutdownRequested {
-		must.Do(r.stop())
+		must.Do(r.shutdown())
 	}
 }
 
