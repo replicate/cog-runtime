@@ -42,6 +42,12 @@ const SigReady = syscall.SIGUSR1
 const SigBusy = syscall.SIGUSR2
 
 type Config struct {
+	ProcedureMode         bool
+	AwaitExplicitShutdown bool
+	UploadUrl             string
+}
+
+type PredictConfig struct {
 	ModuleName    string `json:"module_name,omitempty"`
 	PredictorName string `json:"predictor_name,omitempty"`
 }

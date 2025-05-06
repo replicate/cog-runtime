@@ -82,19 +82,20 @@ func serverCommand() *ff.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr)
-			r := server.NewRunner(cfg.AwaitExplicitShutdown, cfg.UploadUrl)
-			must.Do(r.Start())
-			s := server.NewServer(addr, r)
+			serverCfg := server.Config{AwaitExplicitShutdown: cfg.AwaitExplicitShutdown, UploadUrl: cfg.UploadUrl}
+			h := server.NewHandler(serverCfg)
+			s := server.NewServer(addr, h)
 			go func() {
 				<-ctx.Done()
-				must.Do(r.Stop(true))
+				must.Do(h.Stop())
 				must.Do(s.Shutdown(ctx))
 			}()
 			if err := s.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
-				if r.ExitCode() == 0 {
+				exitCode := h.ExitCode()
+				if exitCode == 0 {
 					log.Infow("shutdown completed normally")
 				} else {
-					log.Errorw("python runner exited with code", "code", r.ExitCode())
+					log.Errorw("python runner exited with code", "code", exitCode)
 				}
 				return nil
 			} else {
