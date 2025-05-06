@@ -61,7 +61,6 @@ class FileRunner:
         setup_result: Dict[str, Any] = {'started_at': util.now_iso()}
         try:
             p = inspector.create_predictor(self.module_name, self.class_name)
-            # FIXME: reuse frozen schema?
             with open(openapi_file, 'w') as f:
                 schema = schemas.to_json_schema(p)
                 json.dump(schema, f)
@@ -73,14 +72,13 @@ class FileRunner:
         except Exception as e:
             self.logger.exception('setup failed: %s', e)
             setup_result['status'] = 'failed'
-        finally:
-            setup_result['completed_at'] = util.now_iso()
+        setup_result['completed_at'] = util.now_iso()
         with open(setup_result_file, 'w') as f:
             json.dump(setup_result, f)
         if setup_result['status'] == 'failed':
             return 1
 
-        def _noop_handler(signum, _) -> None:
+        def _noop_handler(_signum, _) -> None:
             pass
 
         def _cancel_handler(signum, _) -> None:
@@ -175,15 +173,15 @@ class FileRunner:
                 self._respond(pid, epoch, resp)
                 epoch += 1
 
-            input = req['input']
-            for k, v in input.items():
-                input[k] = self.runner.inputs[k].type.json_decode(v)
+            req_in = req['input']
+            for k, v in req_in.items():
+                req_in[k] = self.runner.inputs[k].type.json_decode(v)
 
             if self.runner.is_iter():
                 resp['output'] = []
                 resp['status'] = 'processing'
                 scope.ctx_pid.set(pid)
-                async for o in self.runner.predict_iter(input):
+                async for o in self.runner.predict_iter(req_in):
                     # Test JSON serialization in case of invalid output
                     json.dumps(o, default=util.output_json)
 
@@ -193,7 +191,7 @@ class FileRunner:
                         epoch += 1
             else:
                 scope.ctx_pid.set(pid)
-                o = await self.runner.predict(input)
+                o = await self.runner.predict(req_in)
                 o = self.runner.output.json_encode(o)
                 # Test JSON serialization in case of invalid output
                 json.dumps(o, default=util.output_json)

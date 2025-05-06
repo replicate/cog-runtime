@@ -1,10 +1,10 @@
 import json
 import os.path
-import pathlib
 import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
 from coglet import file_runner
@@ -40,17 +40,17 @@ def wait_for_process(p: subprocess.Popen, code: int = 0) -> None:
 
 
 def run_file_runner(
-    tmp_path: str, predictor: str, env: Optional[Dict[str, str]] = None
+    tmp_path: Path, predictor: str, env: Optional[Dict[str, str]] = None
 ) -> subprocess.Popen:
     if env is None:
         env = {}
-    env['PYTHONPATH'] = str(pathlib.Path(__file__).absolute().parent.parent)
+    env['PYTHONPATH'] = str(Path(__file__).absolute().parent.parent)
     cmd = [
         sys.executable,
         '-m',
         'coglet',
         '--working-dir',
-        tmp_path,
+        tmp_path.as_posix(),
     ]
     conf_file = os.path.join(tmp_path, 'config.json')
     with open(conf_file, 'w') as f:
@@ -101,7 +101,7 @@ def test_file_runner(tmp_path):
     assert resp['output'] == '*bar*'
 
     stop_file = os.path.join(tmp_path, 'stop')
-    pathlib.Path(stop_file).touch()
+    Path(stop_file).touch()
     wait_for_process(p)
 
 
@@ -165,7 +165,7 @@ def test_file_runner_predict_failed(tmp_path):
     assert resp['error'] == 'prediction failed'
 
     stop_file = os.path.join(tmp_path, 'stop')
-    pathlib.Path(stop_file).touch()
+    Path(stop_file).touch()
     wait_for_process(p)
 
 
@@ -207,5 +207,5 @@ def test_file_runner_predict_canceled(tmp_path):
     assert resp['status'] == 'canceled'
 
     stop_file = os.path.join(tmp_path, 'stop')
-    pathlib.Path(stop_file).touch()
+    Path(stop_file).touch()
     wait_for_process(p)

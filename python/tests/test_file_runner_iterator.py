@@ -1,6 +1,6 @@
 import json
 import os.path
-import pathlib
+from pathlib import Path
 from typing import List, Optional
 
 import pytest
@@ -57,7 +57,7 @@ def test_file_runner_iterator(predictor, tmp_path):
     assert resp['output'] == ['*bar-0*', '*bar-1*']
 
     stop_file = os.path.join(tmp_path, 'stop')
-    pathlib.Path(stop_file).touch()
+    Path(stop_file).touch()
     wait_for_process(p)
 
 
@@ -78,8 +78,8 @@ def test_file_runner_iterator_webhook(predictor, tmp_path):
 
     def assert_output(status: str, output: Optional[List[str]]) -> None:
         assert os.path.exists(resp_file)
-        with open(resp_file, 'r') as f:
-            resp = json.load(f)
+        with open(resp_file, 'r') as rf:
+            resp = json.load(rf)
         assert resp['status'] == status
         assert resp.get('output') == output
 
@@ -124,7 +124,7 @@ def test_file_runner_iterator_webhook(predictor, tmp_path):
     ]
 
     stop_file = os.path.join(tmp_path, 'stop')
-    pathlib.Path(stop_file).touch()
+    Path(stop_file).touch()
     wait_for_process(p)
 
 
@@ -177,5 +177,5 @@ async def test_file_runner_async_iterator_concurrency(tmp_path):
     assert resp_b['output'] == ['*baz-0*', '*baz-1*']
 
     stop_file = os.path.join(tmp_path, 'stop')
-    pathlib.Path(stop_file).touch()
+    Path(stop_file).touch()
     await async_wait_for_process(p)
