@@ -1,10 +1,15 @@
 package server
 
 import (
+	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/replicate/cog-runtime/internal/util"
 
@@ -15,14 +20,22 @@ import (
 
 var logger = logging.New("cog-http-server")
 
+//go:embed openapi-procedure.json
+var procedureSchema string
+
 type Handler struct {
-	cfg    Config
-	runner *Runner
+	cfg       Config
+	startedAt time.Time
+	runner    *Runner
+	mu        sync.Mutex
 }
 
 func NewHandler(cfg Config) *Handler {
-	h := &Handler{cfg: cfg}
-	if !cfg.ProcedureMode {
+	h := &Handler{
+		cfg:       cfg,
+		startedAt: time.Now(),
+	}
+	if !cfg.UseProcedureMode {
 		h.runner = NewRunner(cfg.AwaitExplicitShutdown, cfg.UploadUrl)
 		must.Do(h.runner.Start())
 	}
@@ -48,9 +61,21 @@ func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	hc := HealthCheck{
-		Status: h.runner.status.String(),
-		Setup:  &h.runner.setupResult,
+	var hc HealthCheck
+	if h.cfg.UseProcedureMode {
+		hc = HealthCheck{
+			Status: StatusReady.String(),
+			Setup: &SetupResult{
+				StartedAt:   util.FormatTime(h.startedAt),
+				CompletedAt: util.FormatTime(h.startedAt),
+				Status:      SetupSucceeded,
+			},
+		}
+	} else {
+		hc = HealthCheck{
+			Status: h.runner.status.String(),
+			Setup:  &h.runner.setupResult,
+		}
 	}
 
 	if bs, err := json.Marshal(hc); err != nil {
@@ -62,6 +87,12 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
+	if h.cfg.UseProcedureMode {
+		w.WriteHeader(http.StatusOK)
+		must.Get(w.Write([]byte(procedureSchema)))
+		return
+	}
+
 	if h.runner.schema == "" {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	} else {
@@ -71,11 +102,68 @@ func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
+	// Procedure mode and no runner yet
+	if h.runner == nil {
+		// SIGTERM self to shut down HTTP server
+		if err := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	if err := h.runner.Stop(true); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
 		w.WriteHeader(http.StatusOK)
 	}
+}
+
+func (h *Handler) updateRunner(pr ProcedureRequest) error {
+	log := logger.Sugar()
+
+	// Reuse current runner, nothing to do
+	if h.runner != nil && h.runner.SrcDir() == pr.ProcedureSourceURL {
+		return nil
+	}
+
+	// Need to start a new runner, lock until done
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	// Different source URL, stop current runner
+	if h.runner != nil {
+		log.Infow("stopping procedure runner", "procedure_source_url", h.runner.SrcDir())
+		if err := h.runner.Stop(false); err != nil {
+			log.Errorw("failed to stop runner", "error", err)
+		}
+		h.runner = nil
+	}
+
+	// Start new runner
+	log.Infow("starting procedure runner", "procedure_source_url", pr.ProcedureSourceURL)
+	runner := NewProcedureRunner(h.cfg.AwaitExplicitShutdown, h.cfg.UploadUrl, pr.ProcedureSourceURL, pr.Token)
+	if err := runner.Start(); err != nil {
+		return err
+	}
+	start := time.Now()
+	// Wait for runner to become ready, this should not take long as procedures have no setup
+	for {
+		if runner.status == StatusReady {
+			break
+		}
+		if time.Since(start) > 10*time.Second {
+			log.Errorw("stopping procedure runner after time out", "elapsed", time.Since(start))
+			if err := runner.Stop(false); err != nil {
+				log.Errorw("failed to stop runner", "error", err)
+			}
+			return fmt.Errorf("procedure time out")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.runner = runner
+	return nil
 }
 
 func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
@@ -102,6 +190,20 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Id == "" {
 		req.Id = util.PredictionId()
+	}
+
+	if h.cfg.UseProcedureMode {
+		// Unwrap procedure request
+		pr, err := ParseProcedureRequest(req.Input)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Input = pr.InputsJson
+		if err := h.updateRunner(pr); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	c, err := h.runner.predict(req)
@@ -134,6 +236,12 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
+	// Procedure mode and no runner yet
+	if h.runner == nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
 	id := r.PathValue("id")
 	if err := h.runner.cancel(id); err == nil {
 		w.WriteHeader(http.StatusOK)
