@@ -95,7 +95,8 @@ type Runner struct {
 	mu                    sync.Mutex
 }
 
-func NewRunner(workingDir string, awaitExplicitShutdown bool, uploadUrl string) *Runner {
+func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
+	workingDir := must.Get(os.MkdirTemp("", "cog-runner-"))
 	args := []string{
 		"-u",
 		"-m", "coglet",
