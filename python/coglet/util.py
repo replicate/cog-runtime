@@ -13,7 +13,7 @@ def output_json(obj):
     tpe = type(obj)
     if tpe is api.Path:
         # Prefix protocol for uploader
-        return f'file://{obj.absolute()}'
+        return obj.absolute().as_uri()
     elif tpe is api.Secret:
         # Encode Secret('foobar') as '**********'
         return str(obj)

@@ -129,14 +129,17 @@ def _input_adt(
 
 # Mimic PrimitiveType behavior to support Any output type
 class AnyType:
-    def normalize(self, value: Any) -> Any:
+    @staticmethod
+    def normalize(value: Any) -> Any:
         return value
 
-    def json_type(selfself) -> dict[str, Any]:
+    @staticmethod
+    def json_type() -> dict[str, Any]:
         # Compat: legacy Cog does not even add {"type": "object"}
         return {}
 
-    def json_encode(self, value: Any) -> Any:
+    @staticmethod
+    def json_encode(value: Any) -> Any:
         return value
 
 

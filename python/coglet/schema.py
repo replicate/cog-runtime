@@ -36,7 +36,7 @@ def main():
         cls = getattr(module, p.class_name)
         inspector.get_test_inputs(cls, p.inputs)
 
-        s = schemas.to_json_schema(p)
+        schema = schemas.to_json_schema(p)
     except Exception as e:
         sys.stdout.write = _stdout_write
         sys.stderr.write = _stderr_write
@@ -46,7 +46,7 @@ def main():
         sys.stdout.write = _stdout_write
         sys.stderr.write = _stderr_write
 
-    print(json.dumps(s, indent=2))
+    print(json.dumps(schema, indent=2))
 
 
 if __name__ == '__main__':

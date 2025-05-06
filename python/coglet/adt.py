@@ -139,6 +139,9 @@ class FieldType:
             return None if value is None else self.primitive.normalize(value)
         elif self.repetition is Repetition.REPEATED:
             return [self.primitive.normalize(v) for v in value]
+        else:
+            # Should not reach here
+            return value
 
     def json_type(self) -> dict[str, Any]:
         if self.repetition is Repetition.REPEATED:
@@ -242,7 +245,9 @@ class Output:
     def _transform(self, value: Any, json: bool) -> Any:
         if self.kind in {Kind.SINGLE, Kind.ITERATOR, Kind.CONCAT_ITERATOR}:
             assert self.type is not None
-            f = self.type.json_encode if json else self.type.normalize
+            f: Callable[[Any], Any] = (
+                self.type.json_encode if json else self.type.normalize
+            )
             return f(value)
         elif self.kind is Kind.LIST:
             assert self.type is not None
