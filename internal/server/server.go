@@ -16,7 +16,31 @@ import (
 var logger = logging.New("cog-http-server")
 
 type Handler struct {
+	cfg    Config
 	runner *Runner
+}
+
+func NewHandler(cfg Config) *Handler {
+	h := &Handler{cfg: cfg}
+	if !cfg.ProcedureMode {
+		h.runner = NewRunner(cfg.AwaitExplicitShutdown, cfg.UploadUrl)
+		must.Do(h.runner.Start())
+	}
+	return h
+}
+
+func (h *Handler) Stop() error {
+	if h.runner == nil {
+		return nil
+	}
+	return h.runner.Stop(true)
+}
+
+func (h *Handler) ExitCode() int {
+	if h.runner == nil {
+		return 0
+	}
+	return h.runner.ExitCode()
 }
 
 func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {

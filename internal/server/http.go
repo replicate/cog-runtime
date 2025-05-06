@@ -13,8 +13,7 @@ var (
 	ErrSetupFailed = errors.New("setup failed")
 )
 
-func NewServer(addr string, runner *Runner) *http.Server {
-	handler := Handler{runner: runner}
+func NewServer(addr string, handler *Handler) *http.Server {
 	serveMux := http.NewServeMux()
 	serveMux.HandleFunc("GET /{$}", handler.Root)
 	serveMux.HandleFunc("GET /health-check", handler.HealthCheck)
