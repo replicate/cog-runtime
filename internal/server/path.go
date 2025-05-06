@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/replicate/go/must"
 
@@ -85,12 +84,12 @@ func base64ToInput(s string, paths *[]string) (string, error) {
 }
 
 func urlToInput(s string, paths *[]string) (string, error) {
-	if !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
-		return s, nil
-	}
 	u, err := url.Parse(s)
 	if err != nil {
-		return "", err
+		return s, nil
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return s, nil
 	}
 	f, err := os.CreateTemp("", fmt.Sprintf("cog-input-*%s", filepath.Ext(u.Path)))
 	if err != nil {
@@ -109,10 +108,14 @@ func urlToInput(s string, paths *[]string) (string, error) {
 }
 
 func outputToBase64(s string, paths *[]string) (string, error) {
-	p, ok := strings.CutPrefix(s, "file://")
-	if !ok {
+	u, err := url.Parse(s)
+	if err != nil {
 		return s, nil
 	}
+	if u.Scheme != "file" {
+		return s, nil
+	}
+	p := u.Path
 
 	bs, err := os.ReadFile(p)
 	if err != nil {
@@ -127,10 +130,14 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 
 func outputToUpload(uploadUrl string, predictionId string) func(s string, paths *[]string) (string, error) {
 	return func(s string, paths *[]string) (string, error) {
-		p, ok := strings.CutPrefix(s, "file://")
-		if !ok {
+		u, err := url.Parse(s)
+		if err != nil {
 			return s, nil
 		}
+		if u.Scheme != "file" {
+			return s, nil
+		}
+		p := u.Path
 
 		bs, err := os.ReadFile(p)
 		if err != nil {
@@ -138,8 +145,8 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		}
 		*paths = append(*paths, p)
 		filename := path.Base(p)
-		url := fmt.Sprintf("%s%s", uploadUrl, filename)
-		req := must.Get(http.NewRequest(http.MethodPut, url, bytes.NewReader(bs)))
+		uUpload := fmt.Sprintf("%s%s", uploadUrl, filename)
+		req := must.Get(http.NewRequest(http.MethodPut, uUpload, bytes.NewReader(bs)))
 		req.Header.Set("X-Prediction-ID", predictionId)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
