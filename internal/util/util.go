@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,9 +25,9 @@ type CogYaml struct {
 	Predict     string      `yaml:"predict"`
 }
 
-func ReadCogYaml() (*CogYaml, error) {
+func ReadCogYaml(dir string) (*CogYaml, error) {
 	var cogYaml CogYaml
-	bs, err := os.ReadFile("cog.yaml")
+	bs, err := os.ReadFile(filepath.Join(dir, "cog.yaml"))
 	if err != nil {
 		return nil, err
 	}
@@ -62,6 +63,10 @@ const TimeLayout = "2006-01-02T15:04:05.999999-07:00"
 func NowIso() string {
 	// Python: datetime.now(tz=timezone.utc).isoformat()
 	return time.Now().UTC().Format(TimeLayout)
+}
+
+func FormatTime(t time.Time) string {
+	return t.UTC().Format(TimeLayout)
 }
 
 func ParseTime(t string) time.Time {

@@ -22,6 +22,7 @@ import (
 type ServerConfig struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
 	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
+	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
 }
@@ -38,7 +39,7 @@ func schemaCommand() *ff.Command {
 		Usage: "schema [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			y, err := util.ReadCogYaml()
+			y, err := util.ReadCogYaml(must.Get(os.Getwd()))
 			if err != nil {
 				log.Errorw("failed to read cog.yaml", "err", err)
 				return err
@@ -66,7 +67,13 @@ func serverCommand() *ff.Command {
 		Usage: "server [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
+			// Procedure mode implies await explicit shutdown
+			// i.e. Python process exit should not trigger shutdown
+			if cfg.UseProcedureMode {
+				cfg.AwaitExplicitShutdown = true
+			}
 			log.Infow("configuration",
+				"use-procedure-mode", cfg.UseProcedureMode,
 				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
 				"upload-url", cfg.UploadUrl,
 			)
@@ -82,7 +89,11 @@ func serverCommand() *ff.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr)
-			serverCfg := server.Config{AwaitExplicitShutdown: cfg.AwaitExplicitShutdown, UploadUrl: cfg.UploadUrl}
+			serverCfg := server.Config{
+				UseProcedureMode:      cfg.UseProcedureMode,
+				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
+				UploadUrl:             cfg.UploadUrl,
+			}
 			h := server.NewHandler(serverCfg)
 			s := server.NewServer(addr, h)
 			go func() {
@@ -115,7 +126,7 @@ func testCommand() *ff.Command {
 		Usage: "test [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			y, err := util.ReadCogYaml()
+			y, err := util.ReadCogYaml(must.Get(os.Getwd()))
 			if err != nil {
 				log.Errorw("failed to read cog.yaml", "err", err)
 				return err
