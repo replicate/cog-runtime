@@ -22,7 +22,6 @@ import (
 type ServerConfig struct {
 	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
 	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
-	WorkingDir            string `ff:"long: working-dir, nodefault, usage: working directory"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
 }
@@ -67,12 +66,7 @@ func serverCommand() *ff.Command {
 		Usage: "server [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			workingDir := cfg.WorkingDir
-			if workingDir == "" {
-				workingDir = must.Get(os.MkdirTemp("", "cog-server-"))
-			}
 			log.Infow("configuration",
-				"working-dir", workingDir,
 				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
 				"upload-url", cfg.UploadUrl,
 			)
@@ -88,7 +82,7 @@ func serverCommand() *ff.Command {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr)
-			r := server.NewRunner(workingDir, cfg.AwaitExplicitShutdown, cfg.UploadUrl)
+			r := server.NewRunner(cfg.AwaitExplicitShutdown, cfg.UploadUrl)
 			must.Do(r.Start())
 			s := server.NewServer(addr, r)
 			go func() {
