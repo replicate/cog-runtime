@@ -47,7 +47,7 @@ func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
-	if err := h.runner.Shutdown(); err != nil {
+	if err := h.runner.Stop(true); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
 		w.WriteHeader(http.StatusOK)

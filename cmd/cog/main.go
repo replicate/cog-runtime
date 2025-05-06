@@ -93,7 +93,7 @@ func serverCommand() *ff.Command {
 			s := server.NewServer(addr, r)
 			go func() {
 				<-ctx.Done()
-				must.Do(r.Shutdown())
+				must.Do(r.Stop(true))
 				must.Do(s.Shutdown(ctx))
 			}()
 			if err := s.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
