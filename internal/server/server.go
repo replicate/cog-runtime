@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sync"
 	"syscall"
 	"time"
@@ -120,11 +121,11 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) updateRunner(pr ProcedureRequest) error {
+func (h *Handler) updateRunner(srcDir, token string) error {
 	log := logger.Sugar()
 
 	// Reuse current runner, nothing to do
-	if h.runner != nil && h.runner.SrcDir() == pr.ProcedureSourceURL {
+	if h.runner != nil && h.runner.SrcDir() == srcDir {
 		return nil
 	}
 
@@ -134,7 +135,7 @@ func (h *Handler) updateRunner(pr ProcedureRequest) error {
 
 	// Different source URL, stop current runner
 	if h.runner != nil {
-		log.Infow("stopping procedure runner", "procedure_source_url", h.runner.SrcDir())
+		log.Infow("stopping procedure runner", "src_dir", h.runner.SrcDir())
 		if err := h.runner.Stop(false); err != nil {
 			log.Errorw("failed to stop runner", "error", err)
 		}
@@ -142,8 +143,8 @@ func (h *Handler) updateRunner(pr ProcedureRequest) error {
 	}
 
 	// Start new runner
-	log.Infow("starting procedure runner", "procedure_source_url", pr.ProcedureSourceURL)
-	runner := NewProcedureRunner(h.cfg.AwaitExplicitShutdown, h.cfg.UploadUrl, pr.ProcedureSourceURL, pr.Token)
+	log.Infow("starting procedure runner", "src_dir", srcDir)
+	runner := NewProcedureRunner(h.cfg.AwaitExplicitShutdown, h.cfg.UploadUrl, srcDir, token)
 	if err := runner.Start(); err != nil {
 		return err
 	}
@@ -193,14 +194,17 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.cfg.UseProcedureMode {
-		// Unwrap procedure request
-		pr, err := ParseProcedureRequest(req.Input)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if req.ProcedureSourceURL == "" || req.Token == "" {
+			http.Error(w, "missing procedure_source_url or token", http.StatusBadRequest)
 			return
 		}
-		req.Input = pr.InputsJson
-		if err := h.updateRunner(pr); err != nil {
+		u, err := url.Parse(req.ProcedureSourceURL)
+		if err != nil {
+			http.Error(w, "invalid procedure_source_url", http.StatusBadRequest)
+			return
+		}
+		srcDir := u.Path
+		if err := h.updateRunner(srcDir, req.Token); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
