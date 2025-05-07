@@ -229,31 +229,6 @@
         "title": "HTTPValidationError"
       },
       "Input": {
-        "properties": {
-          "token": {
-            "type": "string",
-            "format": "password",
-            "title": "Token",
-            "x-cog-secret": true,
-            "x-order": 0
-          },
-          "procedure_source_url": {
-            "type": "string",
-            "title": "Procedure Source Url",
-            "x-order": 1
-          },
-          "inputs_json": {
-            "type": "string",
-            "title": "Inputs Json",
-            "x-order": 2
-          }
-        },
-        "type": "object",
-        "required": [
-          "token",
-          "procedure_source_url",
-          "inputs_json"
-        ],
         "title": "Input"
       },
       "Output": {
@@ -295,10 +270,24 @@
               "logs",
               "completed"
             ]
+          },
+          "token": {
+            "type": "string",
+            "format": "password",
+            "title": "Token",
+            "x-cog-secret": true
+          },
+          "procedure_source_url": {
+            "type": "string",
+            "title": "Procedure Source Url"
           }
         },
         "type": "object",
-        "title": "PredictionRequest"
+        "title": "PredictionRequest",
+        "required": [
+          "token",
+          "procedure_source_url"
+        ]
       },
       "PredictionResponse": {
         "properties": {

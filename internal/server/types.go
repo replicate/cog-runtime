@@ -1,9 +1,6 @@
 package server
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/url"
 	"syscall"
 )
 
@@ -92,44 +89,6 @@ type SetupResult struct {
 	Logs        string      `json:"logs,omitempty"`
 }
 
-type ProcedureRequest struct {
-	ProcedureSourceURL string `json:"procedure_source_url"`
-	Token              string `json:"token"`
-	InputsJson         any    `json:"inputs_json"`
-}
-
-func ParseProcedureRequest(v any) (ProcedureRequest, error) {
-	r := ProcedureRequest{}
-	m, ok := v.(map[string]any)
-	if !ok {
-		return r, fmt.Errorf("invalid procedure request %v", v)
-	}
-	if v, ok := m["procedure_source_url"]; ok {
-		vs := v.(string)
-		u, err := url.Parse(vs)
-		if err != nil {
-			return r, err
-		}
-		if u.Scheme != "file" {
-			return r, fmt.Errorf("invalid procedure_source_url %s", vs)
-		}
-		r.ProcedureSourceURL = u.Path
-	}
-	if v, ok := m["token"]; ok {
-		r.Token = v.(string)
-	}
-	if v, ok := m["inputs_json"]; ok {
-		vs, ok := v.(string)
-		if !ok {
-			return r, fmt.Errorf("invalid inputs_json %v", v)
-		}
-		if err := json.Unmarshal([]byte(vs), &r.InputsJson); err != nil {
-			return r, err
-		}
-	}
-	return r, nil
-}
-
 type PredictionRequest struct {
 	Input               any            `json:"input"`
 	Id                  string         `json:"id"`
@@ -137,6 +96,8 @@ type PredictionRequest struct {
 	Webhook             string         `json:"webhook,omitempty"`
 	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
+	ProcedureSourceURL  string         `json:"procedure_source_url"`
+	Token               string         `json:"token"`
 }
 
 type PredictionResponse struct {
