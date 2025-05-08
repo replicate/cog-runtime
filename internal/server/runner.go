@@ -13,6 +13,7 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -107,6 +108,7 @@ func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
 		workingDir:            workingDir,
 		cmd:                   *cmd,
 		status:                StatusStarting,
+		maxConcurrency:        1,
 		pending:               make(map[string]*PendingPrediction),
 		awaitExplicitShutdown: awaitExplicitShutdown,
 		uploadUrl:             uploadUrl,
@@ -179,13 +181,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		req.CreatedAt = util.NowIso()
 	}
 	r.mu.Lock()
-	// blocking `def predict()`, max concurrency is always 1
-	maxPending := 1
-	// `async def predict()`, respect concurrency.max from cog.yaml
-	if r.asyncPredict {
-		maxPending = r.maxConcurrency
-	}
-	if !r.asyncPredict && len(r.pending) >= maxPending {
+	if len(r.pending) >= r.maxConcurrency {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: Already running a prediction")
 		return nil, ErrConflict
@@ -276,9 +272,14 @@ func (r *Runner) config() {
 	}
 
 	// For testing only, set by CogTest, to avoid creating a one-off cog.yaml
-	moduleName := os.Getenv("COG_MODULE_NAME")
-	predictorName := os.Getenv("COG_PREDICTOR_NAME")
+	moduleName := os.Getenv("TEST_COG_MODULE_NAME")
+	predictorName := os.Getenv("TEST_COG_PREDICTOR_NAME")
+	maxConcurrencyStr := os.Getenv("TEST_COG_MAX_CONCURRENCY")
+	if maxConcurrencyStr != "" {
+		r.maxConcurrency = must.Get(strconv.Atoi(maxConcurrencyStr))
+	}
 
+	// Otherwise read from cog.yaml
 	if moduleName == "" || predictorName == "" {
 		y, err := util.ReadCogYaml()
 		if err != nil {
@@ -292,7 +293,8 @@ func (r *Runner) config() {
 		}
 		moduleName = m
 		predictorName = c
-		r.maxConcurrency = y.Concurrency.Max
+		// Default to 1 if not set in cog.yaml, regardless whether async predict or not
+		r.maxConcurrency = max(1, y.Concurrency.Max)
 	}
 	conf := PredictConfig{ModuleName: moduleName, PredictorName: predictorName}
 	confFile := path.Join(r.workingDir, "config.json")
