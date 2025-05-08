@@ -172,8 +172,8 @@ func (ct *CogTest) runtimeCmd() *exec.Cmd {
 
 	cmd.Env = append(cmd.Env,
 		// Pass module and predictor to Runner, to avoid creating a one-off cog.yaml
-		fmt.Sprintf("COG_MODULE_NAME=tests.runners.%s", ct.module),
-		fmt.Sprintf("COG_PREDICTOR_NAME=Predictor"),
+		fmt.Sprintf("TEST_COG_MODULE_NAME=tests.runners.%s", ct.module),
+		fmt.Sprintf("TEST_COG_PREDICTOR_NAME=Predictor"),
 		fmt.Sprintf("PATH=%s:%s", pathEnv, os.Getenv("PATH")),
 		fmt.Sprintf("PYTHONPATH=%s", pythonPathEnv),
 	)

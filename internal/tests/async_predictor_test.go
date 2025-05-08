@@ -11,6 +11,7 @@ import (
 
 func TestAsyncPredictorConcurrency(t *testing.T) {
 	ct := NewCogTest(t, "async_sleep")
+	ct.AppendEnvs("TEST_COG_MAX_CONCURRENCY=2")
 	ct.StartWebhook()
 	assert.NoError(t, ct.Start())
 

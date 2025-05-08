@@ -48,6 +48,7 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 		t.SkipNow()
 	}
 	ct := NewCogTest(t, "async_iterator")
+	ct.AppendEnvs("TEST_COG_MAX_CONCURRENCY=2")
 	ct.StartWebhook()
 	assert.NoError(t, ct.Start())
 
