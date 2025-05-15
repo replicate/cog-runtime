@@ -39,7 +39,7 @@ def ctx_write(write_fn) -> Callable[[str], int]:
         if len(s) == 0:
             return 0
         if len(s) > 16384:
-            s = s[:16384] + " ... truncated"
+            s = s[:16384] + ' ... truncated'
         pid = ctx_pid.get()
         prefix = f'[pid={pid}] ' if pid is not None else ''
         if pid is None:
