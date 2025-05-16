@@ -9,6 +9,7 @@ ctx_pid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     'pid', default=None
 )
 metrics: Dict[str, Dict[str, Any]] = defaultdict(dict)
+ctx_write_buf: Dict[str, str] = {}
 
 
 class Scope:
@@ -33,35 +34,43 @@ def current_scope() -> Scope:
 
 
 def ctx_write(write_fn) -> Callable[[str], int]:
-    buf: Dict[str, str] = {}
-
     def _write(s: str) -> int:
         if len(s) == 0:
             return 0
-        if len(s) > 16384:
-            s = s[:16384] + ' ... truncated'
         pid = ctx_pid.get()
         prefix = f'[pid={pid}] ' if pid is not None else ''
         if pid is None:
             pid = 'logger'
+
+        # Large input, bypass buffer and write truncated line directly
+        if len(s) > 16384:
+            return write_fn(prefix + s[:16384] + ' ... truncated\n')
+
         n = 0
-        s = s.replace('\r', '\n')
-        if s[-1] == '\n':
-            b = buf.pop(pid, '')
-            out = b + s[:-1].replace('\n', f'\n{prefix}') + '\n'
-            n += write_fn(out)
-            buf[pid] = prefix
-        elif '\n' in s:
-            b = buf.pop(pid, '')
-            lines = s.replace('\n', f'\n{prefix}').split('\n')
+        # s = s.replace('\r', '\n')
+        if s[-1] in {'\n', '\r'}:
+            # Input ends with new line, flush buffer and input
+            b = ctx_write_buf.pop(pid, '')
+            lines = s.splitlines()
             n += write_fn(b + lines[0] + '\n')
+            for line in lines[1:]:
+                n += write_fn(prefix + line + '\n')
+            ctx_write_buf[pid] = prefix
+        elif '\n' in s or '\r' in s:
+            # Input contains new line but does not end
+            b = ctx_write_buf.pop(pid, '')
+            lines = s.splitlines()
+            n += write_fn(b + lines[0] + '\n')
+            # Flush all but last partial line
             for line in lines[1:-1]:
-                n += write_fn(b + line + '\n')
-            buf[pid] = lines[-1]
+                n += write_fn(prefix + line + '\n')
+            ctx_write_buf[pid] = prefix + lines[-1]
         else:
-            if pid not in buf:
-                buf[pid] = prefix
-            buf[pid] += s.replace('\n', f'\n{prefix}')
+            # No new line, append to buffer
+            if pid not in ctx_write_buf:
+                ctx_write_buf[pid] = prefix + s
+            else:
+                ctx_write_buf[pid] += s
         return n
 
     return _write

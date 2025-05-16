@@ -218,6 +218,8 @@ class FileRunner:
         self._respond(pid, epoch, resp)
         if pid in scope.metrics:
             scope.metrics.pop(pid)
+        if pid in scope.ctx_write_buf:
+            scope.ctx_write_buf.pop(pid)
         epoch += 1
 
     def _respond(
