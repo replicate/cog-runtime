@@ -427,6 +427,7 @@ func (r *Runner) updateSetupResult() {
 func (r *Runner) handleResponses() {
 	log := logger.Sugar()
 	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
+		// Entries are sorted, so we process response of the same prediction ID in increasing epoch
 		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
 		if m == nil {
 			continue
@@ -442,9 +443,14 @@ func (r *Runner) handleResponses() {
 
 		pr.mu.Lock()
 		log.Infow("received prediction response", "id", pid)
-		must.Do(r.readJson(entry.Name(), &pr.response))
+		if err := r.readJson(entry.Name(), &pr.response); err != nil {
+			log.Errorw("failed to read prediction response", "error", err)
+			continue
+		}
 		// Delete response immediately to avoid duplicates
-		must.Do(os.Remove(path.Join(r.workingDir, entry.Name())))
+		if err := os.Remove(path.Join(r.workingDir, entry.Name())); err != nil {
+			log.Errorw("failed to delete prediction response", "error", err)
+		}
 
 		paths := make([]string, 0)
 		outputFn := outputToBase64

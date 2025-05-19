@@ -6,6 +6,7 @@ import pathlib
 import re
 import signal
 import sys
+import tempfile
 from typing import Any, Dict, Optional
 
 from coglet import api, inspector, runner, schemas, scope, util
@@ -232,11 +233,18 @@ class FileRunner:
             if 'metrics' not in resp:
                 resp['metrics'] = {}
             resp['metrics'].update(m)
+
+        # Write to a temp file and atomically rename to avoid Go server picking up an incomplete file
+        (_, temp_path) = tempfile.mkstemp(
+            suffix='.json', prefix=f'response-{pid}-{epoch}'
+        )
+        with open(temp_path, 'w') as f:
+            json.dump(resp, f, default=util.output_json)
         resp_path = os.path.join(
             self.working_dir, self.RESPONSE_FMT.format(pid=pid, epoch=epoch)
         )
-        with open(resp_path, 'w') as f:
-            json.dump(resp, f, default=util.output_json)
+        os.rename(temp_path, resp_path)
+
         self._signal(FileRunner.SIG_OUTPUT)
 
     def _signal(self, signum: int) -> None:
