@@ -183,9 +183,10 @@ class FileRunner:
                 scope.ctx_pid.set(pid)
                 async for o in self.runner.predict_iter(req_in):
                     # Test JSON serialization in case of invalid output
+                    o = self.runner.output.json_encode(o)
                     json.dumps(o, default=util.output_json)
 
-                    resp['output'].append(self.runner.output.json_encode(o))
+                    resp['output'].append(o)
                     if is_async:
                         self._respond(pid, epoch, resp)
                         epoch += 1
