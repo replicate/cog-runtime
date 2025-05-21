@@ -21,7 +21,7 @@ func b64encodeLegacy(s string) string {
 	return fmt.Sprintf("data:text/plain;base64,%s", b64)
 }
 
-func TestPredictionPathSucceeded(t *testing.T) {
+func TestPredictionPathBase64Succeeded(t *testing.T) {
 	ct := NewCogTest(t, "path")
 	assert.NoError(t, ct.Start())
 
@@ -42,7 +42,7 @@ func TestPredictionPathSucceeded(t *testing.T) {
 	assert.NoError(t, ct.Cleanup())
 }
 
-func TestPredictionPathInputSucceeded(t *testing.T) {
+func TestPredictionPathURLSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "path")
 	assert.NoError(t, ct.Start())
 
@@ -58,6 +58,22 @@ func TestPredictionPathInputSucceeded(t *testing.T) {
 	} else {
 		ct.AssertResponse(resp, server.PredictionSucceeded, b64encode("*3.9\n*"), logs)
 	}
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}
+
+func TestPredictionNotPathSucceeded(t *testing.T) {
+	ct := NewCogTest(t, "not_path")
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	// s: str should not be handled
+	resp := ct.Prediction(map[string]any{"s": "https://replicate.com"})
+	ct.AssertResponse(resp, server.PredictionSucceeded, "*https://replicate.com*", "")
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())

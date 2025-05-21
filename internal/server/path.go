@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/getkin/kin-openapi/openapi3"
+
 	"github.com/replicate/go/must"
 
 	"github.com/gabriel-vasile/mimetype"
@@ -19,7 +21,66 @@ import (
 
 var BASE64_REGEX = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 
-// FIXME: get Path fields from schema
+func isUri(s *openapi3.SchemaRef) bool {
+	return s.Value.Type.Is("string") && s.Value.Format == "uri"
+}
+
+func handleInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
+	if doc == nil {
+		return input, nil
+	}
+
+	schema, ok := doc.Components.Schemas["Input"]
+	if !ok {
+		return input, nil
+	}
+
+	// Input is always a `dict[str, Any]`
+	m, ok := input.(map[string]any)
+	if !ok {
+		return input, nil
+	}
+
+	for k, v := range m {
+		p, ok := schema.Value.Properties[k]
+		if !ok {
+			continue
+		}
+		if isUri(p) {
+			// field: Path or field: Optional[Path]
+			if s, ok := v.(string); ok {
+				o, err := fn(s, paths)
+				if err != nil {
+					return nil, err
+				}
+				m[k] = o
+			}
+		} else if p.Value.Type.Is("array") && isUri(p.Value.Items) {
+			// field: list[Path]
+			if xs, ok := v.([]any); ok {
+				for i, x := range xs {
+					if s, ok := x.(string); ok {
+						o, err := fn(s, paths)
+						if err != nil {
+							return nil, err
+						}
+						xs[i] = o
+					}
+				}
+			}
+		} else if p.Value.Type.Is("object") {
+			// field is Any with custom coder, e.g. dataclass, JSON, or Pydantic
+			// No known schema, try to handle all attributes
+			o, err := handlePath(v, paths, fn)
+			if err != nil {
+				return nil, err
+			}
+			m[k] = o
+		}
+	}
+	return input, nil
+}
+
 func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
 	if x, ok := json.(string); ok {
 		return fn(x, paths)
