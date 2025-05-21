@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
+
 	"github.com/replicate/go/must"
 
 	"github.com/replicate/cog-runtime/internal/util"
@@ -85,6 +87,7 @@ type Runner struct {
 	cmd                   exec.Cmd
 	status                Status
 	schema                string
+	doc                   *openapi3.T
 	setupResult           SetupResult
 	logs                  []string
 	asyncPredict          bool
@@ -196,11 +199,11 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	log.Infow("received prediction request", "id", req.Id)
 
 	inputPaths := make([]string, 0)
-	input, err := handlePath(req.Input, &inputPaths, base64ToInput)
+	input, err := handleInputPaths(req.Input, r.doc, &inputPaths, base64ToInput)
 	if err != nil {
 		return nil, err
 	}
-	input, err = handlePath(req.Input, &inputPaths, urlToInput)
+	input, err = handleInputPaths(req.Input, r.doc, &inputPaths, urlToInput)
 	if err != nil {
 		return nil, err
 	}
@@ -400,9 +403,17 @@ func (r *Runner) updateSchema() {
 	log.Infow("updating OpenAPI schema")
 	p := path.Join(r.workingDir, "openapi.json")
 	schema := string(must.Get(os.ReadFile(p)))
+
+	loader := openapi3.NewLoader()
+	doc, err := loader.LoadFromData([]byte(schema))
+	if err != nil {
+		log.Errorw("failed to load OpenAPI schema", "err", err)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.schema = schema
+	r.doc = doc
 }
 
 func (r *Runner) updateSetupResult() {
