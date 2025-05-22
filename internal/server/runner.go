@@ -533,22 +533,17 @@ func (r *Runner) log(line string) {
 	} else if !strings.Contains(line, "[coglet]") {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		if r.setupResult.CompletedAt != "" {
+		if r.setupResult.CompletedAt != "" && len(r.pending) == 1 && !r.asyncPredict {
 			// Anything from inside would be a subprocess call. If it's an async
 			// prediction though, we have no clue who's process is who's - this
 			// can lead to us leaking outputs from one user to another so we
 			// shouldn't keep the lines here
-			if len(r.pending) > 1 {
-				log.Errorw("expected only 1 prediction to be running", "num_running", len(r.pending))
-			} else {
-				for pid := range r.pending {
-					pr := r.pending[pid]
-					fmt.Printf("Line: %s\n", line)
-					pr.appendLogLine(line)
-					// In case log is received before "starting" response
-					if pr.response.Status != "" {
-						pr.sendWebhook(WebhookLogs)
-					}
+			for pid := range r.pending {
+				pr := r.pending[pid]
+				pr.appendLogLine(line)
+				// In case log is received before "starting" response
+				if pr.response.Status != "" {
+					pr.sendWebhook(WebhookLogs)
 				}
 			}
 		} else {
