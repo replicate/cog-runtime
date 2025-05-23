@@ -126,6 +126,7 @@ def _input_adt(
             max_length=cog_in.max_length,
             regex=cog_in.regex,
             choices=cog_in.choices,
+            deprecated=cog_in.deprecated,
         )
 
 

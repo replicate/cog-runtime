@@ -93,6 +93,7 @@ class Input:
     max_length: Optional[int] = None
     regex: Optional[str] = None
     choices: Optional[List[Union[str, int]]] = None
+    deprecated: Optional[bool] = None
 
 
 class BaseModel:
