@@ -13,7 +13,7 @@ test_go() {
 }
 
 test_python() {
-    .venv/bin/pytest "$@"
+    .venv/bin/pytest "$@" -vv
 }
 
 if [ $# -eq 0 ]; then

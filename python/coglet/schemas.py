@@ -53,6 +53,8 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
             prop['maxLength'] = adt_in.max_length
         if adt_in.regex is not None:
             prop['pattern'] = adt_in.regex
+        if adt_in.deprecated is not None:
+            prop['deprecated'] = adt_in.deprecated
         in_schema['properties'][name] = prop
     if len(required) > 0:
         in_schema['required'] = required
