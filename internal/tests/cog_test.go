@@ -122,6 +122,7 @@ var _ = (http.Handler)((*WebhookHandler)(nil))
 type CogTest struct {
 	t             *testing.T
 	module        string
+	procedure     bool
 	extraArgs     []string
 	extraEnvs     []string
 	serverPort    int
@@ -136,6 +137,14 @@ func NewCogTest(t *testing.T, module string) *CogTest {
 	return &CogTest{
 		t:      t,
 		module: module,
+	}
+}
+
+func NewCogProcedureTest(t *testing.T) *CogTest {
+	t.Parallel()
+	return &CogTest{
+		t:         t,
+		procedure: true,
 	}
 }
 
@@ -171,28 +180,43 @@ func (ct *CogTest) runtimeCmd() *exec.Cmd {
 	cmd.Env = os.Environ()
 
 	cmd.Env = append(cmd.Env,
-		// Pass module and predictor to Runner, to avoid creating a one-off cog.yaml
-		fmt.Sprintf("TEST_COG_MODULE_NAME=tests.runners.%s", ct.module),
-		fmt.Sprintf("TEST_COG_PREDICTOR_NAME=Predictor"),
 		fmt.Sprintf("PATH=%s:%s", pathEnv, os.Getenv("PATH")),
 		fmt.Sprintf("PYTHONPATH=%s", pythonPathEnv),
 	)
 	cmd.Env = append(cmd.Env, ct.extraEnvs...)
+
+	if ct.procedure {
+		cmd.Args = append(cmd.Args, "--use-procedure-mode")
+	} else {
+		cmd.Env = append(cmd.Env,
+			// Pass module and predictor to Runner, to avoid creating a one-off cog.yaml
+			fmt.Sprintf("TEST_COG_MODULE_NAME=tests.runners.%s", ct.module),
+			fmt.Sprintf("TEST_COG_PREDICTOR_NAME=Predictor"),
+		)
+	}
 	return cmd
 }
 
 func (ct *CogTest) legacyCmd() *exec.Cmd {
-	tmpDir := ct.t.TempDir()
-	runnersPath := path.Join(basePath, "python", "tests", "runners")
-	module := fmt.Sprintf("%s.py", ct.module)
-	yaml := "cog.yaml"
-	if strings.HasPrefix(ct.module, "async_") {
-		// cog.yaml with concurrency.max
-		yaml = "async_cog.yaml"
+	var tmpDir string
+	var pythonBin string
+	if ct.procedure {
+		pythonBin = path.Join(basePath, ".venv-procedure", "bin", "python3")
+		tmpDir = path.Join(basePath, "..", "pipelines-runtime")
+	} else {
+		pythonBin = path.Join(basePath, ".venv-legacy", "bin", "python3")
+		tmpDir = ct.t.TempDir()
+		runnersPath := path.Join(basePath, "python", "tests", "runners")
+		module := fmt.Sprintf("%s.py", ct.module)
+		yaml := "cog.yaml"
+		if strings.HasPrefix(ct.module, "async_") {
+			// cog.yaml with concurrency.max
+			yaml = "async_cog.yaml"
+		}
+		must.Do(os.Symlink(path.Join(runnersPath, yaml), path.Join(tmpDir, "cog.yaml")))
+		must.Do(os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py")))
 	}
-	must.Do(os.Symlink(path.Join(runnersPath, yaml), path.Join(tmpDir, "cog.yaml")))
-	must.Do(os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py")))
-	pythonBin := path.Join(basePath, ".venv-legacy", "bin", "python3")
+
 	ct.serverPort = portFinder.Get()
 	args := []string{
 		"-m", "cog.server.http",
@@ -204,6 +228,7 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", ct.serverPort))
 	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
 	cmd.Env = append(cmd.Env, ct.extraEnvs...)
+	cmd.Env = append(cmd.Env, "PROCEDURE_CACHE_PATH=/tmp/procedures")
 	return cmd
 }
 

@@ -118,6 +118,17 @@ func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
 	}
 }
 
+func NewProcedureRunner(awaitExplicitShutdown bool, uploadUrl string, srcDir string, token string) *Runner {
+	r := NewRunner(awaitExplicitShutdown, uploadUrl)
+	r.cmd.Dir = srcDir
+	r.cmd.Env = append(os.Environ(), fmt.Sprintf("REPLICATE_API_TOKEN=%s", token))
+	return r
+}
+
+func (r *Runner) SrcDir() string {
+	return r.cmd.Dir
+}
+
 func (r *Runner) Start() error {
 	log := logger.Sugar()
 	cmdStart := make(chan bool)
@@ -284,7 +295,7 @@ func (r *Runner) config() {
 
 	// Otherwise read from cog.yaml
 	if moduleName == "" || predictorName == "" {
-		y, err := util.ReadCogYaml()
+		y, err := util.ReadCogYaml(r.SrcDir())
 		if err != nil {
 			log.Errorw("failed to read cog.yaml", "err", err)
 			panic(err)
