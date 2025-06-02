@@ -167,10 +167,10 @@ class FileRunner:
             'status': 'starting',
         }
         context_dict = {}
-        if "token" in resp:
-            context_dict["token"] = resp["token"]
-        if "procedure_source_url" in resp:
-            context_dict["procedure_source_url"] = resp["procedure_source_url"]
+        if 'token' in resp:
+            context_dict['token'] = resp['token']
+        if 'procedure_source_url' in resp:
+            context_dict['procedure_source_url'] = resp['procedure_source_url']
         scope.contexts[pid] = context_dict
         # Write partial response, e.g. starting, processing, if webhook is set
         is_async = 'webhook' in req
