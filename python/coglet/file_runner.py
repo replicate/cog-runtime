@@ -166,6 +166,12 @@ class FileRunner:
             'started_at': util.now_iso(),
             'status': 'starting',
         }
+        context_dict = {}
+        if "token" in resp:
+            context_dict["token"] = resp["token"]
+        if "procedure_source_url" in resp:
+            context_dict["procedure_source_url"] = resp["procedure_source_url"]
+        scope.contexts[pid] = context_dict
         # Write partial response, e.g. starting, processing, if webhook is set
         is_async = 'webhook' in req
         epoch = 0
@@ -222,6 +228,8 @@ class FileRunner:
             scope.metrics.pop(pid)
         if pid in scope.ctx_write_buf:
             scope.ctx_write_buf.pop(pid)
+        if pid in scope.contexts:
+            scope.contexts.pop(pid)
         epoch += 1
 
     def _respond(
