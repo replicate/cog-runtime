@@ -9,6 +9,7 @@ ctx_pid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     'pid', default=None
 )
 metrics: Dict[str, Dict[str, Any]] = defaultdict(dict)
+contexts: Dict[str, Dict[str, Any]] = defaultdict(dict)
 ctx_write_buf: Dict[str, str] = {}
 
 
@@ -18,6 +19,14 @@ class Scope:
 
     def record_metric(self, name: str, value: Any) -> None:
         metrics[self.pid][name] = value
+
+    @property
+    def context(self) -> Dict[str, Any]:
+        return contexts[self.pid]
+
+    @context.setter
+    def context(self, value: Dict[str, Any]) -> None:
+        contexts[self.pid] = value
 
 
 # Compat: for internal model metrics

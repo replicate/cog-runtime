@@ -1,6 +1,8 @@
 package server
 
-import "syscall"
+import (
+	"syscall"
+)
 
 type Status int
 
@@ -42,7 +44,7 @@ const SigReady = syscall.SIGUSR1
 const SigBusy = syscall.SIGUSR2
 
 type Config struct {
-	ProcedureMode         bool
+	UseProcedureMode      bool
 	AwaitExplicitShutdown bool
 	UploadUrl             string
 }
@@ -94,6 +96,8 @@ type PredictionRequest struct {
 	Webhook             string         `json:"webhook,omitempty"`
 	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
+	ProcedureSourceURL  string         `json:"procedure_source_url"`
+	Token               string         `json:"token"`
 }
 
 type PredictionResponse struct {
