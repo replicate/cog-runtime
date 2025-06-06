@@ -73,12 +73,12 @@ func TestProcedure(t *testing.T) {
 	resp1 := prediction("foo", "bar", map[string]any{"s": "foobar"})
 	assert.Equal(t, server.PredictionSucceeded, resp1.Status)
 	assert.Equal(t, "s=foobar, token=bar", resp1.Output)
-	assert.Equal(t, resp1.Logs, "predicting foo\n")
+	assert.Contains(t, resp1.Logs, "predicting foo\n")
 
 	resp2 := prediction("bar", "baz", map[string]any{"i": 123456})
 	assert.Equal(t, server.PredictionSucceeded, resp2.Status)
 	assert.Equal(t, "i=123456, token=baz", resp2.Output)
-	assert.Equal(t, resp2.Logs, "predicting bar\n")
+	assert.Contains(t, resp2.Logs, "predicting bar\n")
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())

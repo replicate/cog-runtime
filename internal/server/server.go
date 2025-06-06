@@ -144,7 +144,7 @@ func (h *Handler) updateRunner(srcDir, token string) error {
 
 	// Start new runner
 	log.Infow("starting procedure runner", "src_dir", srcDir)
-	runner := NewProcedureRunner(h.cfg.AwaitExplicitShutdown, h.cfg.UploadUrl, srcDir, token)
+	runner := NewProcedureRunner(h.cfg.AwaitExplicitShutdown, h.cfg.UploadUrl, srcDir)
 	if err := runner.Start(); err != nil {
 		return err
 	}

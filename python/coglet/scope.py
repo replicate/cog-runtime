@@ -16,7 +16,6 @@ ctx_write_buf: Dict[str, str] = {}
 class Scope:
     def __init__(self, pid: str):
         self.pid = pid
-        self.context = defaultdict(dict)
 
     def record_metric(self, name: str, value: Any) -> None:
         metrics[self.pid][name] = value

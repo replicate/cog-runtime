@@ -118,10 +118,9 @@ func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
 	}
 }
 
-func NewProcedureRunner(awaitExplicitShutdown bool, uploadUrl string, srcDir string, token string) *Runner {
+func NewProcedureRunner(awaitExplicitShutdown bool, uploadUrl string, srcDir string) *Runner {
 	r := NewRunner(awaitExplicitShutdown, uploadUrl)
 	r.cmd.Dir = srcDir
-	r.cmd.Env = append(os.Environ(), fmt.Sprintf("REPLICATE_API_TOKEN=%s", token))
 	return r
 }
 
