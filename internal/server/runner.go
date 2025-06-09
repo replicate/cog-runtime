@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -118,11 +119,21 @@ func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
 	}
 }
 
-func NewProcedureRunner(awaitExplicitShutdown bool, uploadUrl string, srcDir string) *Runner {
+func NewProcedureRunner(awaitExplicitShutdown bool, uploadUrl string, srcDir string, u *url.URL) (*Runner, error) {
+	err := os.Mkdir(srcDir, 0o755)
+	if err != nil {
+		return nil, err
+	}
+	if u != nil {
+		cmd := exec.Command("pget", u.String(), srcDir, "-x")
+		err = cmd.Run()
+		if err != nil {
+			return nil, err
+		}
+	}
 	r := NewRunner(awaitExplicitShutdown, uploadUrl)
-	os.Mkdir(srcDir, 0o755)
 	r.cmd.Dir = srcDir
-	return r
+	return r, nil
 }
 
 func (r *Runner) SrcDir() string {

@@ -123,7 +123,7 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) updateRunner(srcDir, token string) error {
+func (h *Handler) updateRunner(srcDir, token string, u *url.URL) error {
 	log := logger.Sugar()
 
 	// Reuse current runner, nothing to do
@@ -207,7 +207,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		}
 		hash := md5.Sum([]byte(u.Path))
 		srcDir := hex.EncodeToString(hash[:])
-		if err := h.updateRunner(srcDir, req.Token); err != nil {
+		if err := h.updateRunner(srcDir, req.Token, u); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
