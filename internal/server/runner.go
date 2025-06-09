@@ -120,6 +120,7 @@ func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
 
 func NewProcedureRunner(awaitExplicitShutdown bool, uploadUrl string, srcDir string) *Runner {
 	r := NewRunner(awaitExplicitShutdown, uploadUrl)
+	os.Mkdir(srcDir, 0o755)
 	r.cmd.Dir = srcDir
 	return r
 }
