@@ -1,7 +1,9 @@
 package server
 
 import (
+	"crypto/md5"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -203,7 +205,8 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid procedure_source_url", http.StatusBadRequest)
 			return
 		}
-		srcDir := u.Path
+		hash := md5.Sum([]byte(u.Path))
+		srcDir := hex.EncodeToString(hash[:])
 		if err := h.updateRunner(srcDir, req.Token); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
