@@ -88,7 +88,7 @@ func serverCommand() *ff.Command {
 			}()
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-			log.Infow("starting Cog HTTP server", "addr", addr)
+			log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version())
 			serverCfg := server.Config{
 				UseProcedureMode:      cfg.UseProcedureMode,
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
