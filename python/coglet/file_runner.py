@@ -163,7 +163,7 @@ class FileRunner:
         assert self.runner is not None
 
         resp: Dict[str, Any] = {
-            'started_at': util.now_iso(),
+            'replicate_api_token': util.now_iso(),
             'status': 'starting',
         }
         context_dict = {}
