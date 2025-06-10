@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"sync"
 	"syscall"
 	"time"
@@ -198,12 +197,10 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "missing procedure_source_url or token", http.StatusBadRequest)
 			return
 		}
-		u, err := url.Parse(req.ProcedureSourceURL)
+		srcDir, err := util.PrepareProcedureSourceURL(req.ProcedureSourceURL)
 		if err != nil {
 			http.Error(w, "invalid procedure_source_url", http.StatusBadRequest)
-			return
 		}
-		srcDir := u.Path
 		if err := h.updateRunner(srcDir, req.Token); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
