@@ -163,12 +163,12 @@ class FileRunner:
         assert self.runner is not None
 
         resp: Dict[str, Any] = {
-            'replicate_api_token': util.now_iso(),
+            'started_at': util.now_iso(),
             'status': 'starting',
         }
         context_dict = {}
         if 'token' in req:
-            context_dict['token'] = req['token']
+            context_dict['replicate_api_token'] = req['token']
         if 'procedure_source_url' in req:
             context_dict['procedure_source_url'] = req['procedure_source_url']
         scope.contexts[pid] = context_dict
