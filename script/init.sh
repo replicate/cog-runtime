@@ -14,7 +14,7 @@ uv sync --all-extras
 uv venv --python 3.13 .venv-legacy
 export VIRTUAL_ENV="$base_dir/.venv-legacy"
 export UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV"
-uv pip install cog==0.14.3
+uv pip install cog==0.15.5
 
 # venv with pipelines
 if [ -d ../pipelines-runtime ]; then
