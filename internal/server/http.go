@@ -21,6 +21,9 @@ func NewServer(addr string, handler *Handler) *http.Server {
 	serveMux.HandleFunc("POST /predictions", handler.Predict)
 	serveMux.HandleFunc("PUT /predictions/{id}", handler.Predict)
 	serveMux.HandleFunc("POST /predictions/{id}/cancel", handler.Cancel)
+	serveMux.HandleFunc("POST /procedures", handler.Predict)
+	serveMux.HandleFunc("PUT /procedures/{id}", handler.Predict)
+	serveMux.HandleFunc("POST /procedures/{id}/cancel", handler.Cancel)
 	serveMux.HandleFunc("POST /shutdown", handler.Shutdown)
 
 	return &http.Server{
