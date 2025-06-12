@@ -66,7 +66,7 @@ func TestProcedure(t *testing.T) {
 				Token:              token,
 				Input:              input,
 			}
-			return ct.prediction(http.MethodPost, "/predictions", req)
+			return ct.prediction(http.MethodPost, "/procedures", req)
 		}
 	}
 
