@@ -161,6 +161,7 @@ func urlToInput(s string, paths *[]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer resp.Body.Close()
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		return "", err
 	}
@@ -212,7 +213,9 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return "", err
-		} else if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
 			return "", fmt.Errorf("failed to upload file: status %s", resp.Status)
 		}
 		return resp.Header.Get("Location"), nil
