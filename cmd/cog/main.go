@@ -95,7 +95,7 @@ func serverCommand() *ff.Command {
 				UploadUrl:             cfg.UploadUrl,
 			}
 			h := server.NewHandler(serverCfg)
-			s := server.NewServer(addr, h)
+			s := server.NewServer(addr, h, cfg.UseProcedureMode)
 			go func() {
 				<-ctx.Done()
 				must.Do(h.Stop())
