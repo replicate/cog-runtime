@@ -69,7 +69,10 @@ func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Errorw("failed to send webhook", "error", err)
-	} else if resp.StatusCode != 200 {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
 		body := string(must.Get(io.ReadAll(resp.Body)))
 		log.Errorw("failed to send webhook", "code", resp.StatusCode, "body", body)
 	}
