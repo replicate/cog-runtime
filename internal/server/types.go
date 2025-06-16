@@ -50,8 +50,9 @@ type Config struct {
 }
 
 type PredictConfig struct {
-	ModuleName    string `json:"module_name,omitempty"`
-	PredictorName string `json:"predictor_name,omitempty"`
+	ModuleName     string `json:"module_name,omitempty"`
+	PredictorName  string `json:"predictor_name,omitempty"`
+	MaxConcurrency int    `json:"max_concurrency,omitempty"`
 }
 
 type PredictionStatus string

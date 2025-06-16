@@ -312,7 +312,11 @@ func (r *Runner) config() {
 		// Default to 1 if not set in cog.yaml, regardless whether async predict or not
 		r.maxConcurrency = max(1, y.Concurrency.Max)
 	}
-	conf := PredictConfig{ModuleName: moduleName, PredictorName: predictorName}
+	conf := PredictConfig{
+		ModuleName:     moduleName,
+		PredictorName:  predictorName,
+		MaxConcurrency: r.maxConcurrency,
+	}
 	confFile := path.Join(r.workingDir, "config.json")
 	f := must.Get(os.Create(confFile))
 	must.Do(json.NewEncoder(f).Encode(conf))
