@@ -1,3 +1,4 @@
+import os
 import dataclasses
 import inspect
 import typing
@@ -54,7 +55,13 @@ class PrimitiveType(Enum):
 
     @staticmethod
     def from_type(tpe: type) -> Any:
-        return PrimitiveType._adt_type().get(tpe, PrimitiveType.CUSTOM)
+        if match := PrimitiveType._adt_type().get(tpe):
+            return match
+
+        if tpe is os.PathLike or issubclass(tpe, os.PathLike):
+            return PrimitiveType.PATH
+
+        return PrimitiveType.CUSTOM
 
     def normalize(self, value: Any) -> Any:
         pt = PrimitiveType._python_type()[self]
