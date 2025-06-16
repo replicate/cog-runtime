@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -158,6 +159,7 @@ func (ct *CogTest) runtimeCmd() *exec.Cmd {
 	cmd.Env = os.Environ()
 
 	cmd.Env = append(cmd.Env,
+		"TEST_COG=1",
 		fmt.Sprintf("PATH=%s:%s", pathEnv, os.Getenv("PATH")),
 		fmt.Sprintf("PYTHONPATH=%s", pythonPathEnv),
 	)
@@ -279,15 +281,28 @@ func (ct *CogTest) UploadUrl() string {
 	return fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort)
 }
 
+func (ct *CogTest) ServerPid() int {
+	if *legacyCog {
+		return ct.cmd.Process.Pid
+	} else {
+		url := fmt.Sprintf("http://localhost:%d/_pid", ct.serverPort)
+		resp := must.Get(http.DefaultClient.Get(url))
+		defer resp.Body.Close()
+		return must.Get(strconv.Atoi(string(must.Get(io.ReadAll(resp.Body)))))
+	}
+}
+
 func (ct *CogTest) HealthCheck() server.HealthCheck {
 	url := fmt.Sprintf("http://localhost:%d/health-check", ct.serverPort)
 	for {
 		resp, err := http.DefaultClient.Get(url)
 		if err == nil {
+			defer resp.Body.Close()
 			var hc server.HealthCheck
 			must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &hc))
 			return hc
 		}
+
 		time.Sleep(100 * time.Millisecond)
 	}
 }

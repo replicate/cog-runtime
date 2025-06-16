@@ -3,6 +3,10 @@ package server
 import (
 	"errors"
 	"net/http"
+	"os"
+	"strconv"
+
+	"github.com/replicate/go/must"
 )
 
 var (
@@ -28,6 +32,15 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 		serveMux.HandleFunc("POST /predictions", handler.Predict)
 		serveMux.HandleFunc("PUT /predictions/{id}", handler.Predict)
 		serveMux.HandleFunc("POST /predictions/{id}/cancel", handler.Cancel)
+	}
+
+	// We run Go server with go run ... which spawns a new process
+	// Report its PID via HTTP instead
+	if _, ok := os.LookupEnv("TEST_COG"); ok {
+		serveMux.HandleFunc("/_pid", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			must.Get(w.Write([]byte(strconv.Itoa(os.Getpid()))))
+		})
 	}
 
 	return &http.Server{

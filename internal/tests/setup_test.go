@@ -12,28 +12,28 @@ import (
 )
 
 func TestSetupSucceeded(t *testing.T) {
-	e := NewCogTest(t, "sleep")
-	e.AppendEnvs("SETUP_SLEEP=1")
-	assert.NoError(t, e.Start())
-	assert.Equal(t, server.StatusStarting.String(), e.HealthCheck().Status)
+	ct := NewCogTest(t, "sleep")
+	ct.AppendEnvs("SETUP_SLEEP=1")
+	assert.NoError(t, ct.Start())
+	assert.Equal(t, server.StatusStarting.String(), ct.HealthCheck().Status)
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 	assert.Equal(t, "starting setup\nsetup in progress 1/1\ncompleted setup\n", hc.Setup.Logs)
-	assert.Equal(t, http.StatusOK, must.Get(http.DefaultClient.Get(e.Url("/openapi.json"))).StatusCode)
+	assert.Equal(t, http.StatusOK, must.Get(http.DefaultClient.Get(ct.Url("/openapi.json"))).StatusCode)
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
 
 func TestSetupFailure(t *testing.T) {
-	e := NewCogTest(t, "sleep")
-	e.AppendArgs("--await-explicit-shutdown=true")
-	e.AppendEnvs("SETUP_FAILURE=1")
-	assert.NoError(t, e.Start())
+	ct := NewCogTest(t, "sleep")
+	ct.AppendArgs("--await-explicit-shutdown=true")
+	ct.AppendEnvs("SETUP_FAILURE=1")
+	assert.NoError(t, ct.Start())
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
 	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
 	if *legacyCog {
@@ -43,17 +43,17 @@ func TestSetupFailure(t *testing.T) {
 		assert.Contains(t, hc.Setup.Logs, "starting setup\nsetup failed\nTraceback")
 	}
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
 
 func TestSetupCrash(t *testing.T) {
-	e := NewCogTest(t, "sleep")
-	e.AppendArgs("--await-explicit-shutdown=true")
-	e.AppendEnvs("SETUP_CRASH=1")
-	assert.NoError(t, e.Start())
+	ct := NewCogTest(t, "sleep")
+	ct.AppendArgs("--await-explicit-shutdown=true")
+	ct.AppendEnvs("SETUP_CRASH=1")
+	assert.NoError(t, ct.Start())
 
-	hc := e.WaitForSetup()
+	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
 	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
 	if *legacyCog {
@@ -64,6 +64,6 @@ func TestSetupCrash(t *testing.T) {
 		assert.Equal(t, "starting setup\nsetup crashed\n", hc.Setup.Logs)
 	}
 
-	e.Shutdown()
-	assert.NoError(t, e.Cleanup())
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
 }
