@@ -71,6 +71,9 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 				Status:      SetupSucceeded,
 			},
 		}
+		if h.runner != nil {
+			hc.Status = h.runner.status.String()
+		}
 	} else {
 		hc = HealthCheck{
 			Status: h.runner.status.String(),
