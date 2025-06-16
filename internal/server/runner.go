@@ -193,9 +193,6 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		log.Errorw("prediction rejected: server is defunct")
 		return nil, ErrDefunct
 	}
-	if req.CreatedAt == "" {
-		req.CreatedAt = util.NowIso()
-	}
 	r.mu.Lock()
 	if len(r.pending) >= r.maxConcurrency {
 		r.mu.Unlock()
@@ -210,6 +207,13 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	r.mu.Unlock()
 
 	log.Infow("received prediction request", "id", req.Id)
+	if req.CreatedAt == "" {
+		req.CreatedAt = util.NowIso()
+	}
+	// Start here so that input downloads are counted towards predict_time
+	if req.StartedAt == "" {
+		req.StartedAt = util.NowIso()
+	}
 
 	inputPaths := make([]string, 0)
 	input, err := handleInputPaths(req.Input, r.doc, &inputPaths, base64ToInput)
@@ -228,6 +232,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		Input:     req.Input,
 		Id:        req.Id,
 		CreatedAt: req.CreatedAt,
+		StartedAt: req.StartedAt,
 	}
 	pr := PendingPrediction{
 		request:    req,
