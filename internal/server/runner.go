@@ -62,7 +62,7 @@ func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 	}
 
 	log := logger.Sugar()
-	log.Infow("sending webhook", "url", pr.request.Webhook, "response", pr.response)
+	log.Debugw("sending webhook", "url", pr.request.Webhook, "response", pr.response)
 	body := bytes.NewBuffer(must.Get(json.Marshal(pr.response)))
 	req := must.Get(http.NewRequest("POST", pr.request.Webhook, body))
 	req.Header.Add("Content-Type", "application/json")
