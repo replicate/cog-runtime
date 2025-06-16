@@ -94,6 +94,7 @@ type PredictionRequest struct {
 	Input               any            `json:"input"`
 	Id                  string         `json:"id"`
 	CreatedAt           string         `json:"created_at"`
+	StartedAt           string         `json:"started_at"`
 	Webhook             string         `json:"webhook,omitempty"`
 	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
