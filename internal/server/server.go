@@ -193,15 +193,29 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.cfg.UseProcedureMode {
-		if req.ProcedureSourceURL == "" || req.Token == "" {
-			http.Error(w, "missing procedure_source_url or token", http.StatusBadRequest)
+		val, ok := req.Context["procedure_source_url"]
+		if !ok {
+			http.Error(w, "missing procedure_source_url in context", http.StatusBadRequest)
 			return
 		}
-		srcDir, err := util.PrepareProcedureSourceURL(req.ProcedureSourceURL)
+		procedureSourceUrl := val.(string)
+
+		val, ok = req.Context["token"]
+		if !ok {
+			http.Error(w, "missing token in context", http.StatusBadRequest)
+			return
+		}
+
+		token := val.(string)
+		if procedureSourceUrl == "" || token == "" {
+			http.Error(w, "empty procedure_source_url or token", http.StatusBadRequest)
+			return
+		}
+		srcDir, err := util.PrepareProcedureSourceURL(procedureSourceUrl)
 		if err != nil {
 			http.Error(w, "invalid procedure_source_url", http.StatusBadRequest)
 		}
-		if err := h.updateRunner(srcDir, req.Token); err != nil {
+		if err := h.updateRunner(srcDir, token); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -271,23 +271,13 @@
               "completed"
             ]
           },
-          "token": {
-            "type": "string",
-            "format": "password",
-            "title": "Token",
-            "x-cog-secret": true
-          },
-          "procedure_source_url": {
-            "type": "string",
-            "title": "Procedure Source Url"
+          "context": {
+            "type": "object",
+            "title": "context"
           }
         },
         "type": "object",
-        "title": "PredictionRequest",
-        "required": [
-          "token",
-          "procedure_source_url"
-        ]
+        "title": "PredictionRequest"
       },
       "PredictionResponse": {
         "properties": {
