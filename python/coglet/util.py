@@ -1,4 +1,6 @@
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 from coglet import api
 
@@ -11,9 +13,9 @@ def now_iso() -> str:
 # Encode JSON for file_runner output
 def output_json(obj):
     tpe = type(obj)
-    if tpe is api.Path:
+    if isinstance(obj, os.PathLike):
         # Prefix protocol for uploader
-        return obj.absolute().as_uri()
+        return Path(obj).absolute().as_uri()
     elif tpe is api.Secret:
         # Encode Secret('foobar') as '**********'
         return str(obj)
