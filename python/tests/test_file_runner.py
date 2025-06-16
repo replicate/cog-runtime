@@ -40,7 +40,10 @@ def wait_for_process(p: subprocess.Popen, code: int = 0) -> None:
 
 
 def run_file_runner(
-    tmp_path: Path, predictor: str, env: Optional[Dict[str, str]] = None
+    tmp_path: Path,
+    predictor: str,
+    env: Optional[Dict[str, str]] = None,
+    max_concurrency: int = 1,
 ) -> subprocess.Popen:
     if env is None:
         env = {}
@@ -57,6 +60,7 @@ def run_file_runner(
         conf = {
             'module_name': f'tests.runners.{predictor}',
             'predictor_name': 'Predictor',
+            'max_concurrency': max_concurrency,
         }
         json.dump(conf, f)
     return subprocess.Popen(

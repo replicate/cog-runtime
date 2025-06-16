@@ -7,9 +7,17 @@ import re
 import signal
 import sys
 import tempfile
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from coglet import api, inspector, runner, schemas, scope, util
+
+
+@dataclass(frozen=True)
+class Config:
+    module_name: str
+    predictor_name: str
+    max_concurrency: int
 
 
 class FileRunner:
@@ -29,22 +37,21 @@ class FileRunner:
         *,
         logger: logging.Logger,
         working_dir: str,
-        module_name: str,
-        predictor_name: str,
+        config: Config,
     ):
         self.logger = logger
         self.working_dir = working_dir
-        self.module_name = module_name
-        self.predictor_name = predictor_name
+        self.config = config
         self.runner: Optional[runner.Runner] = None
         self.isatty = sys.stdout.isatty()
 
     async def start(self) -> int:
         self.logger.info(
-            'starting file runner: working_dir=%s, predict=%s.%s',
+            'starting file runner: working_dir=%s, module=%s, predictor=%s, max_concurrency=%d',
             self.working_dir,
-            self.module_name,
-            self.predictor_name,
+            self.config.module_name,
+            self.config.predictor_name,
+            self.config.max_concurrency,
         )
 
         os.makedirs(self.working_dir, exist_ok=True)
@@ -61,7 +68,9 @@ class FileRunner:
         self.logger.info('setup started')
         setup_result: Dict[str, Any] = {'started_at': util.now_iso()}
         try:
-            p = inspector.create_predictor(self.module_name, self.predictor_name)
+            p = inspector.create_predictor(
+                self.config.module_name, self.config.predictor_name
+            )
             with open(openapi_file, 'w') as f:
                 schema = schemas.to_json_schema(p)
                 json.dump(schema, f)
@@ -100,7 +109,7 @@ class FileRunner:
 
         pending: Dict[str, asyncio.Task[None]] = {}
         while True:
-            if len(pending) == 0 and not ready:
+            if len(pending) < self.config.max_concurrency and not ready:
                 ready = True
                 self._signal(FileRunner.SIG_READY)
 
