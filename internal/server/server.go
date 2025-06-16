@@ -120,7 +120,7 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) updateRunner(srcDir, token string) error {
+func (h *Handler) updateRunner(srcDir string) error {
 	log := logger.Sugar()
 
 	// Reuse current runner, nothing to do
@@ -200,22 +200,22 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		}
 		procedureSourceUrl := val.(string)
 
-		val, ok = req.Context["token"]
+		val, ok = req.Context["replicate_api_token"]
 		if !ok {
-			http.Error(w, "missing token in context", http.StatusBadRequest)
+			http.Error(w, "missing replicate_api_token in context", http.StatusBadRequest)
 			return
 		}
 
 		token := val.(string)
 		if procedureSourceUrl == "" || token == "" {
-			http.Error(w, "empty procedure_source_url or token", http.StatusBadRequest)
+			http.Error(w, "empty procedure_source_url or replicate_api_token", http.StatusBadRequest)
 			return
 		}
 		srcDir, err := util.PrepareProcedureSourceURL(procedureSourceUrl)
 		if err != nil {
 			http.Error(w, "invalid procedure_source_url", http.StatusBadRequest)
 		}
-		if err := h.updateRunner(srcDir, token); err != nil {
+		if err := h.updateRunner(srcDir); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

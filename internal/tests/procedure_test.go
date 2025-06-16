@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,19 +8,10 @@ import (
 	"path"
 	"testing"
 
-	"github.com/replicate/go/must"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
-
-func procedureRequest(procedure string, token string, inputs map[string]any) map[string]any {
-	r := make(map[string]any)
-	r["procedure_source_url"] = fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, procedure)
-	r["token"] = token
-	r["inputs_json"] = string(must.Get(json.Marshal(inputs)))
-	return r
-}
 
 func TestProcedure(t *testing.T) {
 	if *legacyCog {
@@ -41,37 +31,14 @@ func TestProcedure(t *testing.T) {
 
 	prediction := func(procedure, token string, input map[string]any) server.PredictionResponse {
 		url := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, procedure)
-		if *legacyCog {
-			// Compat: legacy pipelines-runtime uses a wrapper predictor with these 3 inputs
-			// So the request looks like:
-			/*
-				{
-				  "input": {
-				    "procedure_source_url": "file:///<path>",
-				    "token": "***",
-				    "inputs_json": "{\"s\":\"\"}"
-				  }
-				}
-			*/
-			req := make(map[string]any)
-			req["inputs_json"] = string(must.Get(json.Marshal(input)))
-			req["context"] = map[string]any{
+		req := server.PredictionRequest{
+			Context: map[string]any{
 				"procedure_source_url": url,
-				"token":                token,
-			}
-			return ct.Prediction(req)
-		} else {
-			// cog-runtime moves procedure_source_url and token to top level of PredictionRequest
-			// So no more inputs_json unwrapping
-			req := server.PredictionRequest{
-				Context: map[string]any{
-					"procedure_source_url": url,
-					"token":                token,
-				},
-				Input: input,
-			}
-			return ct.prediction(http.MethodPost, "/procedures", req)
+				"replicate_api_token":  token,
+			},
+			Input: input,
 		}
+		return ct.prediction(http.MethodPost, "/procedures", req)
 	}
 
 	resp1 := prediction("foo", "bar", map[string]any{"s": "foobar"})
