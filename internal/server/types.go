@@ -96,8 +96,7 @@ type PredictionRequest struct {
 	Webhook             string         `json:"webhook,omitempty"`
 	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
-	ProcedureSourceURL  string         `json:"procedure_source_url"`
-	Token               string         `json:"token"`
+	Context             map[string]any `json:"context"`
 }
 
 type PredictionResponse struct {
