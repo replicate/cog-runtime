@@ -1,6 +1,6 @@
-import os
 import dataclasses
 import inspect
+import os
 import typing
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -58,8 +58,12 @@ class PrimitiveType(Enum):
         if match := PrimitiveType._adt_type().get(tpe):
             return match
 
-        if tpe is os.PathLike or issubclass(tpe, os.PathLike):
-            return PrimitiveType.PATH
+        try:
+            if tpe is os.PathLike or issubclass(tpe, os.PathLike):
+                return PrimitiveType.PATH
+        except TypeError:
+            # Catch arg 1 is not a class in issubclass
+            pass
 
         return PrimitiveType.CUSTOM
 
