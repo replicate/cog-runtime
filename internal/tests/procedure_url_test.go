@@ -26,7 +26,11 @@ func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	srcDir := fmt.Sprintf("file://%s", fooDir)
 	fooDst, err := util.PrepareProcedureSourceURL(srcDir)
 	assert.NoError(t, err)
-	assert.Equal(t, fooDir, fooDst)
+	assert.DirExists(t, fooDst)
+	assert.FileExists(t, filepath.Join(fooDst, "cog.yaml"))
+	fooPy := filepath.Join(fooDst, "predict.py")
+	assert.FileExists(t, fooPy)
+	assert.Contains(t, string(must.Get(os.ReadFile(fooPy))), "'predicting foo'")
 }
 
 func TestPrepareProcedureSourceURLRemote(t *testing.T) {
