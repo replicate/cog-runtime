@@ -337,10 +337,10 @@ def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
 
 
 def get_test_inputs(
-    cls: type[api.BasePredictor], inputs: Dict[str, adt.Input]
+    p: api.BasePredictor, inputs: Dict[str, adt.Input]
 ) -> Dict[str, Any]:
-    if hasattr(cls, 'test_inputs'):
-        test_inputs = getattr(cls, 'test_inputs')
+    if hasattr(p, 'test_inputs'):
+        test_inputs = getattr(p, 'test_inputs')
     else:
         # Fall back to defaults if no test_inputs is not defined
         test_inputs = {}
