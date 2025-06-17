@@ -16,7 +16,12 @@ def get_predictors() -> List[str]:
 @pytest.mark.parametrize('predictor', get_predictors())
 async def test_test_inputs(predictor):
     module_name = f'tests.runners.{predictor}'
-    p = inspector.create_predictor(module_name, 'Predictor')
+
+    entrypoint = 'Predictor'
+    if predictor.startswith('function_'):
+        entrypoint = 'predict'
+
+    p = inspector.create_predictor(module_name, entrypoint)
     r = runner.Runner(p)
 
     # Some predictors calls current_scope() and requires ctx_pid

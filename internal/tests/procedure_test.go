@@ -1,11 +1,8 @@
 package tests
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path"
 	"sync"
 	"testing"
 	"time"
@@ -17,11 +14,8 @@ import (
 
 func TestProcedure(t *testing.T) {
 	if *legacyCog {
-		dir := path.Join(basePath, "..", "pipelines-runtime")
-		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
-			t.Logf("pipelines-runtime not found, skipping legacy cog test")
-			t.SkipNow()
-		}
+		// Compat: procedure endpoint has diverged from legacy Cog
+		t.SkipNow()
 	}
 
 	ct := NewCogProcedureTest(t)

@@ -62,7 +62,7 @@ func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 	}
 
 	log := logger.Sugar()
-	log.Infow("sending webhook", "url", pr.request.Webhook, "response", pr.response)
+	log.Debugw("sending webhook", "url", pr.request.Webhook, "response", pr.response)
 	body := bytes.NewBuffer(must.Get(json.Marshal(pr.response)))
 	req := must.Get(http.NewRequest("POST", pr.request.Webhook, body))
 	req.Header.Add("Content-Type", "application/json")
@@ -86,23 +86,22 @@ func (pr *PendingPrediction) sendResponse() {
 }
 
 type Runner struct {
-	workingDir            string
-	cmd                   exec.Cmd
-	status                Status
-	schema                string
-	doc                   *openapi3.T
-	setupResult           SetupResult
-	logs                  []string
-	asyncPredict          bool
-	maxConcurrency        int
-	pending               map[string]*PendingPrediction
-	awaitExplicitShutdown bool
-	uploadUrl             string
-	shutdownRequested     bool
-	mu                    sync.Mutex
+	workingDir     string
+	cmd            exec.Cmd
+	status         Status
+	schema         string
+	doc            *openapi3.T
+	setupResult    SetupResult
+	logs           []string
+	asyncPredict   bool
+	maxConcurrency int
+	pending        map[string]*PendingPrediction
+	uploadUrl      string
+	mu             sync.Mutex
+	stopped        chan bool
 }
 
-func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
+func NewRunner(uploadUrl string) *Runner {
 	workingDir := must.Get(os.MkdirTemp("", "cog-runner-"))
 	args := []string{
 		"-u",
@@ -111,18 +110,18 @@ func NewRunner(awaitExplicitShutdown bool, uploadUrl string) *Runner {
 	}
 	cmd := exec.Command("python3", args...)
 	return &Runner{
-		workingDir:            workingDir,
-		cmd:                   *cmd,
-		status:                StatusStarting,
-		maxConcurrency:        1,
-		pending:               make(map[string]*PendingPrediction),
-		awaitExplicitShutdown: awaitExplicitShutdown,
-		uploadUrl:             uploadUrl,
+		workingDir:     workingDir,
+		cmd:            *cmd,
+		status:         StatusStarting,
+		maxConcurrency: 1,
+		pending:        make(map[string]*PendingPrediction),
+		uploadUrl:      uploadUrl,
+		stopped:        make(chan bool),
 	}
 }
 
-func NewProcedureRunner(awaitExplicitShutdown bool, uploadUrl string, srcDir string) *Runner {
-	r := NewRunner(awaitExplicitShutdown, uploadUrl)
+func NewProcedureRunner(uploadUrl string, srcDir string) *Runner {
+	r := NewRunner(uploadUrl)
 	r.cmd.Dir = srcDir
 	return r
 }
@@ -154,16 +153,13 @@ func (r *Runner) Start() error {
 	return nil
 }
 
-func (r *Runner) Stop(shutdown bool) error {
+func (r *Runner) Stop() error {
 	log := logger.Sugar()
 	log.Infow("stop requested")
-	r.mu.Lock()
-	r.shutdownRequested = shutdown
-	r.mu.Unlock()
-	if r.cmd.ProcessState != nil && shutdown {
+	if r.cmd.ProcessState != nil {
 		// Python process already exited
 		// Shutdown HTTP server
-		return r.shutdown()
+		return nil
 	} else {
 		// Otherwise signal Python process to stop
 		// FIXME: kill process after grace period
@@ -176,9 +172,8 @@ func (r *Runner) ExitCode() int {
 	return r.cmd.ProcessState.ExitCode()
 }
 
-func (r *Runner) shutdown() error {
-	// SIGTERM self to shut down HTTP server
-	return syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+func (r *Runner) WaitForStop() {
+	<-r.stopped
 }
 
 ////////////////////
@@ -192,9 +187,6 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	} else if r.status == StatusDefunct {
 		log.Errorw("prediction rejected: server is defunct")
 		return nil, ErrDefunct
-	}
-	if req.CreatedAt == "" {
-		req.CreatedAt = util.NowIso()
 	}
 	r.mu.Lock()
 	if len(r.pending) >= r.maxConcurrency {
@@ -210,6 +202,13 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	r.mu.Unlock()
 
 	log.Infow("received prediction request", "id", req.Id)
+	if req.CreatedAt == "" {
+		req.CreatedAt = util.NowIso()
+	}
+	// Start here so that input downloads are counted towards predict_time
+	if req.StartedAt == "" {
+		req.StartedAt = util.NowIso()
+	}
 
 	inputPaths := make([]string, 0)
 	input, err := handleInputPaths(req.Input, r.doc, &inputPaths, base64ToInput)
@@ -228,6 +227,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		Input:     req.Input,
 		Id:        req.Id,
 		CreatedAt: req.CreatedAt,
+		StartedAt: req.StartedAt,
 	}
 	pr := PendingPrediction{
 		request:    req,
@@ -312,7 +312,11 @@ func (r *Runner) config() {
 		// Default to 1 if not set in cog.yaml, regardless whether async predict or not
 		r.maxConcurrency = max(1, y.Concurrency.Max)
 	}
-	conf := PredictConfig{ModuleName: moduleName, PredictorName: predictorName}
+	conf := PredictConfig{
+		ModuleName:     moduleName,
+		PredictorName:  predictorName,
+		MaxConcurrency: r.maxConcurrency,
+	}
 	confFile := path.Join(r.workingDir, "config.json")
 	f := must.Get(os.Create(confFile))
 	must.Do(json.NewEncoder(f).Encode(conf))
@@ -355,9 +359,7 @@ func (r *Runner) wait() {
 		r.status = StatusDefunct
 		r.mu.Unlock()
 	}
-	if !r.awaitExplicitShutdown || r.shutdownRequested {
-		must.Do(r.shutdown())
-	}
+	close(r.stopped)
 }
 
 func (r *Runner) handleSignals() {

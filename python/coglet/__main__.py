@@ -7,12 +7,12 @@ import os
 import os.path
 import sys
 import time
-from typing import Optional, Tuple
+from typing import Optional
 
 from coglet import file_runner, scope
 
 
-def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, str]]:
+def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[file_runner.Config]:
     if os.environ.get('R8_TORCH_VERSION', '') != '':
         logger.info('eagerly importing torch')
         importlib.import_module('torch')
@@ -27,8 +27,11 @@ def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, s
             with open(conf_file, 'r') as f:
                 conf = json.load(f)
                 os.unlink(conf_file)
-            module_name = conf['module_name']
-            predictor_name = conf['predictor_name']
+            config = file_runner.Config(
+                module_name=conf['module_name'],
+                predictor_name=conf['predictor_name'],
+                max_concurrency=conf['max_concurrency'],
+            )
 
             # Add user venv to PYTHONPATH
             pv = f'python{sys.version_info.major}.{sys.version_info.minor}'
@@ -38,7 +41,8 @@ def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[Tuple[str, s
                 sys.path.append(venv)
                 # In case the model forks Python interpreter
                 os.environ['PYTHONPATH'] = ':'.join(sys.path)
-            return module_name, predictor_name
+
+            return config
         time.sleep(0.01)
         elapsed += 0.01
 
@@ -70,17 +74,15 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    tup = pre_setup(logger, args.working_dir)
-    if tup is None:
+    config = pre_setup(logger, args.working_dir)
+    if config is None:
         return -1
-    module_name, predictor_name = tup
 
     return asyncio.run(
         file_runner.FileRunner(
             logger=logger,
             working_dir=args.working_dir,
-            module_name=module_name,
-            predictor_name=predictor_name,
+            config=config,
         ).start()
     )
 

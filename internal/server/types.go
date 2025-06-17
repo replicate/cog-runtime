@@ -50,8 +50,9 @@ type Config struct {
 }
 
 type PredictConfig struct {
-	ModuleName    string `json:"module_name,omitempty"`
-	PredictorName string `json:"predictor_name,omitempty"`
+	ModuleName     string `json:"module_name,omitempty"`
+	PredictorName  string `json:"predictor_name,omitempty"`
+	MaxConcurrency int    `json:"max_concurrency,omitempty"`
 }
 
 type PredictionStatus string
@@ -93,6 +94,7 @@ type PredictionRequest struct {
 	Input               any            `json:"input"`
 	Id                  string         `json:"id"`
 	CreatedAt           string         `json:"created_at"`
+	StartedAt           string         `json:"started_at"`
 	Webhook             string         `json:"webhook,omitempty"`
 	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
 	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
