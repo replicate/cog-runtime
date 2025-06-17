@@ -2,37 +2,83 @@ import importlib
 import inspect
 import os
 import os.path
-from typing import Any, AsyncGenerator, Callable, Dict
+from typing import Any, AsyncGenerator, Callable, Dict, Optional
 
 from coglet import adt, api, inspector
 
 
-class ProcedurePredictor(api.BasePredictor):
+class FunctionPredictor(api.BasePredictor):
     setup_done = False
 
-    def __init__(self, _predict: Callable):
+    def __init__(self, _predict: Callable, test_inputs: Optional[Any]):
         self._predict = _predict
+        self.test_inputs = test_inputs
 
-    def setup(self) -> None:  # type: ignore
+    def setup(self, weights=None) -> None:
         self.setup_done = True
 
     def predict(self, **kwargs: Any) -> Any:
         return self._predict(**kwargs)
 
 
+class AsyncFunctionPredictor(api.BasePredictor):
+    setup_done = False
+
+    def __init__(self, _predict: Callable, test_inputs: Optional[Any]):
+        self._predict = _predict
+        self.test_inputs = test_inputs
+
+    def setup(self, weights=None) -> None:
+        self.setup_done = True
+
+    async def predict(self, **kwargs: Any) -> Any:
+        return self._predict(**kwargs)
+
+
+class AsyncIteratorFunctionPredictor(api.BasePredictor):
+    setup_done = False
+
+    def __init__(self, _predict: Callable, test_inputs: Optional[Any]):
+        self._predict = _predict
+        self.test_inputs = test_inputs
+
+    def setup(self, weights=None) -> None:
+        self.setup_done = True
+
+    async def predict(self, **kwargs: Any) -> Any:
+        async for item in self._predict(**kwargs):
+            yield item
+
+
+def create_function_predictor(
+    p: Callable, *, test_inputs: Optional[Any] = None
+) -> api.BasePredictor:
+    if inspect.iscoroutinefunction(p):
+        return AsyncFunctionPredictor(p, test_inputs)
+
+    elif inspect.isasyncgenfunction(p):
+        return AsyncIteratorFunctionPredictor(p, test_inputs)
+
+    return FunctionPredictor(p, test_inputs)
+
+
 # Reflectively run a Cog predictor
 # async by default and just run non-async setup/predict by blocking the caller
 class Runner:
+    predictor: api.BasePredictor
+
     def __init__(self, predictor: adt.Predictor):
         self.inputs = predictor.inputs
         self.output = predictor.output
 
         module = importlib.import_module(predictor.module_name)
         p = getattr(module, predictor.predictor_name)
-        if inspect.isclass(p):
+        if inspect.isclass(p) and issubclass(p, api.BasePredictor):
             self.predictor = p()
         elif inspect.isfunction(p):
-            self.predictor = ProcedurePredictor(p)
+            self.predictor = create_function_predictor(
+                p, test_inputs=getattr(module, 'test_inputs', None)
+            )
         else:
             raise RuntimeError(
                 f'invalid predictor {predictor.module_name}.{predictor.predictor_name}'
