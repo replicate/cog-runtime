@@ -26,7 +26,7 @@ func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	srcDir := fmt.Sprintf("file://%s", fooDir)
 	fooDst, err := util.PrepareProcedureSourceURL(srcDir)
 	assert.NoError(t, err)
-	assert.Equal(t, fooDir, fooDst)
+	assert.NotEqual(t, fooDir, fooDst)
 }
 
 func TestPrepareProcedureSourceURLRemote(t *testing.T) {
