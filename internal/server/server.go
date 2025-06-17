@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -8,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/replicate/cog-runtime/internal/util"
@@ -25,28 +25,30 @@ var procedureSchema string
 
 type Handler struct {
 	cfg       Config
+	shutdown  context.CancelFunc
 	startedAt time.Time
 	runner    *Runner
 	mu        sync.Mutex
 }
 
-func NewHandler(cfg Config) *Handler {
+func NewHandler(cfg Config, shutdown context.CancelFunc) *Handler {
 	h := &Handler{
 		cfg:       cfg,
+		shutdown:  shutdown,
 		startedAt: time.Now(),
 	}
 	if !cfg.UseProcedureMode {
-		h.runner = NewRunner(cfg.AwaitExplicitShutdown, cfg.UploadUrl)
+		h.runner = NewRunner(cfg.UploadUrl)
 		must.Do(h.runner.Start())
+		if !cfg.AwaitExplicitShutdown {
+			go func() {
+				// Shut down as soon as runner exists
+				h.runner.WaitForStop()
+				h.shutdown()
+			}()
+		}
 	}
 	return h
-}
-
-func (h *Handler) Stop() error {
-	if h.runner == nil {
-		return nil
-	}
-	return h.runner.Stop(true)
 }
 
 func (h *Handler) ExitCode() int {
@@ -107,20 +109,23 @@ func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 	// Procedure mode and no runner yet
 	if h.runner == nil {
-		// SIGTERM self to shut down HTTP server
-		if err := syscall.Kill(syscall.Getpid(), syscall.SIGTERM); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
 		w.WriteHeader(http.StatusOK)
+		// Shut down immediately
+		h.shutdown()
 		return
 	}
 
-	if err := h.runner.Stop(true); err != nil {
+	// Request runner stop
+	if err := h.runner.Stop(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
 		w.WriteHeader(http.StatusOK)
 	}
+	go func() {
+		// Shut down once runner exists
+		h.runner.WaitForStop()
+		h.shutdown()
+	}()
 }
 
 func (h *Handler) updateRunner(srcDir string) error {
@@ -138,7 +143,7 @@ func (h *Handler) updateRunner(srcDir string) error {
 	// Different source URL, stop current runner
 	if h.runner != nil {
 		log.Infow("stopping procedure runner", "src_dir", h.runner.SrcDir())
-		if err := h.runner.Stop(false); err != nil {
+		if err := h.runner.Stop(); err != nil {
 			log.Errorw("failed to stop runner", "error", err)
 		}
 		h.runner = nil
@@ -146,7 +151,7 @@ func (h *Handler) updateRunner(srcDir string) error {
 
 	// Start new runner
 	log.Infow("starting procedure runner", "src_dir", srcDir)
-	runner := NewProcedureRunner(h.cfg.AwaitExplicitShutdown, h.cfg.UploadUrl, srcDir)
+	runner := NewProcedureRunner(h.cfg.UploadUrl, srcDir)
 	if err := runner.Start(); err != nil {
 		return err
 	}
@@ -158,7 +163,7 @@ func (h *Handler) updateRunner(srcDir string) error {
 		}
 		if time.Since(start) > 10*time.Second {
 			log.Errorw("stopping procedure runner after time out", "elapsed", time.Since(start))
-			if err := runner.Stop(false); err != nil {
+			if err := runner.Stop(); err != nil {
 				log.Errorw("failed to stop runner", "error", err)
 			}
 			return fmt.Errorf("procedure time out")
