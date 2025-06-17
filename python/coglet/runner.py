@@ -2,37 +2,60 @@ import importlib
 import inspect
 import os
 import os.path
-from typing import Any, AsyncGenerator, Callable, Dict
+from typing import Any, AsyncGenerator, Callable, Dict, Optional
 
 from coglet import adt, api, inspector
 
 
-class ProcedurePredictor(api.BasePredictor):
-    setup_done = False
+def create_function_predictor(
+    p: Callable, *, test_inputs: Optional[Any] = None
+) -> api.BasePredictor:
+    test_inputs_val = test_inputs
 
-    def __init__(self, _predict: Callable):
-        self._predict = _predict
+    class P(api.BasePredictor):
+        setup_done = False
 
-    def setup(self) -> None:  # type: ignore
-        self.setup_done = True
+        def setup(self, weights=None) -> None:
+            self.setup_done = True
 
-    def predict(self, **kwargs: Any) -> Any:
-        return self._predict(**kwargs)
+        if inspect.iscoroutinefunction(p):
+
+            async def predict(self, **kwargs) -> Any:  # type: ignore
+                return p(**kwargs)
+
+        elif inspect.isasyncgenfunction(p):
+
+            async def predict(self, **kwargs) -> Any:  # type: ignore
+                async for item in p(**kwargs):
+                    yield item
+        else:
+
+            def predict(self, **kwargs) -> Any:
+                return p(**kwargs)
+
+        if test_inputs_val:
+            test_inputs = test_inputs_val
+
+    return P()
 
 
 # Reflectively run a Cog predictor
 # async by default and just run non-async setup/predict by blocking the caller
 class Runner:
+    predictor: api.BasePredictor
+
     def __init__(self, predictor: adt.Predictor):
         self.inputs = predictor.inputs
         self.output = predictor.output
 
         module = importlib.import_module(predictor.module_name)
         p = getattr(module, predictor.predictor_name)
-        if inspect.isclass(p):
+        if inspect.isclass(p) and issubclass(p, api.BasePredictor):
             self.predictor = p()
         elif inspect.isfunction(p):
-            self.predictor = ProcedurePredictor(p)
+            self.predictor = create_function_predictor(
+                p, test_inputs=getattr(module, 'test_inputs', None)
+            )
         else:
             raise RuntimeError(
                 f'invalid predictor {predictor.module_name}.{predictor.predictor_name}'
