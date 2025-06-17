@@ -21,9 +21,9 @@ def get_predictors() -> List[str]:
 async def run_fixture(module_name: str, predictor_name: str) -> None:
     p = inspector.create_predictor(module_name, predictor_name)
     r = runner.Runner(p)
-    assert not r.predictor.setup_done
+    assert not getattr(r.predictor, 'setup_done', None)
     await r.setup()
-    assert r.predictor.setup_done
+    assert getattr(r.predictor, 'setup_done', None)
 
     m = importlib.import_module(module_name)
     fixture = getattr(m, 'FIXTURE')

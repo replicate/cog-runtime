@@ -7,36 +7,59 @@ from typing import Any, AsyncGenerator, Callable, Dict, Optional
 from coglet import adt, api, inspector
 
 
+class FunctionPredictor(api.BasePredictor):
+    setup_done = False
+
+    def __init__(self, _predict: Callable, test_inputs: Optional[Any]):
+        self._predict = _predict
+        self.test_inputs = test_inputs
+
+    def setup(self, weights=None) -> None:
+        self.setup_done = True
+
+    def predict(self, **kwargs: Any) -> Any:
+        return self._predict(**kwargs)
+
+
+class AsyncFunctionPredictor(api.BasePredictor):
+    setup_done = False
+
+    def __init__(self, _predict: Callable, test_inputs: Optional[Any]):
+        self._predict = _predict
+        self.test_inputs = test_inputs
+
+    def setup(self, weights=None) -> None:
+        self.setup_done = True
+
+    async def predict(self, **kwargs: Any) -> Any:
+        return self._predict(**kwargs)
+
+
+class AsyncIteratorFunctionPredictor(api.BasePredictor):
+    setup_done = False
+
+    def __init__(self, _predict: Callable, test_inputs: Optional[Any]):
+        self._predict = _predict
+        self.test_inputs = test_inputs
+
+    def setup(self, weights=None) -> None:
+        self.setup_done = True
+
+    async def predict(self, **kwargs: Any) -> Any:
+        async for item in self._predict(**kwargs):
+            yield item
+
+
 def create_function_predictor(
     p: Callable, *, test_inputs: Optional[Any] = None
 ) -> api.BasePredictor:
-    test_inputs_val = test_inputs
+    if inspect.iscoroutinefunction(p):
+        return AsyncFunctionPredictor(p, test_inputs)
 
-    class P(api.BasePredictor):
-        setup_done = False
+    elif inspect.isasyncgenfunction(p):
+        return AsyncIteratorFunctionPredictor(p, test_inputs)
 
-        def setup(self, weights=None) -> None:
-            self.setup_done = True
-
-        if inspect.iscoroutinefunction(p):
-
-            async def predict(self, **kwargs) -> Any:  # type: ignore
-                return p(**kwargs)
-
-        elif inspect.isasyncgenfunction(p):
-
-            async def predict(self, **kwargs) -> Any:  # type: ignore
-                async for item in p(**kwargs):
-                    yield item
-        else:
-
-            def predict(self, **kwargs) -> Any:
-                return p(**kwargs)
-
-        if test_inputs_val:
-            test_inputs = test_inputs_val
-
-    return P()
+    return FunctionPredictor(p, test_inputs)
 
 
 # Reflectively run a Cog predictor
