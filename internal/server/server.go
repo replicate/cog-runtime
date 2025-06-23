@@ -131,14 +131,14 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) updateRunner(srcDir string) error {
 	log := logger.Sugar()
 
+	// Lock before checking to avoid thrashing runner replacements
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	// Reuse current runner, nothing to do
 	if h.runner != nil && h.runner.SrcDir() == srcDir {
 		return nil
 	}
-
-	// Need to start a new runner, lock until done
-	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	// Different source URL, stop current runner
 	if h.runner != nil {
