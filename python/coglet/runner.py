@@ -32,7 +32,7 @@ class AsyncFunctionPredictor(api.BasePredictor):
         self.setup_done = True
 
     async def predict(self, **kwargs: Any) -> Any:
-        return self._predict(**kwargs)
+        return await self._predict(**kwargs)
 
 
 class AsyncIteratorFunctionPredictor(api.BasePredictor):
