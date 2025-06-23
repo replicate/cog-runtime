@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/replicate/go/must"
+
 	"github.com/replicate/cog-runtime/internal/util"
 
 	"github.com/replicate/go/logging"
@@ -36,10 +38,11 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		startedAt: time.Now(),
 	}
 	if !cfg.UseProcedureMode {
-		h.runner = NewRunner(cfg.UploadUrl)
+		h.runner = NewRunner(cfg.IPCUrl, cfg.UploadUrl)
 		if err := h.runner.Start(); err != nil {
 			return nil, err
 		}
+
 		if !cfg.AwaitExplicitShutdown {
 			go func() {
 				// Shut down as soon as runner exists
@@ -135,6 +138,15 @@ func (h *Handler) Stop() error {
 	return nil
 }
 
+func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
+	var ipc IPC
+	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), &ipc); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	h.runner.handleIPC(ipc.Status)
+}
+
 func (h *Handler) updateRunner(srcDir string) error {
 	log := logger.Sugar()
 
@@ -158,26 +170,25 @@ func (h *Handler) updateRunner(srcDir string) error {
 
 	// Start new runner
 	log.Infow("starting procedure runner", "src_dir", srcDir)
-	runner := NewProcedureRunner(h.cfg.UploadUrl, srcDir)
-	if err := runner.Start(); err != nil {
+	h.runner = NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, srcDir)
+	if err := h.runner.Start(); err != nil {
 		return err
 	}
 	start := time.Now()
 	// Wait for runner to become ready, this should not take long as procedures have no setup
 	for {
-		if runner.status == StatusReady {
+		if h.runner.status == StatusReady {
 			break
 		}
 		if time.Since(start) > 10*time.Second {
 			log.Errorw("stopping procedure runner after time out", "elapsed", time.Since(start))
-			if err := runner.Stop(); err != nil {
+			if err := h.runner.Stop(); err != nil {
 				log.Errorw("failed to stop runner", "error", err)
 			}
 			return fmt.Errorf("procedure time out")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	h.runner = runner
 	return nil
 }
 

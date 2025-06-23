@@ -83,6 +83,7 @@ func serverCommand() *ff.Command {
 			serverCfg := server.Config{
 				UseProcedureMode:      cfg.UseProcedureMode,
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
+				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
 				UploadUrl:             cfg.UploadUrl,
 			}
 			ctx, cancel := context.WithCancel(ctx)

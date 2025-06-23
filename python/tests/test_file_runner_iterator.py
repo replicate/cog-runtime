@@ -8,21 +8,27 @@ import pytest
 from coglet import file_runner
 
 from .test_file_runner import (
-    run_file_runner,
-    setup_signals,
+    FileRunnerTest,
     wait_for_file,
-    wait_for_process,
 )
-from .test_file_runner_async import (
-    async_wait_for_file,
-    async_wait_for_process,
-)
+from .test_file_runner_async import async_wait_for_file
+
+
+def setup_module():
+    from .test_file_runner import setup_module as setup
+
+    setup()
+
+
+def teardown_module():
+    from .test_file_runner import teardown_module as teardown
+
+    teardown()
 
 
 @pytest.mark.parametrize('predictor', ['iterator', 'concat_iterator', 'async_iterator'])
 def test_file_runner_iterator(predictor, tmp_path):
-    signals = setup_signals()
-    p = run_file_runner(tmp_path, predictor)
+    rt = FileRunnerTest(tmp_path, predictor)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)
@@ -32,23 +38,23 @@ def test_file_runner_iterator(predictor, tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [file_runner.FileRunner.SIG_READY]
+    assert rt.statuses() == [file_runner.FileRunner.IPC_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
     resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 2, 's': 'bar'}}, f)
     wait_for_file(req_file, exists=False)
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
     ]
     wait_for_file(resp_file)
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
     ]
 
     with open(resp_file, 'r') as f:
@@ -58,13 +64,12 @@ def test_file_runner_iterator(predictor, tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     Path(stop_file).touch()
-    wait_for_process(p)
+    rt.stop()
 
 
 @pytest.mark.parametrize('predictor', ['iterator', 'concat_iterator', 'async_iterator'])
 def test_file_runner_iterator_webhook(predictor, tmp_path):
-    signals = setup_signals()
-    p = run_file_runner(tmp_path, predictor)
+    rt = FileRunnerTest(tmp_path, predictor)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)
@@ -74,7 +79,7 @@ def test_file_runner_iterator_webhook(predictor, tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [file_runner.FileRunner.SIG_READY]
+    assert rt.statuses() == [file_runner.FileRunner.IPC_READY]
 
     def assert_output(status: str, output: Optional[List[str]]) -> None:
         assert os.path.exists(resp_file)
@@ -91,20 +96,20 @@ def test_file_runner_iterator_webhook(predictor, tmp_path):
 
     wait_for_file(resp_file)
     assert_output('starting', None)
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
     ]
 
     resp_file = os.path.join(tmp_path, 'response-a-00001.json')
     wait_for_file(resp_file)
     assert_output('processing', ['*bar-0*'])
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_OUTPUT,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_OUTPUT,
     ]
 
     resp_file = os.path.join(tmp_path, 'response-a-00002.json')
@@ -113,25 +118,24 @@ def test_file_runner_iterator_webhook(predictor, tmp_path):
     resp_file = os.path.join(tmp_path, 'response-a-00003.json')
     wait_for_file(resp_file)
     assert_output('succeeded', ['*bar-0*', '*bar-1*'])
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
     ]
 
     stop_file = os.path.join(tmp_path, 'stop')
     Path(stop_file).touch()
-    wait_for_process(p)
+    rt.stop()
 
 
 @pytest.mark.asyncio
 async def test_file_runner_async_iterator_concurrency(tmp_path):
-    signals = setup_signals()
-    p = run_file_runner(tmp_path, 'async_iterator')
+    rt = FileRunnerTest(tmp_path, 'async_iterator')
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)
@@ -141,7 +145,7 @@ async def test_file_runner_async_iterator_concurrency(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [file_runner.FileRunner.SIG_READY]
+    assert rt.statuses() == [file_runner.FileRunner.IPC_READY]
 
     req_file_a = os.path.join(tmp_path, 'request-a.json')
     req_file_b = os.path.join(tmp_path, 'request-b.json')
@@ -153,18 +157,18 @@ async def test_file_runner_async_iterator_concurrency(tmp_path):
         json.dump({'input': {'i': 2, 's': 'baz'}}, f)
     await async_wait_for_file(req_file_a, exists=False)
     await async_wait_for_file(req_file_b, exists=False)
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
     ]
     await async_wait_for_file(resp_file_a)
     await async_wait_for_file(resp_file_b)
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
     ]
 
     with open(resp_file_a, 'r') as f:
@@ -178,4 +182,4 @@ async def test_file_runner_async_iterator_concurrency(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     Path(stop_file).touch()
-    await async_wait_for_process(p)
+    rt.stop()

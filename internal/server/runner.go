@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path"
 	"regexp"
 	"slices"
@@ -102,11 +101,12 @@ type Runner struct {
 	stopped        chan bool
 }
 
-func NewRunner(uploadUrl string) *Runner {
+func NewRunner(ipcUrl, uploadUrl string) *Runner {
 	workingDir := must.Get(os.MkdirTemp("", "cog-runner-"))
 	args := []string{
 		"-u",
 		"-m", "coglet",
+		"--ipc-url", ipcUrl,
 		"--working-dir", workingDir,
 	}
 	cmd := exec.Command("python3", args...)
@@ -121,8 +121,8 @@ func NewRunner(uploadUrl string) *Runner {
 	}
 }
 
-func NewProcedureRunner(uploadUrl string, srcDir string) *Runner {
-	r := NewRunner(uploadUrl)
+func NewProcedureRunner(ipcUrl, uploadUrl, srcDir string) *Runner {
+	r := NewRunner(ipcUrl, uploadUrl)
 	r.cmd.Dir = srcDir
 	return r
 }
@@ -150,7 +150,6 @@ func (r *Runner) Start() error {
 	close(cmdStart)
 	go r.config()
 	go r.wait()
-	go r.handleSignals()
 	return nil
 }
 
@@ -364,39 +363,37 @@ func (r *Runner) wait() {
 	close(r.stopped)
 }
 
-func (r *Runner) handleSignals() {
+func (r *Runner) handleIPC(s IPCStatus) {
 	log := logger.Sugar()
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, SigOutput, SigReady, SigBusy)
-	for {
-		s := <-ch
-		if s == SigOutput {
-			r.handleResponses()
-		} else if s == SigReady {
-			if r.status == StatusStarting {
-				r.updateSchema()
-				r.updateSetupResult()
-				if _, err := os.Stat(path.Join(r.workingDir, "async_predict")); err == nil {
-					r.asyncPredict = true
+	switch s {
+	case IPCStatusReady:
+		if r.status == StatusStarting {
+			r.updateSchema()
+			r.updateSetupResult()
+			if _, err := os.Stat(path.Join(r.workingDir, "async_predict")); err == nil {
+				r.asyncPredict = true
 
-				} else if errors.Is(err, os.ErrNotExist) && r.maxConcurrency > 1 {
-					log.Warnw("max concurrency > 1 for blocking predict, reset to 1", "max_concurrency", r.maxConcurrency)
-					r.maxConcurrency = 1
-				}
-				if err := r.handleReadinessProbe(); err != nil {
-					log.Errorw("fail to write ready file", "err", err)
-				}
+			} else if errors.Is(err, os.ErrNotExist) && r.maxConcurrency > 1 {
+				log.Warnw("max concurrency > 1 for blocking predict, reset to 1", "max_concurrency", r.maxConcurrency)
+				r.maxConcurrency = 1
 			}
-			log.Info("runner is ready")
-			r.mu.Lock()
-			r.status = StatusReady
-			r.mu.Unlock()
-		} else if s == SigBusy {
-			log.Info("runner is busy")
-			r.mu.Lock()
-			r.status = StatusBusy
-			r.mu.Unlock()
+			if err := r.handleReadinessProbe(); err != nil {
+				log.Errorw("fail to write ready file", "err", err)
+			}
 		}
+		log.Info("runner is ready")
+		r.mu.Lock()
+		r.status = StatusReady
+		r.mu.Unlock()
+	case IPCStatusBUSY:
+		log.Info("runner is busy")
+		r.mu.Lock()
+		r.status = StatusBusy
+		r.mu.Unlock()
+	case IPCStatusOutput:
+		r.handleResponses()
+	default:
+		log.Errorw("unknown IPC status", "status", s)
 	}
 }
 

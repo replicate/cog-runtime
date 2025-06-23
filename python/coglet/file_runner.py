@@ -5,8 +5,8 @@ import os
 import pathlib
 import re
 import signal
-import sys
 import tempfile
+import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -25,25 +25,24 @@ class FileRunner:
     REQUEST_RE = re.compile(r'^request-(?P<pid>\S+).json$')
     RESPONSE_FMT = 'response-{pid}-{epoch:05d}.json'
 
-    # Signal parent to scan output
-    SIG_OUTPUT = signal.SIGHUP
-
-    # Signal ready or busy status
-    SIG_READY = signal.SIGUSR1
-    SIG_BUSY = signal.SIGUSR2
+    # IPC status updates to Go server
+    IPC_READY = 'READY'
+    IPC_BUSY = 'BUSY'
+    IPC_OUTPUT = 'OUTPUT'
 
     def __init__(
         self,
         *,
         logger: logging.Logger,
+        ipc_url: str,
         working_dir: str,
         config: Config,
     ):
         self.logger = logger
+        self.ipc_url = ipc_url
         self.working_dir = working_dir
         self.config = config
         self.runner: Optional[runner.Runner] = None
-        self.isatty = sys.stdout.isatty()
 
     async def start(self) -> int:
         self.logger.info(
@@ -105,13 +104,13 @@ class FileRunner:
             signal.signal(signal.SIGUSR1, _cancel_handler)
 
         ready = True
-        self._signal(FileRunner.SIG_READY)
+        self._send_ipc(FileRunner.IPC_READY)
 
         pending: Dict[str, asyncio.Task[None]] = {}
         while True:
             if len(pending) < self.config.max_concurrency and not ready:
                 ready = True
-                self._signal(FileRunner.SIG_READY)
+                self._send_ipc(FileRunner.IPC_READY)
 
             if os.path.exists(stop_file):
                 self.logger.info('stopping file runner')
@@ -148,7 +147,7 @@ class FileRunner:
                     continue
                 if ready:
                     ready = False
-                    self._signal(FileRunner.SIG_BUSY)
+                    self._send_ipc(FileRunner.IPC_BUSY)
                 pid = m.group('pid')
                 req_path = os.path.join(self.working_dir, entry)
                 with open(req_path, 'r') as f:
@@ -268,8 +267,16 @@ class FileRunner:
         )
         os.rename(temp_path, resp_path)
 
-        self._signal(FileRunner.SIG_OUTPUT)
+        self._send_ipc(FileRunner.IPC_OUTPUT)
 
-    def _signal(self, signum: int) -> None:
-        if not self.isatty:
-            os.kill(os.getppid(), signum)
+    def _send_ipc(self, status: str) -> None:
+        try:
+            payload = {
+                'pid': os.getpid(),
+                'status': status,
+                'working_dir': self.working_dir,
+            }
+            data = json.dumps(payload).encode('utf-8')
+            urllib.request.urlopen(self.ipc_url, data=data).read()
+        except Exception as e:
+            self.logger.exception('IPC failed: %s', e)
