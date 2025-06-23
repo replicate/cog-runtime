@@ -78,19 +78,6 @@ func serverCommand() *ff.Command {
 				"upload-url", cfg.UploadUrl,
 			)
 
-			ctx, cancel := context.WithCancel(ctx)
-			go func() {
-				ch := make(chan os.Signal, 1)
-				signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-				s := <-ch
-				if cfg.AwaitExplicitShutdown {
-					log.Warnw("ignoring signal to stop", "signal", s)
-				} else {
-					log.Infow("stopping Cog HTTP server", "signal", s)
-					cancel()
-				}
-			}()
-
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
 			serverCfg := server.Config{
@@ -98,11 +85,23 @@ func serverCommand() *ff.Command {
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 				UploadUrl:             cfg.UploadUrl,
 			}
+			ctx, cancel := context.WithCancel(ctx)
 			h := server.NewHandler(serverCfg, cancel)
 			s := server.NewServer(addr, h, cfg.UseProcedureMode)
 			go func() {
 				<-ctx.Done()
 				must.Do(s.Shutdown(ctx))
+			}()
+			go func() {
+				ch := make(chan os.Signal, 1)
+				signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+				sig := <-ch
+				if cfg.AwaitExplicitShutdown {
+					log.Warnw("ignoring signal to stop", "signal", sig)
+				} else {
+					log.Infow("stopping Cog HTTP server", "signal", sig)
+					must.Do(h.Stop())
+				}
 			}()
 			if err := s.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
 				exitCode := h.ExitCode()

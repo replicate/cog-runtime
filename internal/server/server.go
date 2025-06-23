@@ -107,25 +107,32 @@ func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
+	err := h.Stop()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func (h *Handler) Stop() error {
 	// Procedure mode and no runner yet
 	if h.runner == nil {
-		w.WriteHeader(http.StatusOK)
 		// Shut down immediately
 		h.shutdown()
-		return
+		return nil
 	}
 
 	// Request runner stop
 	if err := h.runner.Stop(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	} else {
-		w.WriteHeader(http.StatusOK)
+		return err
 	}
 	go func() {
 		// Shut down once runner exists
 		h.runner.WaitForStop()
 		h.shutdown()
 	}()
+	return nil
 }
 
 func (h *Handler) updateRunner(srcDir string) error {
