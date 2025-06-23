@@ -31,6 +31,10 @@ func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	fooPy := filepath.Join(fooDst, "predict.py")
 	assert.FileExists(t, fooPy)
 	assert.Contains(t, string(must.Get(os.ReadFile(fooPy))), "'predicting foo'")
+
+	fooDst2, err := util.PrepareProcedureSourceURL(srcDir)
+	assert.NoError(t, err)
+	assert.Equal(t, fooDst, fooDst2)
 }
 
 func TestPrepareProcedureSourceURLRemote(t *testing.T) {
