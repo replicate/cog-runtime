@@ -2,7 +2,6 @@ package util
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"io/fs"
@@ -37,6 +36,17 @@ func copyRecursiveSymlink(srcRoot, dstRoot string) error {
 }
 
 func PrepareProcedureSourceURL(srcURL string) (string, error) {
+	// Deterministic destination directory to avoid duplicate copies
+	sha := sha256.New()
+	sha.Write([]byte(srcURL))
+	dstDir := filepath.Join(os.TempDir(), fmt.Sprintf("procedure-%x", sha.Sum(nil)))
+
+	// Already prepared
+	stat, err := os.Stat(dstDir)
+	if err == nil && stat.IsDir() {
+		return dstDir, nil
+	}
+
 	u, err := url.Parse(srcURL)
 	if err != nil {
 		return "", err
@@ -50,28 +60,17 @@ func PrepareProcedureSourceURL(srcURL string) (string, error) {
 		if !stat.IsDir() {
 			return "", fmt.Errorf("invalid procedure source URL: %s", srcURL)
 		}
-		tmpDir, err := os.MkdirTemp("", "procedure*")
+		err = os.MkdirAll(dstDir, 0o700)
 		if err != nil {
 			return "", err
 		}
-		err = copyRecursiveSymlink(u.Path, tmpDir)
+		err = copyRecursiveSymlink(u.Path, dstDir)
 		if err != nil {
 			return "", err
 		}
-		return tmpDir, nil
+		return dstDir, nil
 	} else if u.Scheme == "http" || u.Scheme == "https" {
 		// http://host/path/to/tarball
-		sha := sha256.New()
-		sha.Write([]byte(srcURL))
-		hash := hex.EncodeToString(sha.Sum(nil))
-		dstDir := filepath.Join(os.TempDir(), fmt.Sprintf("procedure-%s", hash))
-
-		// Already downloaded
-		stat, err := os.Stat(dstDir)
-		if err == nil && stat.IsDir() {
-			return dstDir, nil
-		}
-
 		// Download to temporary file
 		// tar -xf cannot detect compression from stdin and file should be small enough
 		resp, err := http.Get(srcURL)
@@ -79,7 +78,7 @@ func PrepareProcedureSourceURL(srcURL string) (string, error) {
 			return "", err
 		}
 		defer resp.Body.Close()
-		tarball, err := os.CreateTemp("", fmt.Sprintf("procedure-%s-*", hash))
+		tarball, err := os.CreateTemp("", "procedure-tarball-*")
 		if err != nil {
 			return "", err
 		}
