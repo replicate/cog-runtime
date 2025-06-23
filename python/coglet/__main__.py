@@ -52,6 +52,7 @@ def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[file_runner.
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument('--ipc-url', metavar='URL', required=True, help='IPC URL')
     parser.add_argument(
         '--working-dir', metavar='DIR', required=True, help='working directory'
     )
@@ -81,6 +82,7 @@ def main() -> int:
     return asyncio.run(
         file_runner.FileRunner(
             logger=logger,
+            ipc_url=args.ipc_url,
             working_dir=args.working_dir,
             config=config,
         ).start()

@@ -2,38 +2,37 @@ import asyncio
 import json
 import os.path
 import pathlib
-import subprocess
 
 import pytest
 
 from coglet import file_runner
 
-from .test_file_runner import run_file_runner, setup_signals
+from .test_file_runner import FileRunnerTest
+
+
+def setup_module():
+    from .test_file_runner import setup_module as setup
+
+    setup()
+
+
+def teardown_module():
+    from .test_file_runner import teardown_module as teardown
+
+    teardown()
 
 
 async def async_wait_for_file(path, exists: bool = True) -> None:
     while True:
         await asyncio.sleep(0.1)
         if os.path.exists(path) == exists:
-            return
-
-
-async def async_wait_for_process(p: subprocess.Popen, code: int = 0) -> None:
-    while True:
-        await asyncio.sleep(0.1)
-        c = p.poll()
-        if c is not None:
-            assert c == code
+            await asyncio.sleep(0.2)  # Wait for IPC
             return
 
 
 @pytest.mark.asyncio
 async def test_file_runner_async(tmp_path):
-    signals = setup_signals()
-
-    env = os.environ.copy()
-    env['SETUP_SLEEP'] = '1'
-    p = run_file_runner(tmp_path, 'async_sleep', env=env)
+    rt = FileRunnerTest(tmp_path, 'async_sleep', env={'SETUP_SLEEP': '1'})
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)
@@ -43,25 +42,23 @@ async def test_file_runner_async(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [file_runner.FileRunner.SIG_READY]
+    assert rt.statuses() == [file_runner.FileRunner.IPC_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
     resp_file = os.path.join(tmp_path, 'response-a-00000.json')
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'bar'}}, f)
     await async_wait_for_file(req_file, exists=False)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
     ]
     await async_wait_for_file(resp_file)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
     ]
 
     with open(resp_file, 'r') as f:
@@ -71,13 +68,12 @@ async def test_file_runner_async(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    await async_wait_for_process(p)
+    rt.stop()
 
 
 @pytest.mark.asyncio
 async def test_file_runner_async_concurrency(tmp_path):
-    signals = setup_signals()
-    p = run_file_runner(tmp_path, 'async_sleep', max_concurrency=2)
+    rt = FileRunnerTest(tmp_path, 'async_sleep', max_concurrency=2)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)
@@ -87,7 +83,7 @@ async def test_file_runner_async_concurrency(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [file_runner.FileRunner.SIG_READY]
+    assert rt.statuses() == [file_runner.FileRunner.IPC_READY]
 
     req_file_a = os.path.join(tmp_path, 'request-a.json')
     req_file_b = os.path.join(tmp_path, 'request-b.json')
@@ -102,54 +98,50 @@ async def test_file_runner_async_concurrency(tmp_path):
         json.dump({'input': {'i': 5, 's': 'baz'}}, f)
     await async_wait_for_file(req_file_a, exists=False)
     await async_wait_for_file(req_file_b, exists=False)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
     ]
     await async_wait_for_file(resp_file_a)
-    await asyncio.sleep(0.2)  # Extra wait for signal
     # A completed, B pending, runner is ready
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
     ]
     # Send C
     with open(req_file_c, 'w') as f:
         json.dump({'input': {'i': 1, 's': 'qux'}}, f)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
+    await asyncio.sleep(0.2)  # Wait for signal
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
     ]
     # C completed, A pending, runner is ready
     await async_wait_for_file(resp_file_c)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
     ]
     await async_wait_for_file(resp_file_b)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_OUTPUT,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_OUTPUT,
     ]
 
     with open(resp_file_a, 'r') as f:
@@ -167,16 +159,12 @@ async def test_file_runner_async_concurrency(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    await async_wait_for_process(p)
+    rt.stop()
 
 
 @pytest.mark.asyncio
 async def test_file_runner_async_cancel(tmp_path):
-    signals = setup_signals()
-
-    env = os.environ.copy()
-    env['SETUP_SLEEP'] = '1'
-    p = run_file_runner(tmp_path, 'async_sleep', env=env)
+    rt = FileRunnerTest(tmp_path, 'async_sleep', env={'SETUP_SLEEP': '1'})
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)
@@ -186,7 +174,7 @@ async def test_file_runner_async_cancel(tmp_path):
     with open(setup_result_file) as f:
         setup_result = json.load(f)
     assert setup_result['status'] == 'succeeded'
-    assert signals == [file_runner.FileRunner.SIG_READY]
+    assert rt.statuses() == [file_runner.FileRunner.IPC_READY]
 
     req_file = os.path.join(tmp_path, 'request-a.json')
     cancel_file = os.path.join(tmp_path, 'cancel-a')
@@ -194,22 +182,20 @@ async def test_file_runner_async_cancel(tmp_path):
     with open(req_file, 'w') as f:
         json.dump({'input': {'i': 60, 's': 'bar'}}, f)
     await async_wait_for_file(req_file, exists=False)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
     ]
 
     pathlib.Path(cancel_file).touch()
     await async_wait_for_file(cancel_file, exists=False)
 
     await async_wait_for_file(resp_file)
-    await asyncio.sleep(0.2)  # Extra wait for signal
-    assert signals == [
-        file_runner.FileRunner.SIG_READY,
-        file_runner.FileRunner.SIG_BUSY,
-        file_runner.FileRunner.SIG_OUTPUT,
-        file_runner.FileRunner.SIG_READY,
+    assert rt.statuses() == [
+        file_runner.FileRunner.IPC_READY,
+        file_runner.FileRunner.IPC_BUSY,
+        file_runner.FileRunner.IPC_OUTPUT,
+        file_runner.FileRunner.IPC_READY,
     ]
 
     with open(resp_file, 'r') as f:
@@ -218,4 +204,4 @@ async def test_file_runner_async_cancel(tmp_path):
 
     stop_file = os.path.join(tmp_path, 'stop')
     pathlib.Path(stop_file).touch()
-    await async_wait_for_process(p)
+    rt.stop()

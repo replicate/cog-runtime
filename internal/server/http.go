@@ -32,6 +32,8 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 		serveMux.HandleFunc("POST /predictions/{id}/cancel", handler.Cancel)
 	}
 
+	serveMux.HandleFunc("POST /_ipc", handler.HandleIPC)
+
 	// We run Go server with go run ... which spawns a new process
 	// Report its PID via HTTP instead
 	if _, ok := os.LookupEnv("TEST_COG"); ok {

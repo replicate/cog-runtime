@@ -46,6 +46,7 @@ const SigBusy = syscall.SIGUSR2
 type Config struct {
 	UseProcedureMode      bool
 	AwaitExplicitShutdown bool
+	IPCUrl                string
 	UploadUrl             string
 }
 
@@ -53,6 +54,20 @@ type PredictConfig struct {
 	ModuleName     string `json:"module_name,omitempty"`
 	PredictorName  string `json:"predictor_name,omitempty"`
 	MaxConcurrency int    `json:"max_concurrency,omitempty"`
+}
+
+type IPCStatus string
+
+const (
+	IPCStatusReady  IPCStatus = "READY"
+	IPCStatusBUSY   IPCStatus = "BUSY"
+	IPCStatusOutput IPCStatus = "OUTPUT"
+)
+
+type IPC struct {
+	Pid        int       `json:"pid"`
+	Status     IPCStatus `json:"status"`
+	WorkingDir string    `json:"working_dir"`
 }
 
 type PredictionStatus string
