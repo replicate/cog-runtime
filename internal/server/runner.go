@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -377,6 +378,10 @@ func (r *Runner) handleSignals() {
 				r.updateSetupResult()
 				if _, err := os.Stat(path.Join(r.workingDir, "async_predict")); err == nil {
 					r.asyncPredict = true
+
+				} else if errors.Is(err, os.ErrNotExist) && r.maxConcurrency > 1 {
+					log.Warnw("max concurrency > 1 for blocking predict, reset to 1", "max_concurrency", r.maxConcurrency)
+					r.maxConcurrency = 1
 				}
 				if err := r.handleReadinessProbe(); err != nil {
 					log.Errorw("fail to write ready file", "err", err)
