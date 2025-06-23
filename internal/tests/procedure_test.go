@@ -53,7 +53,7 @@ func TestProcedure(t *testing.T) {
 	wg.Wait()
 
 	// Wait for status reset to ready
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
 	wg.Add(1)
