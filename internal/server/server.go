@@ -13,8 +13,6 @@ import (
 
 	"github.com/replicate/cog-runtime/internal/util"
 
-	"github.com/replicate/go/must"
-
 	"github.com/replicate/go/logging"
 )
 
@@ -31,7 +29,7 @@ type Handler struct {
 	mu        sync.Mutex
 }
 
-func NewHandler(cfg Config, shutdown context.CancelFunc) *Handler {
+func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 	h := &Handler{
 		cfg:       cfg,
 		shutdown:  shutdown,
@@ -39,7 +37,9 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) *Handler {
 	}
 	if !cfg.UseProcedureMode {
 		h.runner = NewRunner(cfg.UploadUrl)
-		must.Do(h.runner.Start())
+		if err := h.runner.Start(); err != nil {
+			return nil, err
+		}
 		if !cfg.AwaitExplicitShutdown {
 			go func() {
 				// Shut down as soon as runner exists
@@ -48,7 +48,7 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) *Handler {
 			}()
 		}
 	}
-	return h
+	return h, nil
 }
 
 func (h *Handler) ExitCode() int {
@@ -87,14 +87,14 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		must.Get(w.Write(bs))
+		writeBytes(w, bs)
 	}
 }
 
 func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.UseProcedureMode {
 		w.WriteHeader(http.StatusOK)
-		must.Get(w.Write([]byte(procedureSchema)))
+		writeBytes(w, []byte(procedureSchema))
 		return
 	}
 
@@ -102,7 +102,7 @@ func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		must.Get(w.Write([]byte(h.runner.schema)))
+		writeBytes(w, []byte(h.runner.schema))
 	}
 }
 
@@ -187,7 +187,11 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req PredictionRequest
-	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), &req); err != nil {
+	bs, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	}
+	if err := json.Unmarshal(bs, &req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -257,12 +261,28 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		w.WriteHeader(http.StatusAccepted)
 		resp := PredictionResponse{Id: req.Id, Status: "starting"}
-		must.Get(w.Write(must.Get(json.Marshal(resp))))
+		writeResponse(w, resp)
 	} else {
 		resp := <-c
 		w.WriteHeader(http.StatusOK)
-		must.Get(w.Write(must.Get(json.Marshal(resp))))
+		writeResponse(w, resp)
 	}
+}
+
+func writeBytes(w http.ResponseWriter, bs []byte) {
+	log := logger.Sugar()
+	if _, err := w.Write(bs); err != nil {
+		log.Errorw("failed to write response", "error", err)
+	}
+}
+
+func writeResponse(w http.ResponseWriter, resp PredictionResponse) {
+	log := logger.Sugar()
+	bs, err := json.Marshal(resp)
+	if err != nil {
+		log.Errorw("failed to marshal response", "error", err)
+	}
+	writeBytes(w, bs)
 }
 
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
