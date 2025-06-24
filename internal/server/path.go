@@ -14,8 +14,6 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/replicate/go/must"
-
 	"github.com/gabriel-vasile/mimetype"
 )
 
@@ -208,7 +206,10 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		*paths = append(*paths, p)
 		filename := path.Base(p)
 		uUpload := fmt.Sprintf("%s%s", uploadUrl, filename)
-		req := must.Get(http.NewRequest(http.MethodPut, uUpload, bytes.NewReader(bs)))
+		req, err := http.NewRequest(http.MethodPut, uUpload, bytes.NewReader(bs))
+		if err != nil {
+			return "", err
+		}
 		req.Header.Set("X-Prediction-ID", predictionId)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {

@@ -86,7 +86,7 @@ func serverCommand() *ff.Command {
 				UploadUrl:             cfg.UploadUrl,
 			}
 			ctx, cancel := context.WithCancel(ctx)
-			h := server.NewHandler(serverCfg, cancel)
+			h := must.Get(server.NewHandler(serverCfg, cancel))
 			s := server.NewServer(addr, h, cfg.UseProcedureMode)
 			go func() {
 				<-ctx.Done()

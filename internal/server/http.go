@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-
-	"github.com/replicate/go/must"
 )
 
 var (
@@ -39,7 +37,10 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 	if _, ok := os.LookupEnv("TEST_COG"); ok {
 		serveMux.HandleFunc("/_pid", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			must.Get(w.Write([]byte(strconv.Itoa(os.Getpid()))))
+			if _, err := w.Write([]byte(strconv.Itoa(os.Getpid()))); err != nil {
+				log := logger.Sugar()
+				log.Errorw("failed to write response", "error", err)
+			}
 		})
 	}
 
