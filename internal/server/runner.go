@@ -26,9 +26,9 @@ import (
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-var LOG_REGEX = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
-var RESPONSE_REGEX = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
-var CANCEL_FMT = "cancel-%s"
+var LogRegex = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
+var ResponseRegex = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
+var CancelFmt = "cancel-%s"
 
 type PendingPrediction struct {
 	request     PredictionRequest
@@ -258,7 +258,7 @@ func (r *Runner) Cancel(pid string) error {
 	}
 	if r.asyncPredict {
 		// Async predict, use files to cancel
-		p := path.Join(r.workingDir, fmt.Sprintf(CANCEL_FMT, pid))
+		p := path.Join(r.workingDir, fmt.Sprintf(CancelFmt, pid))
 		return os.WriteFile(p, []byte{}, 0644)
 	} else {
 		// Blocking predict, use SIGUSR1 to cancel
@@ -472,7 +472,7 @@ func (r *Runner) handleResponses() {
 	log := logger.Sugar()
 	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
 		// Entries are sorted, so we process response of the same prediction ID in increasing epoch
-		m := RESPONSE_REGEX.FindStringSubmatch(entry.Name())
+		m := ResponseRegex.FindStringSubmatch(entry.Name())
 		if m == nil {
 			continue
 		}
@@ -564,7 +564,7 @@ func (r *Runner) readJson(filename string, v any) error {
 
 func (r *Runner) log(line string) {
 	log := logger.Sugar()
-	if m := LOG_REGEX.FindStringSubmatch(line); m != nil {
+	if m := LogRegex.FindStringSubmatch(line); m != nil {
 		pid := m[1]
 		msg := m[2]
 		r.mu.Lock()
