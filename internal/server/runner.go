@@ -73,7 +73,12 @@ func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body := string(must.Get(io.ReadAll(resp.Body)))
+		bs, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Errorw("failed to read webhook response", "code", resp.StatusCode)
+			return
+		}
+		body := string(bs)
 		log.Errorw("failed to send webhook", "code", resp.StatusCode, "body", body)
 	}
 }
@@ -222,7 +227,9 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	req.Input = input
 
 	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
-	must.Do(os.WriteFile(reqPath, must.Get(json.Marshal(req)), 0644))
+	if err := os.WriteFile(reqPath, must.Get(json.Marshal(req)), 0644); err != nil {
+		return nil, err
+	}
 	resp := PredictionResponse{
 		Input:     req.Input,
 		Id:        req.Id,
@@ -420,17 +427,21 @@ func (r *Runner) updateSchema() {
 	log := logger.Sugar()
 	log.Infow("updating OpenAPI schema")
 	p := path.Join(r.workingDir, "openapi.json")
-	schema := string(must.Get(os.ReadFile(p)))
+	bs, err := os.ReadFile(p)
+	if err != nil {
+		log.Errorw("failed to read openapi.json", "path", p, "err", err)
+		return
+	}
 
 	loader := openapi3.NewLoader()
-	doc, err := loader.LoadFromData([]byte(schema))
+	doc, err := loader.LoadFromData(bs)
 	if err != nil {
 		log.Errorw("failed to load OpenAPI schema", "err", err)
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.schema = schema
+	r.schema = string(bs)
 	r.doc = doc
 }
 
@@ -440,8 +451,12 @@ func (r *Runner) updateSetupResult() {
 	logs := r.rotateLogs()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	must.Do(r.readJson("setup_result.json", &r.setupResult))
 	r.setupResult.Logs = logs
+	if err := r.readJson("setup_result.json", &r.setupResult); err != nil {
+		log.Errorw("failed to read setup_result.json", "err", err)
+		r.setupResult.Status = SetupFailed
+		return
+	}
 	if r.setupResult.Status == SetupSucceeded {
 		log.Infow("setup succeeded")
 		r.status = StatusReady
@@ -496,7 +511,9 @@ func (r *Runner) handleResponses() {
 			pr.response.Output = output
 		}
 		for _, p := range paths {
-			must.Do(os.Remove(p))
+			if err := os.Remove(p); err != nil {
+				log.Errorw("failed to delete output file", "path", p, "error", err)
+			}
 		}
 		pr.mu.Unlock()
 
@@ -520,7 +537,9 @@ func (r *Runner) handleResponses() {
 			pr.sendWebhook(WebhookCompleted)
 			pr.sendResponse()
 			for _, p := range pr.inputPaths {
-				must.Do(os.Remove(p))
+				if err := os.Remove(p); err != nil {
+					log.Errorw("failed to delete input file", "path", p, "error", err)
+				}
 			}
 			r.mu.Lock()
 			delete(r.pending, pid)
