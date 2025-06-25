@@ -2,12 +2,10 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -63,23 +61,8 @@ func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 
 	log := logger.Sugar()
 	log.Debugw("sending webhook", "url", pr.request.Webhook, "response", pr.response)
-	body := bytes.NewBuffer(must.Get(json.Marshal(pr.response)))
-	req := must.Get(http.NewRequest("POST", pr.request.Webhook, body))
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Errorw("failed to send webhook", "error", err)
-		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		bs, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Errorw("failed to read webhook response", "code", resp.StatusCode)
-			return
-		}
-		body := string(bs)
-		log.Errorw("failed to send webhook", "code", resp.StatusCode, "body", body)
+	if err := SendWebhook(pr.request.Webhook, &pr.response); err != nil {
+		log.Errorw("failed to send webhook", "url", "error", err)
 	}
 }
 
@@ -91,6 +74,7 @@ func (pr *PendingPrediction) sendResponse() {
 }
 
 type Runner struct {
+	name           string
 	workingDir     string
 	cmd            exec.Cmd
 	status         Status
@@ -106,16 +90,20 @@ type Runner struct {
 	stopped        chan bool
 }
 
-func NewRunner(ipcUrl, uploadUrl string) *Runner {
+const DefaultRunner = "default"
+
+func newRunner(name, ipcUrl, uploadUrl string) *Runner {
 	workingDir := must.Get(os.MkdirTemp("", "cog-runner-"))
 	args := []string{
 		"-u",
 		"-m", "coglet",
+		"--name", name,
 		"--ipc-url", ipcUrl,
 		"--working-dir", workingDir,
 	}
 	cmd := exec.Command("python3", args...)
 	return &Runner{
+		name:           name,
 		workingDir:     workingDir,
 		cmd:            *cmd,
 		status:         StatusStarting,
@@ -126,14 +114,15 @@ func NewRunner(ipcUrl, uploadUrl string) *Runner {
 	}
 }
 
-func NewProcedureRunner(ipcUrl, uploadUrl, srcDir string) *Runner {
-	r := NewRunner(ipcUrl, uploadUrl)
-	r.cmd.Dir = srcDir
-	return r
+func NewRunner(ipcUrl, uploadUrl string) *Runner {
+	return newRunner(DefaultRunner, ipcUrl, uploadUrl)
 }
 
-func (r *Runner) SrcDir() string {
-	return r.cmd.Dir
+func NewProcedureRunner(ipcUrl, uploadUrl, srcURL, srcDir string) *Runner {
+	// Use srcDir as name
+	r := newRunner(srcURL, ipcUrl, uploadUrl)
+	r.cmd.Dir = srcDir
+	return r
 }
 
 func (r *Runner) Start() error {
@@ -179,6 +168,21 @@ func (r *Runner) ExitCode() int {
 
 func (r *Runner) WaitForStop() {
 	<-r.stopped
+}
+
+////////////////////
+// Status
+
+func (r *Runner) SrcDir() string {
+	return r.cmd.Dir
+}
+
+func (r *Runner) Idle() bool {
+	// IPC from Python runner is the source of truth for Runner.status where
+	// * Ready: pending predictions < max concurrency
+	// * Busy: pending predictions = max concurrency
+	// However, only runners with 0 pending predictions can be evicted in procedure mode
+	return len(r.pending) == 0
 }
 
 ////////////////////

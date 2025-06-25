@@ -34,11 +34,13 @@ class FileRunner:
         self,
         *,
         logger: logging.Logger,
+        name: str,
         ipc_url: str,
         working_dir: str,
         config: Config,
     ):
         self.logger = logger
+        self.name = name
         self.ipc_url = ipc_url
         self.working_dir = working_dir
         self.config = config
@@ -46,7 +48,8 @@ class FileRunner:
 
     async def start(self) -> int:
         self.logger.info(
-            'starting file runner: working_dir=%s, module=%s, predictor=%s, max_concurrency=%d',
+            'starting file runner: name=%s, working_dir=%s, module=%s, predictor=%s, max_concurrency=%d',
+            self.name,
             self.working_dir,
             self.config.module_name,
             self.config.predictor_name,
@@ -272,9 +275,9 @@ class FileRunner:
     def _send_ipc(self, status: str) -> None:
         try:
             payload = {
+                'name': self.name,
                 'pid': os.getpid(),
                 'status': status,
-                'working_dir': self.working_dir,
             }
             data = json.dumps(payload).encode('utf-8')
             urllib.request.urlopen(self.ipc_url, data=data).read()

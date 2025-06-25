@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -289,6 +290,20 @@ func (ct *CogTest) ServerPid() int {
 		resp := must.Get(http.DefaultClient.Get(url))
 		defer resp.Body.Close()
 		return must.Get(strconv.Atoi(string(must.Get(io.ReadAll(resp.Body)))))
+	}
+}
+
+func (ct *CogTest) Runners() []string {
+	if *legacyCog {
+		return nil
+	} else {
+		url := fmt.Sprintf("http://localhost:%d/_runners", ct.serverPort)
+		resp := must.Get(http.DefaultClient.Get(url))
+		defer resp.Body.Close()
+		var runners []string
+		must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &runners))
+		slices.Sort(runners)
+		return runners
 	}
 }
 
