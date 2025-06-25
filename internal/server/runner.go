@@ -184,7 +184,7 @@ func (r *Runner) WaitForStop() {
 ////////////////////
 // Prediction
 
-func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error) {
+func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error) {
 	log := logger.Sugar()
 	if r.status == StatusSetupFailed {
 		log.Errorw("prediction rejected: setup failed")
@@ -250,7 +250,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	return pr.c, nil
 }
 
-func (r *Runner) cancel(pid string) error {
+func (r *Runner) Cancel(pid string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.pending[pid]; !ok {
@@ -370,7 +370,7 @@ func (r *Runner) wait() {
 	close(r.stopped)
 }
 
-func (r *Runner) handleIPC(s IPCStatus) {
+func (r *Runner) HandleIPC(s IPCStatus) {
 	log := logger.Sugar()
 	switch s {
 	case IPCStatusReady:

@@ -147,7 +147,7 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h.runner.handleIPC(ipc.Status)
+	h.runner.HandleIPC(ipc.Status)
 }
 
 func (h *Handler) updateRunner(srcDir string) error {
@@ -254,7 +254,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	c, err := h.runner.predict(req)
+	c, err := h.runner.Predict(req)
 	if errors.Is(err, ErrConflict) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -307,7 +307,7 @@ func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := r.PathValue("id")
-	if err := h.runner.cancel(id); err == nil {
+	if err := h.runner.Cancel(id); err == nil {
 		w.WriteHeader(http.StatusOK)
 	} else if errors.Is(err, ErrNotFound) {
 		http.Error(w, err.Error(), http.StatusNotFound)
