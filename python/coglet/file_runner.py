@@ -108,7 +108,7 @@ class FileRunner:
 
         pending: Dict[str, asyncio.Task[None]] = {}
         while True:
-            if len(pending) < self.config.max_concurrency and not ready:
+            if not ready and len(pending) < self.config.max_concurrency:
                 ready = True
                 self._send_ipc(FileRunner.IPC_READY)
 
@@ -145,15 +145,15 @@ class FileRunner:
                 m = self.REQUEST_RE.match(entry)
                 if m is None:
                     continue
-                if ready:
-                    ready = False
-                    self._send_ipc(FileRunner.IPC_BUSY)
                 pid = m.group('pid')
                 req_path = os.path.join(self.working_dir, entry)
                 with open(req_path, 'r') as f:
                     req = json.load(f)
                 os.unlink(req_path)
 
+                if ready and len(pending) + 1 == self.config.max_concurrency:
+                    ready = False
+                    self._send_ipc(FileRunner.IPC_BUSY)
                 pending[pid] = asyncio.create_task(self._predict(pid, req))
                 self.logger.info('prediction started: id=%s', pid)
 
