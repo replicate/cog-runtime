@@ -1,10 +1,13 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
 	"strconv"
+
+	"github.com/replicate/go/must"
 )
 
 var (
@@ -34,15 +37,21 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 
 	serveMux.HandleFunc("POST /_ipc", handler.HandleIPC)
 
-	// We run Go server with go run ... which spawns a new process
-	// Report its PID via HTTP instead
 	if _, ok := os.LookupEnv("TEST_COG"); ok {
+		// We run Go server with go run ... which spawns a new process
+		// Report its PID via HTTP instead
 		serveMux.HandleFunc("/_pid", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			if _, err := w.Write([]byte(strconv.Itoa(os.Getpid()))); err != nil {
-				log := logger.Sugar()
-				log.Errorw("failed to write response", "error", err)
+			must.Get(w.Write([]byte(strconv.Itoa(os.Getpid()))))
+		})
+		// Also report runners for procedure tests
+		serveMux.HandleFunc("/_runners", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			var runners []string
+			for name, _ := range handler.runners {
+				runners = append(runners, name)
 			}
+			must.Get(w.Write(must.Get(json.Marshal(runners))))
 		})
 	}
 

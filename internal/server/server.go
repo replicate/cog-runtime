@@ -1,11 +1,18 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime"
+
+	"github.com/replicate/go/must"
+
+	"golang.org/x/sync/errgroup"
+
 	"io"
 	"net/http"
 	"sync"
@@ -21,30 +28,56 @@ var logger = logging.New("cog-http-server")
 //go:embed openapi-procedure.json
 var procedureSchema string
 
+type IPCStatus string
+
+const (
+	IPCStatusReady  IPCStatus = "READY"
+	IPCStatusBUSY   IPCStatus = "BUSY"
+	IPCStatusOutput IPCStatus = "OUTPUT"
+)
+
+type IPC struct {
+	Name   string    `json:"name"`
+	Pid    int       `json:"pid"`
+	Status IPCStatus `json:"status"`
+}
+
 type Handler struct {
-	cfg       Config
-	shutdown  context.CancelFunc
-	startedAt time.Time
-	runner    *Runner
-	mu        sync.Mutex
+	cfg        Config
+	shutdown   context.CancelFunc
+	startedAt  time.Time
+	maxRunners int
+	runners    map[string]*Runner
+	mu         sync.Mutex
 }
 
 func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
+	log := logger.Sugar()
 	h := &Handler{
 		cfg:       cfg,
 		shutdown:  shutdown,
 		startedAt: time.Now(),
+		runners:   make(map[string]*Runner),
 	}
-	if !cfg.UseProcedureMode {
-		h.runner = NewRunner(cfg.IPCUrl, cfg.UploadUrl)
-		if err := h.runner.Start(); err != nil {
+	// GOMAXPROCS is set by automaxprocs in main.go on server startup
+	// Reset Go server to 1 to make room for Python runners
+	autoMaxProcs := runtime.GOMAXPROCS(1)
+	if cfg.UseProcedureMode {
+		// At least 2 Python runners in procedure mode so that:
+		// * Server status is READY if available runner slot >= 1, either empty or IDLE
+		// * The IDLE runner can be evicted for one with a new procedure source URL
+		h.maxRunners = max(autoMaxProcs, 2)
+		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
+	} else {
+		h.runners[DefaultRunner] = NewRunner(cfg.IPCUrl, cfg.UploadUrl)
+		if err := h.runners[DefaultRunner].Start(); err != nil {
 			return nil, err
 		}
 
 		if !cfg.AwaitExplicitShutdown {
 			go func() {
 				// Shut down as soon as runner exists
-				h.runner.WaitForStop()
+				h.runners[DefaultRunner].WaitForStop()
 				h.shutdown()
 			}()
 		}
@@ -53,10 +86,16 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 }
 
 func (h *Handler) ExitCode() int {
-	if h.runner == nil {
+	if h.cfg.UseProcedureMode {
+		// No point aggregating across runners
 		return 0
+	} else {
+		if h.runners[DefaultRunner] == nil {
+			return 0
+		}
+		return h.runners[DefaultRunner].ExitCode()
 	}
-	return h.runner.ExitCode()
+
 }
 
 func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
@@ -64,23 +103,50 @@ func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	log := logger.Sugar()
 	var hc HealthCheck
 	if h.cfg.UseProcedureMode {
 		hc = HealthCheck{
-			Status: StatusReady.String(),
 			Setup: &SetupResult{
 				StartedAt:   util.FormatTime(h.startedAt),
 				CompletedAt: util.FormatTime(h.startedAt),
 				Status:      SetupSucceeded,
 			},
 		}
-		if h.runner != nil {
-			hc.Status = h.runner.status.String()
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		hasIdle := false
+		toRemove := make([]string, 0)
+		for name, runner := range h.runners {
+			if runner.status == StatusDefunct || runner.status == StatusSetupFailed {
+				toRemove = append(toRemove, name)
+				log.Warnw("stopping stale runner", "name", name, "status", runner.status.String())
+				go func() {
+					if err := runner.Stop(); err != nil {
+						log.Errorw("failed to stop runner", "name", name, "error", err)
+					}
+				}()
+				continue
+			}
+			if runner.Idle() {
+				hasIdle = true
+			}
+		}
+		// In procedure mode, a server is only READY if available runner slot >= 1, either empty or IDLE.
+		// In the case of a request with a new procedure source URL, the IDLE runner can be evicted.
+		// Otherwise, we report BUSY even if all runners are READY but not IDLE, e.g. len(pending) > 0.
+		for _, name := range toRemove {
+			delete(h.runners, name)
+		}
+		if len(h.runners) < h.maxRunners || hasIdle {
+			hc.Status = StatusReady.String()
+		} else {
+			hc.Status = StatusBusy.String()
 		}
 	} else {
 		hc = HealthCheck{
-			Status: h.runner.status.String(),
-			Setup:  &h.runner.setupResult,
+			Status: h.runners[DefaultRunner].status.String(),
+			Setup:  &h.runners[DefaultRunner].setupResult,
 		}
 	}
 
@@ -99,11 +165,11 @@ func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.runner.schema == "" {
+	if h.runners[DefaultRunner].schema == "" {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		writeBytes(w, []byte(h.runner.schema))
+		writeBytes(w, []byte(h.runners[DefaultRunner].schema))
 	}
 }
 
@@ -117,26 +183,36 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Stop() error {
+	log := logger.Sugar()
 	// Procedure mode and no runner yet
-	if h.runner == nil {
+	if len(h.runners) == 0 {
 		// Shut down immediately
 		h.shutdown()
 		return nil
 	}
 
-	// Request runner stop
-	if err := h.runner.Stop(); err != nil {
-		return err
+	// Stop all runners
+	var err error = nil
+	eg := errgroup.Group{}
+	for name, runner := range h.runners {
+		if err = runner.Stop(); err != nil {
+			log.Errorw("failed to stop runner", "name", name, "err", err)
+		}
+		eg.Go(func() error {
+			runner.WaitForStop()
+			return nil
+		})
 	}
+	// Wait and shutdown
 	go func() {
-		// Shut down once runner exists
-		h.runner.WaitForStop()
+		must.Do(eg.Wait())
 		h.shutdown()
 	}()
-	return nil
+	return err
 }
 
 func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
+	log := logger.Sugar()
 	var ipc IPC
 	bs, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -147,10 +223,19 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	h.runner.HandleIPC(ipc.Status)
+	name := DefaultRunner
+	if h.cfg.UseProcedureMode {
+		name = ipc.Name
+	}
+	if runner, ok := h.runners[name]; ok {
+		runner.HandleIPC(ipc.Status)
+	} else {
+		fmt.Println(h.runners)
+		log.Warnw("runner not found for IPC", "pid", ipc.Pid, "name", ipc.Name)
+	}
 }
 
-func (h *Handler) updateRunner(srcDir string) error {
+func (h *Handler) getRunner(srcURL, srcDir string) (*Runner, error) {
 	log := logger.Sugar()
 
 	// Lock before checking to avoid thrashing runner replacements
@@ -158,45 +243,64 @@ func (h *Handler) updateRunner(srcDir string) error {
 	defer h.mu.Unlock()
 
 	// Reuse current runner, nothing to do
-	if h.runner != nil && h.runner.SrcDir() == srcDir {
-		return nil
+	if runner, ok := h.runners[srcURL]; ok {
+		return runner, nil
 	}
 
-	// Different source URL, stop current runner
-	if h.runner != nil {
-		log.Infow("stopping procedure runner", "src_dir", h.runner.SrcDir())
-		if err := h.runner.Stop(); err != nil {
-			log.Errorw("failed to stop runner", "error", err)
+	// Need to evict one
+	if len(h.runners) == h.maxRunners {
+		for name, runner := range h.runners {
+			if !runner.Idle() {
+				continue
+			}
+			log.Infow("stopping procedure runner", "src_url", name)
+			if err := runner.Stop(); err != nil {
+				log.Errorw("failed to stop runner", "error", err)
+			} else {
+				delete(h.runners, name)
+				break
+			}
 		}
-		h.runner = nil
+	}
+	if len(h.runners) == h.maxRunners {
+		return nil, ErrConflict
 	}
 
 	// Start new runner
-	log.Infow("starting procedure runner", "src_dir", srcDir)
-	h.runner = NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, srcDir)
-	if err := h.runner.Start(); err != nil {
-		return err
+	log.Infow("starting procedure runner", "src_url", srcURL)
+	r := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, srcURL, srcDir)
+	h.runners[srcURL] = r
+
+	if err := r.Start(); err != nil {
+		return nil, err
 	}
 	start := time.Now()
 	// Wait for runner to become ready, this should not take long as procedures have no setup
 	for {
-		if h.runner.status == StatusReady {
+		if r.status == StatusReady {
 			break
 		}
+		if r.status == StatusSetupFailed {
+			log.Errorw("procedure runner setup failed", "logs", r.setupResult.Logs)
+			delete(h.runners, srcURL)
+			// Include failed runner here so that the caller can extract setup logs and respond with a prediction failure
+			return r, ErrSetupFailed
+		}
 		if time.Since(start) > 10*time.Second {
+			delete(h.runners, srcURL)
 			log.Errorw("stopping procedure runner after time out", "elapsed", time.Since(start))
-			if err := h.runner.Stop(); err != nil {
-				log.Errorw("failed to stop runner", "error", err)
+			if err := r.Stop(); err != nil {
+				log.Errorw("failed to stop procedure runner", "error", err)
 			}
-			h.runner = nil
-			return fmt.Errorf("procedure time out")
+			return nil, fmt.Errorf("procedure time out")
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return nil
+	return r, nil
 }
 
 func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
+	log := logger.Sugar()
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return
@@ -226,6 +330,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		req.Id = util.PredictionId()
 	}
 
+	var runner *Runner
 	if h.cfg.UseProcedureMode {
 		val, ok := req.Context["procedure_source_url"]
 		if !ok {
@@ -249,13 +354,43 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, "invalid procedure_source_url", http.StatusBadRequest)
 		}
-		if err := h.updateRunner(srcDir); err != nil {
+		if r, err := h.getRunner(procedureSourceUrl, srcDir); err == nil {
+			runner = r
+		} else if errors.Is(err, ErrConflict) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		} else if errors.Is(err, ErrSetupFailed) {
+			// Translate setup failure to prediction failure
+			resp := PredictionResponse{
+				Input:       req.Input,
+				Id:          req.Id,
+				CreatedAt:   r.setupResult.StartedAt,
+				StartedAt:   r.setupResult.StartedAt,
+				CompletedAt: r.setupResult.CompletedAt,
+				Logs:        r.setupResult.Logs,
+				Status:      PredictionFailed,
+			}
+
+			if req.Webhook == "" {
+				w.WriteHeader(http.StatusOK)
+				writeResponse(w, resp)
+			} else {
+				w.WriteHeader(http.StatusAccepted)
+				writeResponse(w, PredictionResponse{Id: req.Id, Status: "starting"})
+				if err := SendWebhook(req.Webhook, &resp); err != nil {
+					log.Errorw("failed to send webhook", "url", "error", err)
+				}
+			}
+			return
+		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+	} else {
+		runner = h.runners[DefaultRunner]
 	}
 
-	c, err := h.runner.Predict(req)
+	c, err := runner.Predict(req)
 	if errors.Is(err, ErrConflict) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -300,19 +435,39 @@ func writeResponse(w http.ResponseWriter, resp PredictionResponse) {
 	writeBytes(w, bs)
 }
 
+func SendWebhook(webhook string, pr *PredictionResponse) error {
+	body := bytes.NewBuffer(must.Get(json.Marshal(pr)))
+	req := must.Get(http.NewRequest("POST", webhook, body))
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New(resp.Status)
+	}
+	return nil
+}
+
 func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 	// Procedure mode and no runner yet
-	if h.runner == nil {
+	if len(h.runners) == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
 
 	id := r.PathValue("id")
-	if err := h.runner.Cancel(id); err == nil {
-		w.WriteHeader(http.StatusOK)
-	} else if errors.Is(err, ErrNotFound) {
-		http.Error(w, err.Error(), http.StatusNotFound)
-	} else {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// We don't know which runner has the prediction, so try all of them
+	for _, runner := range h.runners {
+		if err := runner.Cancel(id); err == nil {
+			w.WriteHeader(http.StatusOK)
+			return
+		} else if errors.Is(err, ErrNotFound) {
+			continue
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}
+	http.Error(w, "not found", http.StatusNotFound)
 }

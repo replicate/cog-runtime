@@ -19,14 +19,26 @@ func TestProcedure(t *testing.T) {
 	}
 
 	ct := NewCogProcedureTest(t)
+	// Force 2 runner slots
+	ct.AppendEnvs("GOMAXPROCS=2")
 	assert.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	prediction := func(procedure, token string, input map[string]any) server.PredictionResponse {
-		url := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, procedure)
+	rawPrediction := func(url, token string, input map[string]any) *http.Response {
+		req := server.PredictionRequest{
+			Context: map[string]any{
+				"procedure_source_url": url,
+				"replicate_api_token":  token,
+			},
+			Input: input,
+		}
+		return ct.PredictionReq(http.MethodPost, "/procedures", req)
+	}
+
+	prediction := func(url, token string, input map[string]any) server.PredictionResponse {
 		req := server.PredictionRequest{
 			Context: map[string]any{
 				"procedure_source_url": url,
@@ -37,36 +49,79 @@ func TestProcedure(t *testing.T) {
 		return ct.prediction(http.MethodPost, "/procedures", req)
 	}
 
-	var wg sync.WaitGroup
-
 	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
-	wg.Add(1)
+
+	// Occupy slot 1
+	var wg1 sync.WaitGroup
+	wg1.Add(1)
+	fooURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "foo")
 	go func() {
-		defer wg.Done()
-		resp1 := prediction("foo", "bar", map[string]any{"s": "foobar"})
+		defer wg1.Done()
+		resp1 := prediction(fooURL, "footok", map[string]any{"i": 3, "s": "foostr"})
 		assert.Equal(t, server.PredictionSucceeded, resp1.Status)
-		assert.Equal(t, "s=foobar, token=bar", resp1.Output)
+		assert.Equal(t, "i=3, s=foostr, token=footok", resp1.Output)
 		assert.Contains(t, resp1.Logs, "predicting foo\n")
 	}()
-	time.Sleep(500 * time.Millisecond) // Wait for runner startup
-	//assert.Equal(t, server.StatusBusy.String(), ct.HealthCheck().Status)
-	wg.Wait()
 
-	// Wait for status reset to ready
-	time.Sleep(500 * time.Millisecond)
-
+	time.Sleep(200 * time.Millisecond) // Wait for runner startup
+	// Only 1 out of 2 runner slots occupied, ready for 1 more
 	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
-	wg.Add(1)
+	assert.Equal(t, []string{fooURL}, ct.Runners())
+
+	// Occupy slot 2
+	var wg2 sync.WaitGroup
+	wg2.Add(1)
+	barURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "bar")
 	go func() {
-		defer wg.Done()
-		resp2 := prediction("bar", "baz", map[string]any{"i": 123456})
+		defer wg2.Done()
+		resp2 := prediction(barURL, "bartok", map[string]any{"i": 2, "s": "barstr"})
 		assert.Equal(t, server.PredictionSucceeded, resp2.Status)
-		assert.Equal(t, "i=123456, token=baz", resp2.Output)
+		assert.Equal(t, "i=2, s=barstr, token=bartok", resp2.Output)
 		assert.Contains(t, resp2.Logs, "predicting bar\n")
 	}()
-	time.Sleep(500 * time.Millisecond) // Wait for runner startup
+
+	time.Sleep(200 * time.Millisecond) // Wait for runner startup
+	// 2 out of 2 runner slots occupied, cannot evict and busy
 	assert.Equal(t, server.StatusBusy.String(), ct.HealthCheck().Status)
-	wg.Wait()
+	assert.Equal(t, []string{barURL, fooURL}, ct.Runners())
+
+	bazURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "baz")
+	badResp1 := rawPrediction(bazURL, "baztok", map[string]any{"i": 1, "s": "bazstr"})
+	assert.Equal(t, http.StatusConflict, badResp1.StatusCode)
+	assert.Equal(t, []string{barURL, fooURL}, ct.Runners())
+
+	// Wait for 1 slot to free up
+	wg2.Wait()
+	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
+	assert.Equal(t, []string{barURL, fooURL}, ct.Runners())
+
+	badURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "bad")
+	badResp2 := prediction(badURL, "badtok", map[string]any{"i": 1, "s": "badstr"})
+	assert.Equal(t, server.PredictionFailed, badResp2.Status)
+	assert.Contains(t, badResp2.Logs, "unsupported Cog type")
+	// New procedure evicts an idle slot but vacates itself after setup failure
+	assert.Equal(t, []string{fooURL}, ct.Runners())
+
+	// Evict one of the 2 slots
+	var wg3 sync.WaitGroup
+	wg3.Add(1)
+	go func() {
+		defer wg3.Done()
+		resp2 := prediction(bazURL, "baztok", map[string]any{"i": 2, "s": "bazstr"})
+		assert.Equal(t, server.PredictionSucceeded, resp2.Status)
+		assert.Equal(t, "i=2, s=bazstr, token=baztok", resp2.Output)
+		assert.Contains(t, resp2.Logs, "predicting baz\n")
+	}()
+
+	time.Sleep(200 * time.Millisecond) // Wait for runner startup
+	// 2 out of 2 runner slots occupied, cannot evict and busy
+	assert.Equal(t, server.StatusBusy.String(), ct.HealthCheck().Status)
+	assert.Equal(t, []string{bazURL, fooURL}, ct.Runners())
+
+	wg1.Wait()
+	wg3.Wait()
+	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
+	assert.Equal(t, []string{bazURL, fooURL}, ct.Runners())
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())

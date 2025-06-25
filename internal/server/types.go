@@ -56,20 +56,6 @@ type PredictConfig struct {
 	MaxConcurrency int    `json:"max_concurrency,omitempty"`
 }
 
-type IPCStatus string
-
-const (
-	IPCStatusReady  IPCStatus = "READY"
-	IPCStatusBUSY   IPCStatus = "BUSY"
-	IPCStatusOutput IPCStatus = "OUTPUT"
-)
-
-type IPC struct {
-	Pid        int       `json:"pid"`
-	Status     IPCStatus `json:"status"`
-	WorkingDir string    `json:"working_dir"`
-}
-
 type PredictionStatus string
 
 const (

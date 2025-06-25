@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import uuid
 from contextlib import closing
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -51,16 +52,18 @@ class FileRunnerTest:
         if env is not None:
             runner_env.update(env)
         runner_env['PYTHONPATH'] = str(Path(__file__).absolute().parent.parent)
-        self.working_dir = tmp_path.as_posix()
         global ipc_port
+        self.name = f'runner-{uuid.uuid4()}'
         cmd = [
             sys.executable,
             '-m',
             'coglet',
+            '--name',
+            self.name,
             '--ipc-url',
             f'http://localhost:{ipc_port}/_ipc',
             '--working-dir',
-            self.working_dir,
+            tmp_path.as_posix(),
         ]
         conf_file = os.path.join(tmp_path, 'config.json')
         with open(conf_file, 'w') as f:
@@ -83,7 +86,7 @@ class FileRunnerTest:
             if r['path'] != '/_ipc':
                 continue
             body = r['body']
-            if body['working_dir'] != self.working_dir:
+            if body['name'] != self.name:
                 continue
             statuses.append(body['status'])
         return statuses

@@ -3,8 +3,8 @@ import asyncio
 from cog import current_scope
 
 
-async def predict(s: str) -> str:
+async def predict(i: int, s: str) -> str:
     print('predicting foo')
-    await asyncio.sleep(1)
+    await asyncio.sleep(i)
     token = current_scope().context['replicate_api_token']
-    return f's={s}, token={token}'
+    return f'i={i}, s={s}, token={token}'
