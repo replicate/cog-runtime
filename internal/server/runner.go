@@ -370,6 +370,25 @@ func (r *Runner) wait() {
 	close(r.stopped)
 }
 
+// Compat: signal for K8S pod readiness probe
+// https://github.com/replicate/cog/blob/main/python/cog/server/probes.py
+func (r *Runner) handleReadinessProbe() error {
+	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+		return nil
+	}
+	dir := "/var/run/cog"
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path.Join(dir, "ready"), nil, 0o600); err != nil {
+		return err
+	}
+	return nil
+}
+
+////////////////////
+// IO handling
+
 func (r *Runner) HandleIPC(s IPCStatus) {
 	log := logger.Sugar()
 	switch s {
@@ -403,25 +422,6 @@ func (r *Runner) HandleIPC(s IPCStatus) {
 		log.Errorw("unknown IPC status", "status", s)
 	}
 }
-
-// Compat: signal for K8S pod readiness probe
-// https://github.com/replicate/cog/blob/main/python/cog/server/probes.py
-func (r *Runner) handleReadinessProbe() error {
-	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
-		return nil
-	}
-	dir := "/var/run/cog"
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(path.Join(dir, "ready"), nil, 0o600); err != nil {
-		return err
-	}
-	return nil
-}
-
-////////////////////
-// IO handling
 
 func (r *Runner) updateSchema() {
 	log := logger.Sugar()
