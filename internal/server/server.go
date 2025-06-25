@@ -188,6 +188,7 @@ func (h *Handler) updateRunner(srcDir string) error {
 			if err := h.runner.Stop(); err != nil {
 				log.Errorw("failed to stop runner", "error", err)
 			}
+			h.runner = nil
 			return fmt.Errorf("procedure time out")
 		}
 		time.Sleep(10 * time.Millisecond)
