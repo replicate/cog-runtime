@@ -17,7 +17,7 @@ import (
 	"github.com/gabriel-vasile/mimetype"
 )
 
-var BASE64_REGEX = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
+var Base64Regex = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 
 func isUri(s *openapi3.SchemaRef) bool {
 	return s.Value.Type.Is("string") && s.Value.Format == "uri"
@@ -122,7 +122,7 @@ func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, e
 }
 
 func base64ToInput(s string, paths *[]string) (string, error) {
-	m := BASE64_REGEX.FindStringSubmatch(s)
+	m := Base64Regex.FindStringSubmatch(s)
 	if m == nil {
 		return s, nil
 	}
