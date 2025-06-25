@@ -11,8 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/replicate/go/must"
-
 	"github.com/replicate/cog-runtime/internal/util"
 
 	"github.com/replicate/go/logging"
@@ -140,7 +138,12 @@ func (h *Handler) Stop() error {
 
 func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 	var ipc IPC
-	if err := json.Unmarshal(must.Get(io.ReadAll(r.Body)), &ipc); err != nil {
+	bs, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := json.Unmarshal(bs, &ipc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
