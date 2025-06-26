@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -127,9 +128,50 @@ func NewRunner(ipcUrl, uploadUrl string) *Runner {
 }
 
 func NewProcedureRunner(ipcUrl, uploadUrl, srcDir string) *Runner {
-	r := NewRunner(ipcUrl, uploadUrl)
-	r.cmd.Dir = srcDir
-	return r
+	// Check if we have a JS/TS predictor by reading cog.yaml
+	needsJavaScriptRuntime := false
+	if y, err := util.ReadCogYaml(srcDir); err == nil {
+		moduleName, _, err := y.PredictModuleAndPredictor()
+		if err == nil && (strings.HasSuffix(moduleName, ".js") || strings.HasSuffix(moduleName, ".ts")) {
+			needsJavaScriptRuntime = true
+		}
+	}
+
+	workingDir := must.Get(os.MkdirTemp("", "cog-runner-"))
+	var cmd *exec.Cmd
+
+	if needsJavaScriptRuntime {
+		bin, err := filepath.Abs("./coglet-deno")
+		if err != nil {
+			panic(err)
+		}
+		args := []string{
+			"--ipc-url", ipcUrl,
+			"--working-dir", workingDir,
+		}
+		cmd = exec.Command(bin, args...)
+	} else {
+		// Use Python for Python predictors
+		args := []string{
+			"-u",
+			"-m", "coglet",
+			"--ipc-url", ipcUrl,
+			"--working-dir", workingDir,
+		}
+		cmd = exec.Command("python3", args...)
+	}
+
+	cmd.Dir = srcDir
+
+	return &Runner{
+		workingDir:     workingDir,
+		cmd:            *cmd,
+		status:         StatusStarting,
+		maxConcurrency: 1,
+		pending:        make(map[string]*PendingPrediction),
+		uploadUrl:      uploadUrl,
+		stopped:        make(chan bool),
+	}
 }
 
 func (r *Runner) SrcDir() string {
