@@ -1,0 +1,4 @@
+# Example cog.yaml for JavaScript/TypeScript predictor
+predict: "./example_predictor.ts:simplePredictFunction"
+concurrency:
+  max: 2
