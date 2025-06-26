@@ -133,8 +133,19 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	if !*legacyCog {
+		// Compat: not implemented in legacy Cog
+		assert.Equal(t, 1, hc.Concurrency.Max)
+		assert.Equal(t, 0, hc.Concurrency.Current)
+	}
 
 	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
+	if !*legacyCog {
+		// Compat: not implemented in legacy Cog
+		hc = ct.HealthCheck()
+		assert.Equal(t, 1, hc.Concurrency.Max)
+		assert.Equal(t, 1, hc.Concurrency.Current)
+	}
 
 	// Fail prediction requests when one is in progress
 	req := server.PredictionRequest{
