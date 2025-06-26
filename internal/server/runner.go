@@ -348,7 +348,7 @@ func (r *Runner) wait() {
 	err := r.cmd.Wait()
 	if err != nil {
 		runnerLogs := r.rotateLogs()
-		log.Errorw("python runner exited with error", "pid", r.cmd.Process.Pid, "error", err, "logs", runnerLogs)
+		log.Errorw("python runner exited with error", "pid", r.cmd.Process.Pid, "error", err)
 		for _, pr := range r.pending {
 			pr.mu.Lock()
 			now := util.NowIso()
