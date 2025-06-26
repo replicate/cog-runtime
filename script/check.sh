@@ -27,7 +27,11 @@ check_python() {
         uv tool run ruff check
         uv tool run ruff format --check
     fi
-    .venv/bin/mypy . --exclude build --exclude python/tests/cases --exclude python/tests/runners --exclude python/tests/schemas
+    .venv/bin/mypy . --exclude build \
+        --exclude python/tests/cases \
+        --exclude python/tests/errors \
+        --exclude python/tests/runners \
+        --exclude python/tests/schemas
 }
 
 if [ $# -eq 0 ]; then

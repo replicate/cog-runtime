@@ -80,6 +80,9 @@ class PrimitiveType(Enum):
             assert v == value, f'failed to normalize value {value} as {pt}'
             return v
 
+    def python_type(self) -> str:
+        return PrimitiveType._python_type()[self].__name__
+
     def json_type(self) -> dict[str, Any]:
         jt: dict[str, Any] = {'type': self._json_type()[self]}
         if self is self.PATH:

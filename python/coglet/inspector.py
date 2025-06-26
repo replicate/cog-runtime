@@ -14,15 +14,17 @@ def _check_parent(child: type, parent: type) -> bool:
 
 
 def _validate_setup(f: Callable) -> None:
-    assert inspect.isfunction(f), f'not a function {f}'
+    assert inspect.isfunction(f), 'setup is not a function'
     spec = inspect.getfullargspec(f)
+
+    assert spec.args[:1] == ['self'], "setup() must have 'self' first argument"
     non_default_parameter_args = spec.args
     if spec.defaults is not None:
         non_default_parameter_args = non_default_parameter_args[: -len(spec.defaults)]
-    assert non_default_parameter_args == ['self'] or non_default_parameter_args == [
-        'self',
-        'weights',
-    ], f'unexpected setup() arguments: {non_default_parameter_args}'
+    extra_args = ', '.join(
+        [a for a in non_default_parameter_args if a not in {'self', 'weights'}]
+    )
+    assert extra_args == '', f'unexpected setup() arguments: {extra_args}'
     assert spec.varargs is None, 'setup() must not have *args'
     assert spec.varkw is None, 'setup() must not have **kwargs'
     assert spec.kwonlyargs == [], 'setup() must not have keyword-only args'
@@ -31,11 +33,11 @@ def _validate_setup(f: Callable) -> None:
 
 
 def _validate_predict(f: Callable, is_class_fn: bool) -> None:
-    assert inspect.isfunction(f), f'not a function: {f}'
+    assert inspect.isfunction(f), 'predict is not a function'
     spec = inspect.getfullargspec(f)
 
     if is_class_fn:
-        assert spec.args[0] == 'self', "predict() must have 'self' first argument"
+        assert spec.args[:1] == ['self'], "predict() must have 'self' first argument"
     assert spec.varargs is None, 'predict() must not have *args'
     assert spec.varkw is None, 'predict() must not have **kwargs'
     assert spec.kwonlyargs == [], 'predict() must not have keyword-only args'
@@ -44,61 +46,75 @@ def _validate_predict(f: Callable, is_class_fn: bool) -> None:
 
 
 def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
-    defaults = []
     cog_t = ft.primitive
+    if ft.repetition is adt.Repetition.REQUIRED:
+        in_repr = f'{name}: {cog_t.python_type()}'
+    elif ft.repetition is adt.Repetition.OPTIONAL:
+        in_repr = f'{name}: Optional[{cog_t.python_type()}]'
+    elif ft.repetition is adt.Repetition.REPEATED:
+        in_repr = f'{name}: List[{cog_t.python_type()}]'
+    else:
+        in_repr = f'{name}: {cog_t.python_type()}'
+
+    defaults = []
+    def_repr = ''
     if cog_in.default is not None:
         if ft.repetition is adt.Repetition.REPEATED:
             defaults = ft.normalize(cog_in.default)
+            def_repr = repr(defaults)
         else:
             defaults = [ft.normalize(cog_in.default)]
+            def_repr = repr(defaults[0])
 
     numeric_types = {adt.PrimitiveType.FLOAT, adt.PrimitiveType.INTEGER}
     if cog_in.ge is not None or cog_in.le is not None:
-        assert cog_t in numeric_types, f'incompatible input type for ge/le: {name}'
+        assert cog_t in numeric_types, f'incompatible input type for ge/le: {in_repr}'
         if cog_in.ge is not None:
             assert all(x >= cog_in.ge for x in defaults), (
-                f'default conflict with ge={cog_in.ge} for input: {name}'
+                f'default={def_repr} conflicts with ge={cog_in.ge} for input: {in_repr}'
             )
         if cog_in.le is not None:
             assert all(x <= cog_in.le for x in defaults), (
-                f'default conflict with le={cog_in.ge} for input: {name}'
+                f'default={def_repr} conflicts with le={cog_in.le} for input: {in_repr}'
             )
 
     if cog_in.min_length is not None or cog_in.max_length is not None:
         assert cog_t is adt.PrimitiveType.STRING, (
-            f'incompatible input type for min_length/max_length: {name}'
+            f'incompatible input type for min_length/max_length: {in_repr}'
         )
         if cog_in.min_length is not None:
             assert all(len(x) >= cog_in.min_length for x in defaults), (
-                f'default conflict with min_length={cog_in.min_length} for input: {name}'
+                f'default={def_repr} conflicts with min_length={cog_in.min_length} for input: {in_repr}'
             )
         if cog_in.max_length is not None:
             assert all(len(x) <= cog_in.max_length for x in defaults), (
-                f'default conflict with max_length={cog_in.min_length} for input: {name}'
+                f'default={def_repr} conflicts with max_length={cog_in.max_length} for input: {in_repr}'
             )
 
     if cog_in.regex is not None:
         assert cog_t is adt.PrimitiveType.STRING, (
-            f'incompatible input type for regex: {name}'
+            f'incompatible input type for regex: {in_repr}'
         )
         regex = re.compile(cog_in.regex)
         assert all(regex.match(x) for x in defaults), (
-            f'default not a regex match for input: {name}'
+            f'default={def_repr} not a regex match for input: {in_repr}'
         )
 
     choice_types = {adt.PrimitiveType.INTEGER, adt.PrimitiveType.STRING}
     if cog_in.choices is not None:
-        assert cog_t in choice_types, f'incompatible input type for choices: {name}'
-        assert len(cog_in.choices) >= 2, f'choices must have >= 2 elements: {name}'
+        assert cog_t in choice_types, f'incompatible input type for choices: {in_repr}'
+        assert len(cog_in.choices) >= 2, (
+            f'choices={repr(cog_in.choices)} must have >= 2 elements: {in_repr}'
+        )
         assert cog_in.ge is None and cog_in.le is None, (
-            f'choices and ge/le are mutually exclusive: {name}'
+            f'choices and ge/le are mutually exclusive: {in_repr}'
         )
         assert cog_in.min_length is None and cog_in.max_length is None, (
-            f'choices and min_length/max_length are mutually exclusive: {name}'
+            f'choices and min_length/max_length are mutually exclusive: {in_repr}'
         )
         assert all(
             adt.PrimitiveType.from_type(type(x)) is cog_t for x in cog_in.choices
-        ), f'not all choices have the same type as input: {name}'
+        ), f'not all choices have the same type as input: {in_repr}'
 
 
 def _input_adt(
