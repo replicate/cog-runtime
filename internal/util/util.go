@@ -42,7 +42,12 @@ func (y *CogYaml) PredictModuleAndPredictor() (string, string, error) {
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("invalid predict: %s", y.Predict)
 	}
-	moduleName := strings.TrimSuffix(parts[0], ".py")
+	moduleName := parts[0]
+	// For Python files, trim the .py extension
+	if strings.HasSuffix(moduleName, ".py") {
+		moduleName = strings.TrimSuffix(moduleName, ".py")
+	}
+	// For JS/TS files, keep the extension
 	predictorName := parts[1]
 	return moduleName, predictorName, nil
 }
