@@ -35,16 +35,15 @@ func copyRecursiveSymlink(srcRoot, dstRoot string) error {
 	})
 }
 
-func PrepareProcedureSourceURL(srcURL string) (string, error) {
+func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 	// Deterministic destination directory to avoid duplicate copies
 	sha := sha256.New()
 	sha.Write([]byte(srcURL))
-	dstDir := filepath.Join(os.TempDir(), fmt.Sprintf("procedure-%x", sha.Sum(nil)))
+	dstDir := filepath.Join(os.TempDir(), fmt.Sprintf("procedure-%x-%02d", sha.Sum(nil), slot))
 
-	// Already prepared
-	stat, err := os.Stat(dstDir)
-	if err == nil && stat.IsDir() {
-		return dstDir, nil
+	// Always clean up before preparing
+	if err := os.RemoveAll(dstDir); err != nil {
+		return "", err
 	}
 
 	u, err := url.Parse(srcURL)
@@ -72,7 +71,7 @@ func PrepareProcedureSourceURL(srcURL string) (string, error) {
 	} else if u.Scheme == "http" || u.Scheme == "https" {
 		// http://host/path/to/tarball
 		// Download to temporary file
-		// tar -xf cannot detect compression from stdin and file should be small enough
+		// tar -xf cannot detect compression from stdin and the file should be small enough
 		resp, err := http.Get(srcURL)
 		if err != nil {
 			return "", err
