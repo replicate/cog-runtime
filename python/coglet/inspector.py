@@ -14,15 +14,17 @@ def _check_parent(child: type, parent: type) -> bool:
 
 
 def _validate_setup(f: Callable) -> None:
-    assert inspect.isfunction(f), f'not a function {f}'
+    assert inspect.isfunction(f), 'setup is not a function'
     spec = inspect.getfullargspec(f)
+
+    assert spec.args[:1] == ['self'], "setup() must have 'self' first argument"
     non_default_parameter_args = spec.args
     if spec.defaults is not None:
         non_default_parameter_args = non_default_parameter_args[: -len(spec.defaults)]
-    assert non_default_parameter_args == ['self'] or non_default_parameter_args == [
-        'self',
-        'weights',
-    ], f'unexpected setup() arguments: {non_default_parameter_args}'
+    extra_args = ', '.join(
+        [a for a in non_default_parameter_args if a not in {'self', 'weights'}]
+    )
+    assert extra_args == '', f'unexpected setup() arguments: {extra_args}'
     assert spec.varargs is None, 'setup() must not have *args'
     assert spec.varkw is None, 'setup() must not have **kwargs'
     assert spec.kwonlyargs == [], 'setup() must not have keyword-only args'
@@ -31,11 +33,11 @@ def _validate_setup(f: Callable) -> None:
 
 
 def _validate_predict(f: Callable, is_class_fn: bool) -> None:
-    assert inspect.isfunction(f), f'not a function: {f}'
+    assert inspect.isfunction(f), 'predict is not a function'
     spec = inspect.getfullargspec(f)
 
     if is_class_fn:
-        assert spec.args[0] == 'self', "predict() must have 'self' first argument"
+        assert spec.args[:1] == ['self'], "predict() must have 'self' first argument"
     assert spec.varargs is None, 'predict() must not have *args'
     assert spec.varkw is None, 'predict() must not have **kwargs'
     assert spec.kwonlyargs == [], 'predict() must not have keyword-only args'
