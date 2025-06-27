@@ -14,7 +14,8 @@ shift
 
 base_dir="$(git rev-parse --show-toplevel)"
 
-cd "$base_dir/python/tests/runners"
+MODULE=${MODULE:-runners}
+cd "$base_dir/python/tests/$MODULE"
 ln -fs "$module.py" predict.py
 trap "rm -f predict.py" EXIT
 # PYTHON=1 to run with legacy Cog
