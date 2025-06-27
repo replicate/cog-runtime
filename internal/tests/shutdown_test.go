@@ -41,7 +41,7 @@ func TestShutdownIgnoreSignal(t *testing.T) {
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }
 
-func TestProcedureIgnoreSignal(t *testing.T) {
+func TestShutdownProcedureIgnoreSignal(t *testing.T) {
 	if *legacyCog {
 		// Compat: procedure endpoint has diverged from legacy Cog
 		t.SkipNow()
