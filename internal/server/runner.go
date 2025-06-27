@@ -118,9 +118,9 @@ func NewRunner(ipcUrl, uploadUrl string) *Runner {
 	return newRunner(DefaultRunner, ipcUrl, uploadUrl)
 }
 
-func NewProcedureRunner(ipcUrl, uploadUrl, srcURL, srcDir string) *Runner {
+func NewProcedureRunner(ipcUrl, uploadUrl, name, srcDir string) *Runner {
 	// Use srcDir as name
-	r := newRunner(srcURL, ipcUrl, uploadUrl)
+	r := newRunner(name, ipcUrl, uploadUrl)
 	r.cmd.Dir = srcDir
 	return r
 }
@@ -175,6 +175,15 @@ func (r *Runner) WaitForStop() {
 
 func (r *Runner) SrcDir() string {
 	return r.cmd.Dir
+}
+
+func (r *Runner) Concurrency() Concurrency {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return Concurrency{
+		Max:     r.maxConcurrency,
+		Current: len(r.pending),
+	}
 }
 
 func (r *Runner) Idle() bool {
@@ -402,7 +411,6 @@ func (r *Runner) HandleIPC(s IPCStatus) {
 			r.updateSetupResult()
 			if _, err := os.Stat(path.Join(r.workingDir, "async_predict")); err == nil {
 				r.asyncPredict = true
-
 			} else if errors.Is(err, os.ErrNotExist) && r.maxConcurrency > 1 {
 				log.Warnw("max concurrency > 1 for blocking predict, reset to 1", "max_concurrency", r.maxConcurrency)
 				r.maxConcurrency = 1

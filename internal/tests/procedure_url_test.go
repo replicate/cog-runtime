@@ -18,13 +18,13 @@ import (
 var proceduresPath = filepath.Join(basePath, "python", "tests", "procedures")
 
 func TestPrepareProcedureSourceURLLocal(t *testing.T) {
-	badDir, err := util.PrepareProcedureSourceURL("file:///foo/bar")
+	badDir, err := util.PrepareProcedureSourceURL("file:///foo/bar", 0)
 	assert.ErrorContains(t, err, "no such file or directory")
 	assert.Empty(t, badDir)
 
 	fooDir := filepath.Join(proceduresPath, "foo")
 	srcDir := fmt.Sprintf("file://%s", fooDir)
-	fooDst, err := util.PrepareProcedureSourceURL(srcDir)
+	fooDst, err := util.PrepareProcedureSourceURL(srcDir, 0)
 	assert.NoError(t, err)
 	assert.DirExists(t, fooDst)
 	assert.FileExists(t, filepath.Join(fooDst, "cog.yaml"))
@@ -32,9 +32,9 @@ func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	assert.FileExists(t, fooPy)
 	assert.Contains(t, string(must.Get(os.ReadFile(fooPy))), "'predicting foo'")
 
-	fooDst2, err := util.PrepareProcedureSourceURL(srcDir)
+	fooDst2, err := util.PrepareProcedureSourceURL(srcDir, 1)
 	assert.NoError(t, err)
-	assert.Equal(t, fooDst, fooDst2)
+	assert.NotEqual(t, fooDst, fooDst2)
 }
 
 func TestPrepareProcedureSourceURLRemote(t *testing.T) {
@@ -58,7 +58,8 @@ func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 		s.ListenAndServe()
 	}()
 
-	fooDst, err := util.PrepareProcedureSourceURL(fmt.Sprintf("http://localhost:%d/foo.tar.gz", port))
+	fooURL := fmt.Sprintf("http://localhost:%d/foo.tar.gz", port)
+	fooDst, err := util.PrepareProcedureSourceURL(fooURL, 0)
 	assert.NoError(t, err)
 	assert.DirExists(t, fooDst)
 	assert.FileExists(t, filepath.Join(fooDst, "cog.yaml"))
@@ -66,7 +67,8 @@ func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 	assert.FileExists(t, fooPy)
 	assert.Contains(t, string(must.Get(os.ReadFile(fooPy))), "'predicting foo'")
 
-	barDst, err := util.PrepareProcedureSourceURL(fmt.Sprintf("http://localhost:%d/bar.tar.gz", port))
+	barURL := fmt.Sprintf("http://localhost:%d/bar.tar.gz", port)
+	barDst, err := util.PrepareProcedureSourceURL(barURL, 0)
 	assert.NoError(t, err)
 	assert.DirExists(t, barDst)
 	assert.FileExists(t, filepath.Join(barDst, "cog.yaml"))
@@ -74,11 +76,11 @@ func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 	assert.FileExists(t, barPy)
 	assert.Contains(t, string(must.Get(os.ReadFile(barPy))), "'predicting bar'")
 
-	fooDst2, err := util.PrepareProcedureSourceURL(fmt.Sprintf("http://localhost:%d/foo.tar.gz", port))
+	fooDst2, err := util.PrepareProcedureSourceURL(fooURL, 1)
 	assert.NoError(t, err)
-	assert.Equal(t, fooDst2, fooDst)
+	assert.NotEqual(t, fooDst2, fooDst)
 
-	barDst2, err := util.PrepareProcedureSourceURL(fmt.Sprintf("http://localhost:%d/bar.tar.gz", port))
+	barDst2, err := util.PrepareProcedureSourceURL(barURL, 1)
 	assert.NoError(t, err)
-	assert.Equal(t, barDst2, barDst)
+	assert.NotEqual(t, barDst2, barDst)
 }

@@ -79,9 +79,15 @@ const (
 	WebhookCompleted WebhookEvent = "completed"
 )
 
+type Concurrency struct {
+	Max     int `json:"max,omitempty"`
+	Current int `json:"current,omitempty"`
+}
+
 type HealthCheck struct {
-	Status string       `json:"status"`
-	Setup  *SetupResult `json:"setup,omitempty"`
+	Status      string       `json:"status"`
+	Setup       *SetupResult `json:"setup,omitempty"`
+	Concurrency Concurrency  `json:"concurrency,omitempty"`
 }
 
 type SetupResult struct {

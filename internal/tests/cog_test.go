@@ -121,7 +121,7 @@ func NewCogTest(t *testing.T, module string) *CogTest {
 }
 
 func NewCogProcedureTest(t *testing.T) *CogTest {
-	t.Parallel()
+	// No parallel procedure test since they use the same temp source directory
 	return &CogTest{
 		t:         t,
 		procedure: true,
