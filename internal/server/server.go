@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 
@@ -245,10 +246,12 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 	}
 	if runner, ok := h.runners[name]; ok {
 		runner.HandleIPC(ipc.Status)
-	} else {
-		fmt.Println(h.runners)
+	} else if !(h.cfg.UseProcedureMode && ipc.Status == IPCStatusReady) {
+		// This happens for the first ready IPC after procedure setup succeeded and before the runner is registered
+		// Safe to ignore in that case
 		log.Warnw("runner not found for IPC", "pid", ipc.Pid, "name", ipc.Name)
 	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan PredictionResponse, error) {
@@ -314,7 +317,6 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	}
 	log.Infow("starting procedure runner", "src_url", srcURL, "src_dir", srcDir)
 	r := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, name, srcDir)
-	h.runners[name] = r
 
 	if err := r.Start(); err != nil {
 		return nil, err
@@ -322,38 +324,18 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	start := time.Now()
 	// Wait for runner to become ready, this should not take long as procedures have no setup
 	for {
-		if r.status == StatusReady {
-			break
+		// We do not register non-ready runner yet for HTTP IPC due to potential race condition
+		// Instead we poll here for a ready file and status change
+		readyFile := path.Join(r.workingDir, "ready")
+		if _, err := os.Stat(readyFile); err == nil {
+			r.HandleIPC(IPCStatusReady)
+			if err := os.Remove(readyFile); err != nil && !os.IsNotExist(err) {
+				log.Errorw("failed to remove ready file", "error", err)
+			}
 		}
-		if r.status == StatusSetupFailed {
-			log.Errorw("procedure runner setup failed", "logs", r.setupResult.Logs)
-			delete(h.runners, name)
-
-			// Translate setup failure to prediction failure
-			resp := PredictionResponse{
-				Input:       req.Input,
-				Id:          req.Id,
-				CreatedAt:   r.setupResult.StartedAt,
-				StartedAt:   r.setupResult.StartedAt,
-				CompletedAt: r.setupResult.CompletedAt,
-				Logs:        r.setupResult.Logs,
-				Status:      PredictionFailed,
-				Error:       ErrSetupFailed.Error(),
-			}
-			if req.Webhook == "" {
-				c := make(chan PredictionResponse, 1)
-				c <- resp
-				return c, nil
-			} else {
-				// Async prediction, send webhook
-				go func() {
-					if err := SendWebhook(req.Webhook, &resp); err != nil {
-						log.Errorw("failed to send webhook", "url", "error", err)
-					}
-				}()
-				return nil, nil
-			}
-
+		// No ready file if runner dies but status should be setup failed
+		if r.status != StatusStarting {
+			break
 		}
 		if time.Since(start) > 10*time.Second {
 			delete(h.runners, name)
@@ -365,6 +347,36 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	if r.status == StatusSetupFailed {
+		log.Errorw("procedure runner setup failed", "logs", r.setupResult.Logs)
+
+		// Translate setup failure to prediction failure
+		resp := PredictionResponse{
+			Input:       req.Input,
+			Id:          req.Id,
+			CreatedAt:   r.setupResult.StartedAt,
+			StartedAt:   r.setupResult.StartedAt,
+			CompletedAt: r.setupResult.CompletedAt,
+			Logs:        r.setupResult.Logs,
+			Status:      PredictionFailed,
+			Error:       ErrSetupFailed.Error(),
+		}
+		if req.Webhook == "" {
+			c := make(chan PredictionResponse, 1)
+			c <- resp
+			return c, nil
+		} else {
+			// Async prediction, send webhook
+			go func() {
+				if err := SendWebhook(req.Webhook, &resp); err != nil {
+					log.Errorw("failed to send webhook", "url", "error", err)
+				}
+			}()
+			return nil, nil
+		}
+
+	}
+	h.runners[name] = r
 	return r.Predict(req)
 }
 
