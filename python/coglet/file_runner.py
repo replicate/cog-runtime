@@ -60,12 +60,15 @@ class FileRunner:
         setup_result_file = os.path.join(self.working_dir, 'setup_result.json')
         stop_file = os.path.join(self.working_dir, 'stop')
         openapi_file = os.path.join(self.working_dir, 'openapi.json')
+        ready_file = os.path.join(self.working_dir, 'ready')
         if os.path.exists(setup_result_file):
             os.unlink(setup_result_file)
         if os.path.exists(stop_file):
             os.unlink(stop_file)
         if os.path.exists(openapi_file):
             os.unlink(openapi_file)
+        if os.path.exists(ready_file):
+            os.unlink(ready_file)
 
         self.logger.info('setup started')
         setup_result: Dict[str, Any] = {'started_at': util.now_iso()}
@@ -108,6 +111,10 @@ class FileRunner:
 
         ready = True
         self._send_ipc(FileRunner.IPC_READY)
+        # Go server cannot receive IPC yet when a procedure is starting
+        # Write a ready file as signal
+        with open(ready_file, 'w') as f:
+            pass
 
         pending: Dict[str, asyncio.Task[None]] = {}
         while True:
