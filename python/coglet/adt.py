@@ -13,9 +13,7 @@ from coglet import api
 def _is_union(tpe: type) -> bool:
     if typing.get_origin(tpe) is Union:
         return True
-    if sys.version_info[0] > 3 or (
-        sys.version_info[0] == 3 and sys.version_info[1] >= 10
-    ):
+    if sys.version_info >= (3, 10):
         from types import UnionType
 
         if typing.get_origin(tpe) is UnionType:
@@ -144,7 +142,7 @@ class FieldType:
             assert len(t_args) == 2 and type(None) in t_args, (
                 f'unsupported union type {tpe}'
             )
-            elem_t = t_args[0] if t_args[1] is type(None) else t_args[0]
+            elem_t = t_args[0] if t_args[1] is type(None) else t_args[1]
             # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
             nested_t = typing.get_origin(elem_t)
             assert nested_t is None, f'Optional cannot have nested type {nested_t}'
