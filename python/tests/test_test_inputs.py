@@ -9,8 +9,8 @@ from tests.util import PythonVersionError
 
 
 def get_predictors() -> List[str]:
-    schemas_dir = os.path.join(os.path.dirname(__file__), 'runners')
-    return [name for _, name, _ in pkgutil.iter_modules([schemas_dir])]
+    runners_dir = os.path.join(os.path.dirname(__file__), 'runners')
+    return [name for _, name, _ in pkgutil.iter_modules([runners_dir])]
 
 
 @pytest.mark.asyncio
