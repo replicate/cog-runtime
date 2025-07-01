@@ -1,13 +1,26 @@
 import dataclasses
 import inspect
 import os
+import sys
 import typing
 from dataclasses import dataclass
 from enum import Enum, auto
-from types import UnionType
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from coglet import api
+
+
+def _is_union(tpe: type) -> bool:
+    if typing.get_origin(tpe) is Union or "|" in str(tpe):
+        return True
+    if sys.version_info[0] > 3 or (
+        sys.version_info[0] == 3 and sys.version_info[1] >= 10
+    ):
+        from types import UnionType
+
+        if typing.get_origin(tpe) is UnionType:
+            return True
+    return False
 
 
 class PrimitiveType(Enum):
@@ -126,7 +139,7 @@ class FieldType:
             nested_t = typing.get_origin(elem_t)
             assert nested_t is None, f'List cannot have nested type {nested_t}'
             repetition = Repetition.REPEATED
-        elif typing.get_origin(tpe) is Union or typing.get_origin(tpe) is UnionType:
+        elif _is_union(tpe):
             t_args = typing.get_args(tpe)
             assert len(t_args) == 2 and type(None) in t_args, (
                 f'unsupported union type {tpe}'
