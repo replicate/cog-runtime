@@ -29,7 +29,7 @@ check_python() {
     fi
     .venv/bin/mypy . --exclude build \
         --exclude python/tests/cases \
-        --exclude python/tests/errors \
+        --exclude python/tests/bad_predictors \
         --exclude python/tests/runners \
         --exclude python/tests/schemas
 }
