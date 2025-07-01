@@ -4,6 +4,7 @@ import os
 import typing
 from dataclasses import dataclass
 from enum import Enum, auto
+from types import UnionType
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from coglet import api
@@ -125,7 +126,7 @@ class FieldType:
             nested_t = typing.get_origin(elem_t)
             assert nested_t is None, f'List cannot have nested type {nested_t}'
             repetition = Repetition.REPEATED
-        elif typing.get_origin(tpe) is Union:
+        elif typing.get_origin(tpe) is Union or typing.get_origin(tpe) is UnionType:
             t_args = typing.get_args(tpe)
             assert len(t_args) == 2 and type(None) in t_args, (
                 f'unsupported union type {tpe}'
