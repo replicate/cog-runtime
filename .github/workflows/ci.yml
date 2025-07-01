@@ -117,7 +117,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: ./script/init.sh
       - run: ./script/build.sh
-      - uses: softprops/action-gh-release@v2.2.2
+      - uses: softprops/action-gh-release@v2.3.2
         with:
           files: dist/coglet-*.whl
           prerelease: ${{ contains(github.ref, '.dev') }}
