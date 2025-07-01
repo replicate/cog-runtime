@@ -10,11 +10,11 @@ from coglet import inspector
 
 
 def get_predictors() -> List[str]:
-    errors_dir = os.path.join(os.path.dirname(__file__), 'errors')
-    return [name for _, name, _ in pkgutil.iter_modules([errors_dir])]
+    bad_predictors_dir = os.path.join(os.path.dirname(__file__), 'bad_predictors')
+    return [name for _, name, _ in pkgutil.iter_modules([bad_predictors_dir])]
 
 
-def run_error(module_name: str, predictor_name: str) -> None:
+def run(module_name: str, predictor_name: str) -> None:
     m = importlib.import_module(module_name)
     err_msg = getattr(m, 'ERROR')
     with pytest.raises(AssertionError, match=re.escape(err_msg)):
@@ -22,6 +22,6 @@ def run_error(module_name: str, predictor_name: str) -> None:
 
 
 @pytest.mark.parametrize('predictor', get_predictors())
-def test_predictor(predictor):
-    module_name = f'tests.errors.{predictor}'
-    run_error(module_name, 'Predictor')
+def test_bad_predictor(predictor):
+    module_name = f'tests.bad_predictors.{predictor}'
+    run(module_name, 'Predictor')
