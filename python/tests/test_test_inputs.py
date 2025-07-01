@@ -5,6 +5,7 @@ from typing import List
 import pytest
 
 from coglet import inspector, runner, scope
+from tests.util import PythonVersionError
 
 
 def get_predictors() -> List[str]:
@@ -21,9 +22,12 @@ async def test_test_inputs(predictor):
     if predictor.startswith('function_'):
         entrypoint = 'predict'
 
-    p = inspector.create_predictor(module_name, entrypoint)
-    r = runner.Runner(p)
+    try:
+        p = inspector.create_predictor(module_name, entrypoint)
+        r = runner.Runner(p)
 
-    # Some predictors calls current_scope() and requires ctx_pid
-    scope.ctx_pid.set(predictor)
-    assert await r.test()
+        # Some predictors calls current_scope() and requires ctx_pid
+        scope.ctx_pid.set(predictor)
+        assert await r.test()
+    except PythonVersionError as e:
+        pytest.skip(reason=str(e))
