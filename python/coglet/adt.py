@@ -11,7 +11,7 @@ from coglet import api
 
 
 def _is_union(tpe: type) -> bool:
-    if typing.get_origin(tpe) is Union or "|" in str(tpe):
+    if typing.get_origin(tpe) is Union:
         return True
     if sys.version_info[0] > 3 or (
         sys.version_info[0] == 3 and sys.version_info[1] >= 10
