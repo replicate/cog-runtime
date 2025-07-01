@@ -254,48 +254,54 @@ def check_input(
 ) -> Dict[str, Any]:
     kwargs: Dict[str, Any] = {}
     for name, value in inputs.items():
-        assert name in adt_ins, f'unknown field: {name}'
+        assert name in adt_ins, f'unknown input field: {name}'
         adt_in = adt_ins[name]
         kwargs[name] = adt_in.type.normalize(value)
     for name, adt_in in adt_ins.items():
         if name not in kwargs:
             # default=None is only allowed on `Optional[<type>]`
             if adt_in.type.repetition is not adt.Repetition.OPTIONAL:
-                assert adt_in.default is not None or adt_in, (
-                    f'missing default value for field: {name}'
+                assert adt_in.default is not None, (
+                    f'missing required input field: {name}'
                 )
             kwargs[name] = adt_in.default
 
-        values = (
-            kwargs[name]
-            if adt_in.type.repetition is adt.Repetition.REPEATED
-            else [kwargs[name]]
-        )
+        values = []
+        if adt_in.type.repetition is adt.Repetition.REQUIRED:
+            values = [kwargs[name]]
+        elif adt_in.type.repetition is adt.Repetition.OPTIONAL:
+            # Optional[<type>] and default to None, skip validation
+            if kwargs[name] is None:
+                values = []
+            else:
+                values = [kwargs[name]]
+        elif adt_in.type.repetition is adt.Repetition.REPEATED:
+            values = kwargs[name]
         v = kwargs[name]
         if adt_in.ge is not None:
-            assert (x >= adt_in.ge for x in values), (
-                f'validation failure: >= {adt_in.ge} for field: {name}={v}'
+            assert all(x >= adt_in.ge for x in values), (
+                f'invalid input value: {name}={repr(v)} fails constraint >= {adt_in.ge}'
             )
         if adt_in.le is not None:
-            assert (x <= adt_in.le for x in values), (
-                f'validation failure: <= {adt_in.le} for field: {name}={v}'
+            assert all(x <= adt_in.le for x in values), (
+                f'invalid input value: {name}={repr(v)} fails constraint <= {adt_in.le}'
             )
         if adt_in.min_length is not None:
-            assert (len(x) >= adt_in.min_length for x in values), (
-                f'validation failure: len(x) >= {adt_in.min_length} for field: {name}={v}'
+            assert all(len(x) >= adt_in.min_length for x in values), (
+                f'invalid input value: {name}={repr(v)} fails constraint len() >= {adt_in.min_length}'
             )
         if adt_in.max_length is not None:
-            assert (len(x) <= adt_in.max_length for x in values), (
-                f'validation failure: len(x) <= {adt_in.max_length} for field: {name}={v}'
+            assert all(len(x) <= adt_in.max_length for x in values), (
+                f'invalid input value: {name}={repr(v)} fails constraint len() <= {adt_in.max_length}'
             )
         if adt_in.regex is not None:
             p = re.compile(adt_in.regex)
             assert all(p.match(x) is not None for x in values), (
-                f'validation failure: regex match for field: {name}={v}'
+                f'invalid input value: {name}={repr(v)} does not match regex {repr(adt_in.regex)}'
             )
         if adt_in.choices is not None:
             assert all(x in adt_in.choices for x in values), (
-                f'validation failure: choices for field: {name}={v}'
+                f'invalid input value: {name}={repr(v)} does not match choices {repr(adt_in.choices)}'
             )
     return kwargs
 
