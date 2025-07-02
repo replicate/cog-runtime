@@ -47,15 +47,7 @@ def _validate_predict(f: Callable, is_class_fn: bool) -> None:
 
 def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
     cog_t = ft.primitive
-    if ft.repetition is adt.Repetition.REQUIRED:
-        in_repr = f'{name}: {cog_t.python_type()}'
-    elif ft.repetition is adt.Repetition.OPTIONAL:
-        in_repr = f'{name}: Optional[{cog_t.python_type()}]'
-    elif ft.repetition is adt.Repetition.REPEATED:
-        in_repr = f'{name}: List[{cog_t.python_type()}]'
-    else:
-        in_repr = f'{name}: {cog_t.python_type()}'
-
+    in_repr = f'{name}: {ft.python_type()}'
     defaults = []
     def_repr = ''
     if cog_in.default is not None:
@@ -172,12 +164,14 @@ def _output_adt(tpe: type) -> adt.Output:
         )
         return adt.Output(kind=adt.Kind.SINGLE, type=_any_type)  # type: ignore
     if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
-        assert tpe.__name__ == 'Output', 'output type must be named Output'
+        assert tpe.__name__ == 'Output', (
+            f'output type must be named Output: {tpe.__name__}'
+        )
         fields = {}
         for name, t in tpe.__annotations__.items():
             ft = adt.FieldType.from_type(t)
             assert ft.repetition is not adt.Repetition.REPEATED, (
-                f'output field must not be list: {name}'
+                f'output field must not be list: {name}: {ft.python_type()}'
             )
             fields[name] = ft
         return adt.Output(kind=adt.Kind.OBJECT, fields=fields)
@@ -187,17 +181,21 @@ def _output_adt(tpe: type) -> adt.Output:
     if origin in {typing.get_origin(Iterator), typing.get_origin(AsyncIterator)}:
         kind = adt.Kind.ITERATOR
         t_args = typing.get_args(tpe)
-        assert len(t_args) == 1, 'iterator type must have one type argument'
+        assert len(t_args) == 1, 'iterator type must have a type argument'
         ft = adt.FieldType.from_type(t_args[0])
         assert ft.repetition is adt.Repetition.REQUIRED
-    elif origin in {api.ConcatenateIterator, api.AsyncConcatenateIterator}:
+    # origin is None if type argument is missing
+    elif origin in {api.ConcatenateIterator, api.AsyncConcatenateIterator} or tpe in {
+        api.ConcatenateIterator,
+        api.AsyncConcatenateIterator,
+    }:
         kind = adt.Kind.CONCAT_ITERATOR
         t_args = typing.get_args(tpe)
-        assert len(t_args) == 1, 'iterator type must have one type argument'
+        assert len(t_args) == 1, 'iterator type must have a type argument'
         ft = adt.FieldType.from_type(t_args[0])
         assert ft.repetition is adt.Repetition.REQUIRED
         assert ft.primitive is adt.PrimitiveType.STRING, (
-            'ConcatenateIterator must have str element'
+            f'{tpe.__name__} must have str element'
         )
     else:
         ft = adt.FieldType.from_type(tpe)
