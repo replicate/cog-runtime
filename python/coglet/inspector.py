@@ -224,7 +224,7 @@ def _predictor_adt(
     inputs = {}
     for i, (name, cog_in) in enumerate(zip(names, cog_ins)):
         tpe = spec.annotations.get(name)
-        assert tpe is not None, f'missing type annotation for {name}'
+        assert tpe is not None, f'missing type annotation for input: {name}'
         inputs[name] = _input_adt(i, name, tpe, cog_in)
     output = _output_adt(spec.annotations['return'])
     return adt.Predictor(module_name, predictor_name, inputs, output)
