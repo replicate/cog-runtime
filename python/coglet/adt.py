@@ -195,6 +195,17 @@ class FieldType:
         else:
             return f(value)
 
+    def python_type(self) -> str:
+        if self.repetition is Repetition.REQUIRED:
+            return self.primitive.python_type()
+        elif self.repetition is Repetition.OPTIONAL:
+            return f'Optional[{self.primitive.python_type()}]'
+        elif self.repetition is Repetition.REPEATED:
+            return f'List[{self.primitive.python_type()}]'
+        else:
+            # Should not reach here
+            return self.primitive.python_type()
+
 
 @dataclass(frozen=True)
 class Input:
