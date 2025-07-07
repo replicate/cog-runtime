@@ -3,10 +3,14 @@ import sys
 from typing import Callable, List
 
 
+def print_err(lines: List[str]) -> None:
+    for line in lines:
+        print(line, file=sys.stderr)
+
+
 def print_lines(lines: List[str], start: int, end: int) -> None:
     w = len(str(end)) + 1
-    for i in range(start, end + 1):
-        print(f'%-{w}d | %s' % (i, lines[i]), file=sys.stderr)
+    print_err([f'%-{w}d | %s' % (i, lines[i]) for i in range(start, end + 1)])
 
 
 def visit(
@@ -61,18 +65,13 @@ def inspect(file: str):
 
     b = visit(root, lines, inspect_optional)
     if b:
-        print()
-        print(
-            'Default value of None without explicit Optional type hint is ambiguous',
-            file=sys.stderr,
-        )
-        print('Declare input type as Optional instead, for example:', file=sys.stderr)
-        print(
-            '-    prompt: str=Input(description="prompt", default=None)  # None is not str',
-            file=sys.stderr,
-        )
-        print(
-            '+    prompt: Optional[str]=Input(description="prompt")      # Optional implies default=None',
-            file=sys.stderr,
+        print_err(
+            [
+                '',
+                'Default value of None without explicit Optional type hint is ambiguous',
+                'Declare input type as Optional instead, for example:',
+                '-    prompt: str=Input(description="prompt", default=None)  # None is not str',
+                '+    prompt: Optional[str]=Input(description="prompt")      # Optional implies default=None',
+            ]
         )
         raise AssertionError('input type must be Optional for None default value')
