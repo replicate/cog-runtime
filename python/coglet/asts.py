@@ -3,27 +3,35 @@ import sys
 from typing import Callable, List
 
 
-def print_err(lines: List[str]) -> None:
-    for line in lines:
-        print(line, file=sys.stderr)
-
-
-def print_lines(lines: List[str], start: int, end: int) -> None:
-    w = len(str(end)) + 1
-    print_err([f'%-{w}d | %s' % (i, lines[i]) for i in range(start, end + 1)])
+def print_error(
+    file: str, lines: List[str], lineno: int, col_offset: int, msg: str, help: str
+) -> None:
+    start = max(0, lineno - 2)
+    end = min(len(lines), lineno + 2)
+    w = len(str(end))
+    print(f'{file}:{lineno}:{col_offset}: {msg}', file=sys.stderr)
+    for i in range(start, end + 1):
+        print(f'%-{w}d | %s' % (i, lines[i]), file=sys.stderr)
+        if i == lineno:
+            print('%s | %s^' % (' ' * w, ' ' * col_offset), file=sys.stderr)
+    print('%s = help: %s' % (' ' * w, help), file=sys.stderr)
+    print('', file=sys.stderr)
 
 
 def visit(
-    root: ast.AST, lines: List[str], f: Callable[[ast.AST, List[str]], bool]
+    root: ast.AST,
+    file: str,
+    lines: List[str],
+    f: Callable[[ast.AST, str, List[str]], bool],
 ) -> bool:
     b = False
     for node in ast.iter_child_nodes(root):
-        b = b | f(node, lines)
-        b = b | visit(node, lines, f)
+        b = b | f(node, file, lines)
+        b = b | visit(node, file, lines, f)
     return b
 
 
-def inspect_optional(node: ast.AST, lines: List[str]) -> bool:
+def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> bool:
     if type(node) is not ast.FunctionDef:
         return False
 
@@ -49,8 +57,14 @@ def inspect_optional(node: ast.AST, lines: List[str]) -> bool:
             continue
         if type(kws[0].value) is not ast.Constant or kws[0].value.value is not None:
             continue
-        print_lines(lines, a.annotation.lineno, kws[0].lineno)
-        # print(d, ast.unparse(d))
+        print_error(
+            file,
+            lines,
+            kws[0].lineno,
+            kws[0].col_offset,
+            'input with default=None must be Optional',
+            f'Change input type to `{a.arg}: Optional[{ast.unparse(a.annotation)}]` instead',
+        )
         b = True
     return b
 
@@ -63,15 +77,6 @@ def inspect(file: str):
     # line numbers are 1-indexed
     lines = [''] + content.splitlines()
 
-    b = visit(root, lines, inspect_optional)
+    b = visit(root, file, lines, inspect_optional)
     if b:
-        print_err(
-            [
-                '',
-                'Default value of None without explicit Optional type hint is ambiguous',
-                'Declare input type as Optional instead, for example:',
-                '-    prompt: str=Input(description="prompt", default=None)  # None is not str',
-                '+    prompt: Optional[str]=Input(description="prompt")      # Optional implies default=None',
-            ]
-        )
-        raise AssertionError('input type must be Optional for None default value')
+        raise AssertionError('input with default=None must be Optional')
