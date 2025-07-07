@@ -366,7 +366,7 @@ def get_test_inputs(
     if hasattr(p, 'test_inputs'):
         test_inputs = getattr(p, 'test_inputs')
     else:
-        # Fall back to defaults if no test_inputs is not defined
+        # Fall back to defaults if no test_inputs is defined
         test_inputs = {}
 
     try:
