@@ -346,7 +346,7 @@ def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
         predict_fn = _unwrap(p)
         is_class_fn = False
     else:
-        raise RuntimeError(f'invalid predictor {fullname}')
+        raise AssertionError(f'invalid predictor {fullname}')
 
     # Find coders users by module before validating predict function
     _find_coders(module)
