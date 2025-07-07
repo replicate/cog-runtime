@@ -9,7 +9,7 @@ class Output(BaseModel):
     # List[T] not allowed for outputs, CSV instead
     ls: str
     rd0: str
-    rd1: str
+    # rd1: str  # Invalid default=None
     rd2: str
     od0: Optional[str]
     od1: Optional[str]
@@ -26,7 +26,7 @@ FIXTURE = [
             'rs': 'foo0',
             'ls': ['bar0', 'baz0'],
             'rd0': 'foo1',
-            'rd1': 'foo2',
+            # 'rd1': 'foo2',  # Invalid default=None
             'ld0': ['bar1', 'baz1'],
             'ld1': ['bar2', 'baz2'],
         },
@@ -35,7 +35,7 @@ FIXTURE = [
             os=None,
             ls='bar0,baz0',
             rd0='foo1',
-            rd1='foo2',
+            # rd1='foo2',  # Invalid default=None
             rd2='foo',
             od0=None,
             od1=None,
@@ -51,7 +51,7 @@ FIXTURE = [
             'os': 'foo1',
             'ls': ['bar0', 'baz0'],
             'rd0': 'foo1',
-            'rd1': 'foo2',
+            # 'rd1': 'foo2',  # Invalid default=None
             'rd2': 'foo3',
             'od0': 'foo4',
             'od1': 'foo5',
@@ -65,7 +65,7 @@ FIXTURE = [
             os='foo1',
             ls='bar0,baz0',
             rd0='foo1',
-            rd1='foo2',
+            # rd1='foo2',  # Invalid default=None
             rd2='foo3',
             od0='foo4',
             od1='foo5',
@@ -93,7 +93,7 @@ class Predictor(BasePredictor):
         os: Optional[str],
         ls: List[str],
         rd0: str = Input(),
-        rd1: str = Input(default=None),
+        # rd1: str = Input(default=None),  # Invalid default=None
         rd2: str = Input(default='foo'),
         od0: Optional[str] = Input(),
         od1: Optional[str] = Input(default=None),
@@ -107,7 +107,7 @@ class Predictor(BasePredictor):
             os=os,
             ls=','.join(ls),
             rd0=rd0,
-            rd1=rd1,
+            # rd1=rd1,  # Invalid default=None
             rd2=rd2,
             od0=od0,
             od1=od1,

@@ -6,7 +6,7 @@ import warnings
 from types import ModuleType
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Type
 
-from coglet import adt, api
+from coglet import adt, api, asts
 
 
 def _check_parent(child: type, parent: type) -> bool:
@@ -351,7 +351,13 @@ def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
     # Find coders users by module before validating predict function
     _find_coders(module)
 
-    return _predictor_adt(module_name, predictor_name, predict_fn, is_class_fn)
+    predictor = _predictor_adt(module_name, predictor_name, predict_fn, is_class_fn)
+
+    # AST checks at the end after all other checks pass
+    if module.__file__ is not None:
+        asts.inspect(module.__file__)
+
+    return predictor
 
 
 def get_test_inputs(
