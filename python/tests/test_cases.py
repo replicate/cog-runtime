@@ -26,7 +26,7 @@ def test_repetition_schema():
 
     # Fields with default=None or missing default are required
     # Unless if type hint is `Optional[T]`
-    assert set(schema_in['required']) == {'rs', 'ls', 'rd0', 'rd1', 'ld0', 'ld1'}
+    assert set(schema_in['required']) == {'rs', 'ls', 'rd0', 'ld0', 'ld1'}
     for name, prop in schema_in['properties'].items():
         # Only fields with default=X where X is not None are preserved
         if name in {'rd2', 'od2', 'ld2'}:

@@ -7,6 +7,7 @@ from typing import List
 import pytest
 
 from coglet import inspector
+from tests.util import PythonVersionError
 
 
 def get_predictors() -> List[str]:
@@ -15,10 +16,13 @@ def get_predictors() -> List[str]:
 
 
 def run(module_name: str, predictor_name: str) -> None:
-    m = importlib.import_module(module_name)
-    err_msg = getattr(m, 'ERROR')
-    with pytest.raises(AssertionError, match=re.escape(err_msg)):
-        inspector.create_predictor(module_name, predictor_name)
+    try:
+        m = importlib.import_module(module_name)
+        err_msg = getattr(m, 'ERROR')
+        with pytest.raises(AssertionError, match=re.escape(err_msg)):
+            inspector.create_predictor(module_name, predictor_name)
+    except PythonVersionError as e:
+        pytest.skip(reason=str(e))
 
 
 @pytest.mark.parametrize('predictor', get_predictors())
