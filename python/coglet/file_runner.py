@@ -108,6 +108,9 @@ class FileRunner:
         else:
             # Blocking predict, use SIGUSR1 to cancel
             signal.signal(signal.SIGUSR1, _cancel_handler)
+        # When running in a shell, Ctrl-C sends SIGINT to all processes in the process group
+        # Ignore it here and require shutdown from parent Go server
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         ready = True
         self._send_ipc(FileRunner.IPC_READY)

@@ -97,12 +97,14 @@ func serverCommand() *ff.Command {
 			go func() {
 				ch := make(chan os.Signal, 1)
 				signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-				sig := <-ch
-				if cfg.AwaitExplicitShutdown {
-					log.Warnw("ignoring signal to stop", "signal", sig)
-				} else {
-					log.Infow("stopping Cog HTTP server", "signal", sig)
-					must.Do(h.Stop())
+				for {
+					sig := <-ch
+					if sig == syscall.SIGTERM && cfg.AwaitExplicitShutdown {
+						log.Warnw("ignoring signal to stop", "signal", sig)
+					} else {
+						log.Infow("stopping Cog HTTP server", "signal", sig)
+						must.Do(h.Stop())
+					}
 				}
 			}()
 			if err := s.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {

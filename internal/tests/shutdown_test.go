@@ -10,6 +10,23 @@ import (
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
+func TestShutdownByServerSigInt(t *testing.T) {
+	if *legacyCog {
+		// Compat: legacy Cog doesn't handle SIGINT properly without a TTY
+		t.SkipNow()
+	}
+	ct := NewCogTest(t, "sleep")
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGINT))
+	assert.NoError(t, ct.Cleanup())
+	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
+}
+
 func TestShutdownByServerSigTerm(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	assert.NoError(t, ct.Start())
@@ -32,11 +49,18 @@ func TestShutdownIgnoreSignal(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
+	// Ignore SIGTERM
 	must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGTERM))
 	assert.Nil(t, ct.cmd.ProcessState)
 	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
 
-	ct.Shutdown()
+	if *legacyCog {
+		// Compat: legacy Cog doesn't handle SIGINT properly without a TTY
+		ct.Shutdown()
+	} else {
+		// Handle SIGINT
+		must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGINT))
+	}
 	assert.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }
