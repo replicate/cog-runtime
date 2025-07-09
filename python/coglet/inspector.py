@@ -327,7 +327,9 @@ def _find_coders(module: ModuleType) -> None:
         )
 
 
-def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
+def create_predictor(
+    module_name: str, predictor_name: str, inspect_ast: bool = False
+) -> adt.Predictor:
     module = importlib.import_module(module_name)
     fullname = f'{module_name}.{predictor_name}'
     assert hasattr(module, predictor_name), f'predictor not found: {fullname}'
@@ -354,7 +356,9 @@ def create_predictor(module_name: str, predictor_name: str) -> adt.Predictor:
     predictor = _predictor_adt(module_name, predictor_name, predict_fn, is_class_fn)
 
     # AST checks at the end after all other checks pass
-    if module.__file__ is not None:
+    # Only check when running from cog.command.openapi_schema -> coglet.schema
+    # So that old models that violate this check can still run
+    if inspect_ast and module.__file__ is not None:
         asts.inspect(module.__file__)
 
     return predictor
