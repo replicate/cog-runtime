@@ -41,6 +41,10 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
         else:
             prop['default'] = adt_in.type.json_encode(adt_in.default)
 
+        # <name>: Optional[<type>] implies nullable, regardless of default
+        if adt_in.type.repetition is adt.Repetition.OPTIONAL:
+            prop['nullable'] = True
+
         if adt_in.description is not None:
             prop['description'] = adt_in.description
         if adt_in.ge is not None:
