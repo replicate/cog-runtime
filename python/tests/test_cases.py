@@ -28,6 +28,11 @@ def test_repetition_schema():
     # Unless if type hint is `Optional[T]`
     assert set(schema_in['required']) == {'rs', 'ls', 'rd0', 'ld0', 'ld1'}
     for name, prop in schema_in['properties'].items():
+        # x: Optional[T] implies nullable, regardless of default
+        if name in {'os', 'od0', 'od1', 'od2'}:
+            assert prop['nullable'] is True
+        else:
+            assert 'nullable' not in prop
         # Only fields with default=X where X is not None are preserved
         if name in {'rd2', 'od2', 'ld2'}:
             assert 'default' in prop
