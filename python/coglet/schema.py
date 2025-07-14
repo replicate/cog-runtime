@@ -1,4 +1,3 @@
-import importlib
 import json
 import os.path
 import sys
@@ -31,10 +30,11 @@ def main():
         # - Libraries downloading weights on init
         p = inspector.create_predictor(sys.argv[1], sys.argv[2], inspect_ast=True)
 
+        # Skipping these for now as old models have no test inputs and will fail schema validation
         # Check that test_inputs exists and is valid
-        module = importlib.import_module(p.module_name)
-        cls = getattr(module, p.predictor_name)
-        inspector.get_test_inputs(cls, p.inputs)
+        # module = importlib.import_module(p.module_name)
+        # cls = getattr(module, p.predictor_name)
+        # inspector.get_test_inputs(cls, p.inputs)
 
         schema = schemas.to_json_schema(p)
     except Exception as e:
