@@ -1,44 +1,43 @@
 import ast
-import sys
 from typing import Callable, List
 
 
-def print_error(
-    file: str, lines: List[str], lineno: int, col_offset: int, msg: str, help: str
-) -> None:
+def format_errs(
+    file: str, lines: List[str], lineno: int, col_offset: int, msg: str, help_msg: str
+) -> str:
     start = max(0, lineno - 2)
     end = min(len(lines), lineno + 2)
     w = len(str(end))
-    print(f'{file}:{lineno}:{col_offset}: {msg}', file=sys.stderr)
+    errs = [f'{file}:{lineno}:{col_offset}: {msg}']
     for i in range(start, end + 1):
-        print(f'%-{w}d | %s' % (i, lines[i]), file=sys.stderr)
+        errs.append(f'%-{w}d | %s' % (i, lines[i]))
         if i == lineno:
-            print('%s | %s^' % (' ' * w, ' ' * col_offset), file=sys.stderr)
-    print('%s = help: %s' % (' ' * w, help), file=sys.stderr)
-    print('', file=sys.stderr)
+            errs.append('%s | %s^' % (' ' * w, ' ' * col_offset))
+    errs.append('%s = help: %s' % (' ' * w, help_msg))
+    return '\n'.join(errs)
 
 
 def visit(
     root: ast.AST,
     file: str,
     lines: List[str],
-    f: Callable[[ast.AST, str, List[str]], bool],
-) -> bool:
-    b = False
+    f: Callable[[ast.AST, str, List[str]], List[str]],
+) -> List[str]:
+    errs = []
     for node in ast.iter_child_nodes(root):
-        b = b | f(node, file, lines)
-        b = b | visit(node, file, lines, f)
-    return b
+        errs += f(node, file, lines)
+        errs += visit(node, file, lines, f)
+    return errs
 
 
-def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> bool:
+def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> List[str]:
     if type(node) is not ast.FunctionDef:
-        return False
+        return []
 
     if node.name != 'predict':
-        return False
+        return []
 
-    b = False
+    errs = []
     n = len(node.args.defaults)
     for a, d in zip(node.args.args[-n:], node.args.defaults):
         # <name>: <type>
@@ -57,16 +56,17 @@ def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> bool:
             continue
         if type(kws[0].value) is not ast.Constant or kws[0].value.value is not None:
             continue
-        print_error(
-            file,
-            lines,
-            kws[0].lineno,
-            kws[0].col_offset,
-            'input with default=None must be Optional',
-            f'Change input type to `{a.arg}: Optional[{ast.unparse(a.annotation)}]` instead',
+        errs.append(
+            format_errs(
+                file,
+                lines,
+                kws[0].lineno,
+                kws[0].col_offset,
+                'input with default=None must be Optional',
+                f'Change input type to `{a.arg}: Optional[{ast.unparse(a.annotation)}]` instead',
+            )
         )
-        b = True
-    return b
+    return errs
 
 
 def inspect(file: str):
@@ -77,6 +77,7 @@ def inspect(file: str):
     # line numbers are 1-indexed
     lines = [''] + content.splitlines()
 
-    b = visit(root, file, lines, inspect_optional)
-    if b:
-        raise AssertionError('input with default=None must be Optional')
+    errs = visit(root, file, lines, inspect_optional)
+    if len(errs) > 0:
+        errs = ['input with default=None must be Optional'] + errs
+        raise AssertionError('\n\n'.join(errs))
