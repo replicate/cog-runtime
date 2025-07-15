@@ -211,6 +211,7 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 			return "", err
 		}
 		req.Header.Set("X-Prediction-ID", predictionId)
+		req.Header.Set("Content-Type", mimetype.Detect(bs).String())
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return "", err

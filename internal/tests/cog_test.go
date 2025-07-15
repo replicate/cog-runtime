@@ -44,9 +44,10 @@ type WebhookRequest struct {
 }
 
 type UploadRequest struct {
-	Method string
-	Path   string
-	Body   []byte
+	Method      string
+	Path        string
+	ContentType string
+	Body        []byte
 }
 
 type WebhookHandler struct {
@@ -77,9 +78,10 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		filename, ok := strings.CutPrefix(r.URL.Path, "/upload/")
 		assert.True(h.ct.t, ok)
 		req := UploadRequest{
-			Method: r.Method,
-			Path:   r.URL.Path,
-			Body:   body,
+			Method:      r.Method,
+			Path:        r.URL.Path,
+			ContentType: r.Header.Get("Content-Type"),
+			Body:        body,
 		}
 		h.mu.Lock()
 		defer h.mu.Unlock()
