@@ -99,6 +99,12 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	assert.Len(t, ul, 1)
 	body := string(ul[0].Body)
 	assert.Contains(t, body, "*bar*")
+	if *legacyCog {
+		// Compat: legacy Cog sends multipart with output_file_prefix but actual mime-type with --upload-url?
+		assert.True(t, strings.HasPrefix(ul[0].ContentType, "multipart/form-data"))
+	} else {
+		assert.Equal(t, "text/plain; charset=utf-8", ul[0].ContentType)
+	}
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
@@ -127,6 +133,53 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 
 	body := string(ul[0].Body)
 	assert.Contains(t, body, "*bar*")
+	if *legacyCog {
+		// Compat: legacy Cog does not detect text encoding?
+		assert.Equal(t, "text/plain", ul[0].ContentType)
+	} else {
+		assert.Equal(t, "text/plain; charset=utf-8", ul[0].ContentType)
+	}
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}
+
+const TestDataPrefix = "https://raw.githubusercontent.com/gabriel-vasile/mimetype/refs/heads/master/testdata/"
+
+func TestPredictionPathMimeTypes(t *testing.T) {
+	if *legacyCog {
+		//Compat: legacy Cog sends multipart with output_file_prefix and does not upload with --upload-url
+		t.SkipNow()
+	}
+	ct := NewCogTest(t, "mime")
+	ct.StartWebhook()
+	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	var resp server.PredictionResponse
+	resp = ct.Prediction(map[string]any{"u": TestDataPrefix + "gif.gif"})
+	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+
+	resp = ct.Prediction(map[string]any{"u": TestDataPrefix + "jar.jar"})
+	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+
+	resp = ct.Prediction(map[string]any{"u": TestDataPrefix + "tar.tar"})
+	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+
+	resp = ct.Prediction(map[string]any{"u": "https://www.gstatic.com/webp/gallery/1.sm.webp"})
+	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+
+	ul := ct.GetUploads()
+	assert.Len(t, ul, 4)
+
+	assert.Equal(t, "image/gif", ul[0].ContentType)
+	assert.Equal(t, "application/jar", ul[1].ContentType)
+	assert.Equal(t, "application/x-tar", ul[2].ContentType)
+	assert.Equal(t, "image/webp", ul[3].ContentType)
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
