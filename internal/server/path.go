@@ -220,6 +220,11 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 			return "", fmt.Errorf("failed to upload file: status %s", resp.Status)
 		}
-		return resp.Header.Get("Location"), nil
+		location := resp.Header.Get("Location")
+		if location == "" {
+			// In case upload server does not respond with Location
+			location = uUpload
+		}
+		return location, nil
 	}
 }
