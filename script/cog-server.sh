@@ -9,15 +9,28 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-module="$1"
+predict="$1"
 shift
 
 base_dir="$(git rev-parse --show-toplevel)"
 
 MODULE=${MODULE:-runners}
-cd "$base_dir/python/tests/$MODULE"
-ln -fs "$module.py" predict.py
-trap "rm -f predict.py" EXIT
+CLASS=${CLASS:-Predictor}
+MAX_CONCURRENCY=${MAX_CONCURRENCY:-0}
+
+# go run looks for go.mod so we need to run inside base_dir
+temp_dir="$base_dir/build/cog-$MODULE-$predict-$(date '+%s')"
+mkdir -p "$temp_dir"
+trap 'rm -rf $temp_dir' EXIT
+cd "$temp_dir"
+cp "$base_dir/python/tests/$MODULE/$predict.py" predict.py
+echo "predict: \"predict.py:$CLASS\"" > cog.yaml
+
+if [ $MAX_CONCURRENCY -gt 0 ]; then
+    echo 'concurrency:' > cog.yaml
+    echo "  max: $MAX_CONCURRENCY" > cog.yaml
+fi
+
 # PYTHON=1 to run with legacy Cog
 if [ -z "${PYTHON:-}" ]; then
     export LOG_FORMAT=development

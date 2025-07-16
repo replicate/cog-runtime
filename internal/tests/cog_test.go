@@ -191,12 +191,13 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 		tmpDir = ct.t.TempDir()
 		runnersPath := path.Join(basePath, "python", "tests", "runners")
 		module := fmt.Sprintf("%s.py", ct.module)
-		yaml := "cog.yaml"
+		yamlLines := []string{`predict: "predict.py:Predictor"`}
 		if strings.HasPrefix(ct.module, "async_") {
-			// cog.yaml with concurrency.max
-			yaml = "async_cog.yaml"
+			yamlLines = append(yamlLines, "concurrency:")
+			yamlLines = append(yamlLines, "  max: 2")
 		}
-		must.Do(os.Symlink(path.Join(runnersPath, yaml), path.Join(tmpDir, "cog.yaml")))
+		yaml := strings.Join(yamlLines, "\n")
+		must.Do(os.WriteFile(path.Join(tmpDir, "cog.yaml"), []byte(yaml), 0644))
 		must.Do(os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py")))
 	}
 
