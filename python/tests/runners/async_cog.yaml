@@ -1,3 +1,0 @@
-predict: "predict.py:Predictor"
-concurrency:
-  max: 2
