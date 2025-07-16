@@ -147,10 +147,6 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 const TestDataPrefix = "https://raw.githubusercontent.com/gabriel-vasile/mimetype/refs/heads/master/testdata/"
 
 func TestPredictionPathMimeTypes(t *testing.T) {
-	if *legacyCog {
-		//Compat: legacy Cog sends multipart with output_file_prefix and does not upload with --upload-url
-		t.SkipNow()
-	}
 	ct := NewCogTest(t, "mime")
 	ct.StartWebhook()
 	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
@@ -170,6 +166,41 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 	ct.WaitForWebhookCompletion()
 
 	ct.AsyncPredictionWithId("p4", map[string]any{"u": "https://www.gstatic.com/webp/gallery/1.sm.webp"})
+	ct.WaitForWebhookCompletion()
+
+	ul := ct.GetUploads()
+	assert.Len(t, ul, 4)
+
+	assert.Equal(t, "image/gif", ul[0].ContentType)
+	mimeJar := "application/jar"
+	if *legacyCog {
+		mimeJar = "application/java-archive"
+	}
+	assert.Equal(t, mimeJar, ul[1].ContentType)
+	assert.Equal(t, "application/x-tar", ul[2].ContentType)
+	assert.Equal(t, "image/webp", ul[3].ContentType)
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}
+
+func TestPredictionPathMultiMimeTypes(t *testing.T) {
+	ct := NewCogTest(t, "mimes")
+	ct.StartWebhook()
+	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	ct.AsyncPredictionWithId("p1", map[string]any{
+		"us": []string{
+			TestDataPrefix + "gif.gif",
+			TestDataPrefix + "jar.jar",
+			TestDataPrefix + "tar.tar",
+			"https://www.gstatic.com/webp/gallery/1.sm.webp",
+		}})
 	ct.WaitForWebhookCompletion()
 
 	ul := ct.GetUploads()
