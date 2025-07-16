@@ -160,24 +160,27 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	var resp server.PredictionResponse
-	resp = ct.Prediction(map[string]any{"u": TestDataPrefix + "gif.gif"})
-	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+	ct.AsyncPredictionWithId("p1", map[string]any{"u": TestDataPrefix + "gif.gif"})
+	ct.WaitForWebhookCompletion()
 
-	resp = ct.Prediction(map[string]any{"u": TestDataPrefix + "jar.jar"})
-	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+	ct.AsyncPredictionWithId("p2", map[string]any{"u": TestDataPrefix + "jar.jar"})
+	ct.WaitForWebhookCompletion()
 
-	resp = ct.Prediction(map[string]any{"u": TestDataPrefix + "tar.tar"})
-	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+	ct.AsyncPredictionWithId("p3", map[string]any{"u": TestDataPrefix + "tar.tar"})
+	ct.WaitForWebhookCompletion()
 
-	resp = ct.Prediction(map[string]any{"u": "https://www.gstatic.com/webp/gallery/1.sm.webp"})
-	assert.Equal(t, server.PredictionSucceeded, resp.Status)
+	ct.AsyncPredictionWithId("p4", map[string]any{"u": "https://www.gstatic.com/webp/gallery/1.sm.webp"})
+	ct.WaitForWebhookCompletion()
 
 	ul := ct.GetUploads()
 	assert.Len(t, ul, 4)
 
 	assert.Equal(t, "image/gif", ul[0].ContentType)
-	assert.Equal(t, "application/jar", ul[1].ContentType)
+	mimeJar := "application/jar"
+	if *legacyCog {
+		mimeJar = "application/java-archive"
+	}
+	assert.Equal(t, mimeJar, ul[1].ContentType)
 	assert.Equal(t, "application/x-tar", ul[2].ContentType)
 	assert.Equal(t, "image/webp", ul[3].ContentType)
 
