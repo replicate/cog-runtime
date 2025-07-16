@@ -1,74 +1,34 @@
 # Cog Runtime
 
-> [!CAUTION]
-> This project is **experimental** and should not be handled near open flame.
+New implementation for Cog's production runtime component, which is responsible for:
 
-Alt-core [Cog] runtime implementation.
+* Cog HTTP server
+* Input and output schema validation
+* Model execution
 
-The original [Cog] seeks to be a great developer tool and also an arguably great
-production runtime. Cog runtime is focused on being a fantastic production runtime _only_.
+Cog HTTP server is rewritten in Go for better performance, reliability, concurrency and isolation.
 
-How is `cog-runtime` formed?
+Schema validation and model execution were rewritten in pure Python for simplicity, better error handling and reduced risk of dependency conflicts.
 
-```mermaid
-sequenceDiagram
-    participant r8
-    participant server as cog-server
-    participant runner as coglet
-    participant predictor as Predictor
-    r8->>server: Boot
-    activate server
-    server->>runner: exec("python3", ...)
-    activate runner
-    runner<<->>predictor: setup()
-    activate predictor
-    runner--)server: SIGHUP (output)
-    runner--)server: SIGUSR1 (ready)
-    server->>runner: read("setup-result.json")
-    r8->>server: GET /health-check
-    r8->>server: POST /predictions
-    server->>runner: write("request-{id}.json")
-    runner--)server: SIGUSR2 (busy)
-    runner<<->>predictor: predict()
-    deactivate predictor
-    runner--)server: SIGHUP (output)
-    runner--)server: SIGUSR1 (ready)
-    server->>runner: read("response-{id}.json")
-    deactivate runner
-    server->>r8: POST /webhook
-    deactivate server
-```
+## Cog HTTP server
 
-This sequence is simplified, but the rough idea is that the Replicate platform (`r8`)
-depends on `cog-server` to provide an HTTP API in front of a `coglet`
-that communicates via files and signals.
+This is the Go HTTP server that:
 
-## `cog-server`
-
-Go-based HTTP server that knows how to spawn and communicate with
-`coglet`.
+* Manages the Python model runner process
+* Handles HTTP requests
+* Downloads input files and uploads output files
+* Manages async and concurrency predictions
+* Makes webhook callbacks
+* Logging and health check of Python runner process
+* Communicates with the Python runner via a mix of Unix signals, HTTP, and JSON files
 
 ## `coglet`
 
-Python-based model runner with zero dependencies outside of the standard library.
-The same in-process API provided by [Cog] is available, e.g.:
+Python model runner that:
 
-```python
-from cog import BasePredictor, Input
-
-class MyPredictor(BasePredictor):
-    def predict(self, n=Input(default="how many", ge=1, le=100)) -> str:
-        return "ok" * n
-```
-
-In addition to simple cases like the above, the runner is async by default and supports
-continuous batching.
-
-Communication with the `cog-server` parent process is managed via input and output files
-and the following signals:
-
-- `SIGUSR1` model is ready
-- `SIGUSR2` model is busy
-- `SIGHUP` output is available
+* Is source compatible with existing Cog API
+* Has zero Python dependency to minimize risk of interfering with model code
+* Inspects Python predictor code for input and output schema
+* Invokes `setup()` and `predict()` methods
 
 [Cog]: <https://github.com/replicate/cog>
