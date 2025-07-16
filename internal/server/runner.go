@@ -516,9 +516,9 @@ func (r *Runner) handleResponses() {
 			outputFn = outputToUpload(r.uploadUrl, pr.response.Id)
 		}
 		if output, err := handlePath(pr.response.Output, &paths, outputFn); err != nil {
-			log.Errorw("failed to handle output", "id", pid, "error", err)
+			log.Errorw("failed to handle output path", "id", pid, "error", err)
 			pr.response.Status = PredictionFailed
-			pr.response.Error = err.Error()
+			pr.response.Error = fmt.Sprintf("failed to handle output path: %s", err)
 		} else {
 			pr.response.Output = output
 		}
