@@ -56,7 +56,6 @@ class FileRunner:
             self.config.max_concurrency,
         )
 
-        os.makedirs(self.working_dir, exist_ok=True)
         setup_result_file = os.path.join(self.working_dir, 'setup_result.json')
         stop_file = os.path.join(self.working_dir, 'stop')
         openapi_file = os.path.join(self.working_dir, 'openapi.json')

@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"strconv"
 
@@ -39,6 +41,11 @@ const (
 	IPCStatusOutput IPCStatus = "OUTPUT"
 )
 
+const (
+	BaseUID    = 9000
+	NoGroupGID = 65534
+)
+
 type IPC struct {
 	Name   string    `json:"name"`
 	Pid    int       `json:"pid"`
@@ -50,6 +57,7 @@ type Handler struct {
 	shutdown   context.CancelFunc
 	startedAt  time.Time
 	maxRunners int
+	setUID     bool
 	runners    map[string]*Runner
 	mu         sync.Mutex
 }
@@ -79,6 +87,19 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		// In the worst case scenario where all runners are non-async,
 		// completion of any runner frees up concurrency.
 		h.maxRunners = autoMaxProcs * concurrencyPerCPU
+
+		_, err := os.Stat("/.dockerenv")
+		inDocker := err == nil
+		_, inK8S := os.LookupEnv("KUBERNETES_SERVICE_HOST")
+		// Running as root inside Docker or K8S
+		// Set UID to an unprivileged user in each Python runner for best-effort sandboxing
+		// Each Python runner has write access to
+		// * PWD, i.e., copied procedure source code
+		// * Working directory, i.e., for input/output JSON files
+		// * TMPDIR, for mktemp, tempfile, etc.
+		if (inDocker || inK8S) && os.Getuid() == 0 {
+			h.setUID = true
+		}
 		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
 	} else {
 		h.runners[DefaultRunner] = NewRunner(cfg.IPCUrl, cfg.UploadUrl)
@@ -315,8 +336,42 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	if err != nil {
 		return nil, err
 	}
+	uid := BaseUID + slot
+	if h.setUID {
+		// PrepareProcedureSourceURL creates new directories but symlink files
+		// Change owner of directories only so they are writable
+		// But keep root as owner of symlinks so they are read-only
+		err = filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return os.Lchown(path, uid, NoGroupGID)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	log.Infow("starting procedure runner", "src_url", srcURL, "src_dir", srcDir)
 	r := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, name, srcDir)
+
+	if h.setUID {
+		// Make working dir writable by unprivileged Python process
+		if err := os.Lchown(r.workingDir, uid, NoGroupGID); err != nil {
+			return nil, err
+		}
+		// Create per runner TMPDIR
+		tmpDir := must.Get(os.MkdirTemp("", "cog-runner-tmp-"))
+		if err := os.Lchown(tmpDir, uid, NoGroupGID); err != nil {
+			return nil, err
+		}
+		r.cmd.Env = os.Environ()
+		r.cmd.Env = append(r.cmd.Env, "TMPDIR="+tmpDir)
+		r.cmd.Args = append(r.cmd.Args, "--set-uid", strconv.Itoa(uid))
+	}
 
 	if err := r.Start(); err != nil {
 		return nil, err

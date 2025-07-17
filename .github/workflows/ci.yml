@@ -55,6 +55,19 @@ jobs:
       - run: ./script/init.sh
       - run: ./script/test.sh go -legacy-cog
 
+  test-set-uid:
+    name: Test Set UID for procedure mode
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - run: ./script/init.sh
+      - run: ./script/test-setuid.sh
+
   build-python:
     name: Build & verify python package
     runs-on: ubuntu-latest
