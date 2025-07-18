@@ -8,6 +8,21 @@ base_dir="$(git rev-parse --show-toplevel)"
 
 cd "$base_dir"
 
+rm -rf build
+rm -rf dist
+rm -rf python/cog/cog-*
+
+# Create "clet", coglet lite for web downloading
+# This does not contain the go binaries
+.venv/bin/python3 -m build -w
+for file in dist/coglet-*; do
+  [ -e "$file" ] || continue
+  filename=$(basename "$file")
+  new_filename=${filename/coglet-/clet-}
+  mv "$file" "dist/$new_filename"
+  echo "Renamed: $file -> dist/$new_filename"
+done
+
 # Export Python version to Go
 uv run --with setuptools_scm python3 -m setuptools_scm > internal/util/version.txt
 
@@ -18,5 +33,4 @@ for os in darwin linux; do
     done
 done
 
-rm -rf dist
 .venv/bin/python3 -m build -w
