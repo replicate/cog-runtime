@@ -133,7 +133,7 @@ jobs:
         env:
           CLET: 1
       - name: Upload to R2
-        run: aws s3 sync dist/coglet-*.whl s3://replicate-pipelines-runtime
+        run: aws s3 sync dist s3://replicate-pipelines-runtime
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY_SECRET }}
