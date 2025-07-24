@@ -144,6 +144,41 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	assert.NoError(t, ct.Cleanup())
 }
 
+func TestPredictionPathUploadIterator(t *testing.T) {
+	ct := NewCogTest(t, "path_out_iter")
+	ct.StartWebhook()
+	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
+	assert.NoError(t, ct.Start())
+
+	hc := ct.WaitForSetup()
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+
+	ct.AsyncPrediction(map[string]any{"n": 3})
+	wr := ct.WaitForWebhookCompletion()
+	ul := ct.GetUploads()
+
+	assert.Len(t, wr, 5)
+	assert.Equal(t, server.PredictionProcessing, wr[0].Status)
+	assert.Nil(t, wr[0].Output)
+	assert.Equal(t, server.PredictionProcessing, wr[1].Status)
+	assert.Len(t, wr[1].Output.([]any), 1)
+	assert.Equal(t, server.PredictionProcessing, wr[2].Status)
+	assert.Len(t, wr[2].Output.([]any), 2)
+	assert.Equal(t, server.PredictionProcessing, wr[3].Status)
+	assert.Len(t, wr[3].Output.([]any), 3)
+	assert.Equal(t, server.PredictionSucceeded, wr[4].Status)
+	assert.Len(t, wr[4].Output.([]any), 3)
+
+	assert.Len(t, ul, 3)
+	assert.Equal(t, "out0", string(ul[0].Body))
+	assert.Equal(t, "out1", string(ul[1].Body))
+	assert.Equal(t, "out2", string(ul[2].Body))
+
+	ct.Shutdown()
+	assert.NoError(t, ct.Cleanup())
+}
+
 const TestDataPrefix = "https://raw.githubusercontent.com/gabriel-vasile/mimetype/refs/heads/master/testdata/"
 
 func TestPredictionPathMimeTypes(t *testing.T) {

@@ -33,6 +33,7 @@ type PendingPrediction struct {
 	response    PredictionResponse
 	lastUpdated time.Time
 	inputPaths  []string
+	outputCache map[string]string
 	mu          sync.Mutex
 	c           chan PredictionResponse
 }
@@ -250,9 +251,10 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 		StartedAt: req.StartedAt,
 	}
 	pr := PendingPrediction{
-		request:    req,
-		response:   resp,
-		inputPaths: inputPaths,
+		request:     req,
+		response:    resp,
+		inputPaths:  inputPaths,
+		outputCache: make(map[string]string),
 	}
 	if req.Webhook == "" {
 		pr.c = make(chan PredictionResponse, 1)
@@ -515,7 +517,23 @@ func (r *Runner) handleResponses() {
 		} else if r.uploadUrl != "" {
 			outputFn = outputToUpload(r.uploadUrl, pr.response.Id)
 		}
-		if output, err := handlePath(pr.response.Output, &paths, outputFn); err != nil {
+		cachedOutputFn := func(s string, paths *[]string) (string, error) {
+			// Cache already handled output files to avoid duplicates or deleted files in Iterator[Path]
+			if cache, ok := pr.outputCache[s]; ok {
+				return cache, nil
+			}
+			o, err := outputFn(s, paths)
+			if err != nil {
+				return "", err
+			}
+			if o != s {
+				// Output path converted to base64 or upload URL, cache it
+				pr.outputCache[s] = o
+			}
+			return o, nil
+		}
+
+		if output, err := handlePath(pr.response.Output, &paths, cachedOutputFn); err != nil {
 			log.Errorw("failed to handle output path", "id", pid, "error", err)
 			pr.response.Status = PredictionFailed
 			pr.response.Error = fmt.Sprintf("failed to handle output path: %s", err)
