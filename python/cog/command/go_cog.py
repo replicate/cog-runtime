@@ -25,4 +25,9 @@ def run(subcmd: str, args: List[str]) -> None:
     cmd = f'cog-{goos}-{goarch}'
     exe = os.path.join(Path(__file__).parent.parent, cmd)
     args = [exe, subcmd] + args
-    os.execv(exe, args)
+    # Replicate Go logger logs to stdout in production mode
+    # Use stderr instead to be consistent with legacy Cog
+    env = os.environ.copy()
+    if 'LOG_FILE' not in env:
+        env['LOG_FILE'] = 'stderr'
+    os.execve(exe, args, env)

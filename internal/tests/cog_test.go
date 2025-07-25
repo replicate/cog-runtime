@@ -139,13 +139,17 @@ func (ct *CogTest) AppendEnvs(envs ...string) {
 }
 
 func (ct *CogTest) Start() error {
+	return ct.StartWithPipes(os.Stdout, os.Stderr)
+}
+
+func (ct *CogTest) StartWithPipes(stdout, stderr io.Writer) error {
 	if *legacyCog {
 		ct.cmd = ct.legacyCmd()
 	} else {
 		ct.cmd = ct.runtimeCmd()
 	}
-	ct.cmd.Stdout = os.Stdout
-	ct.cmd.Stderr = os.Stderr
+	ct.cmd.Stdout = stdout
+	ct.cmd.Stderr = stderr
 	return ct.cmd.Start()
 }
 

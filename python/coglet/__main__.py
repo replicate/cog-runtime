@@ -63,7 +63,7 @@ def main() -> int:
 
     logger = logging.getLogger('coglet')
     logger.setLevel(logging.INFO)
-    handler = logging.StreamHandler(sys.stdout)
+    handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
         logging.Formatter(
             '%(asctime)s\t%(levelname)s\t[%(name)s]\t%(filename)s:%(lineno)d\t%(message)s'
