@@ -592,7 +592,7 @@ func (r *Runner) readJson(filename string, v any) error {
 ////////////////////
 // Log handling
 
-func (r *Runner) log(line string) {
+func (r *Runner) log(line string, stderr bool) {
 	log := logger.Sugar()
 	if m := LogRegex.FindStringSubmatch(line); m != nil {
 		pid := m[1]
@@ -608,12 +608,14 @@ func (r *Runner) log(line string) {
 		} else {
 			log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
 		}
+		// Strip [pid=*] prefix before printing
+		line = msg
 	} else if !strings.Contains(line, "[coglet]") {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		if r.setupResult.CompletedAt != "" && len(r.pending) == 1 && !r.asyncPredict {
 			// Anything from inside would be a subprocess call. If it's an async
-			// prediction though, we have no clue who's process is who's - this
+			// prediction though, we have no clue whose process is whose - this
 			// can lead to us leaking outputs from one user to another so we
 			// shouldn't keep the lines here
 			for pid := range r.pending {
@@ -629,7 +631,12 @@ func (r *Runner) log(line string) {
 			r.setupResult.Logs = util.JoinLogs(r.logs)
 		}
 	}
-	fmt.Println(line)
+	// Pipe Python stdout/stderr to the corresponding streams
+	if stderr {
+		fmt.Fprintln(os.Stderr, line)
+	} else {
+		fmt.Println(line)
+	}
 }
 
 func (r *Runner) rotateLogs() string {
@@ -641,7 +648,7 @@ func (r *Runner) rotateLogs() string {
 }
 
 func (r *Runner) setupLogging(cmdStart chan bool) error {
-	scan := func(f func() (io.ReadCloser, error)) error {
+	scan := func(f func() (io.ReadCloser, error), stderr bool) error {
 		reader, err := f()
 		if err != nil {
 			return err
@@ -651,15 +658,15 @@ func (r *Runner) setupLogging(cmdStart chan bool) error {
 			<-cmdStart // Block on command start
 			for scanner.Scan() {
 				line := scanner.Text()
-				r.log(line)
+				r.log(line, stderr)
 			}
 		}()
 		return nil
 	}
-	if err := scan(r.cmd.StdoutPipe); err != nil {
+	if err := scan(r.cmd.StdoutPipe, false); err != nil {
 		return err
 	}
-	if err := scan(r.cmd.StderrPipe); err != nil {
+	if err := scan(r.cmd.StderrPipe, true); err != nil {
 		return err
 	}
 	return nil
