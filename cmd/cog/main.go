@@ -42,12 +42,12 @@ func schemaCommand() *ff.Command {
 		Exec: func(ctx context.Context, args []string) error {
 			y, err := util.ReadCogYaml(must.Get(os.Getwd()))
 			if err != nil {
-				log.Errorw("failed to read cog.yaml", "err", err)
+				log.Errorw("failed to read cog.yaml", "error", err)
 				return err
 			}
 			m, c, err := y.PredictModuleAndPredictor()
 			if err != nil {
-				log.Errorw("failed to parse predict", "err", err)
+				log.Errorw("failed to parse predict", "error", err)
 				return err
 			}
 			bin := must.Get(exec.LookPath("python3"))
@@ -134,12 +134,12 @@ func testCommand() *ff.Command {
 		Exec: func(ctx context.Context, args []string) error {
 			y, err := util.ReadCogYaml(must.Get(os.Getwd()))
 			if err != nil {
-				log.Errorw("failed to read cog.yaml", "err", err)
+				log.Errorw("failed to read cog.yaml", "error", err)
 				return err
 			}
 			m, c, err := y.PredictModuleAndPredictor()
 			if err != nil {
-				log.Errorw("failed to parse predict", "err", err)
+				log.Errorw("failed to parse predict", "error", err)
 				return err
 			}
 			bin := must.Get(exec.LookPath("python3"))
