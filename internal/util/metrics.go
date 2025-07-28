@@ -37,7 +37,7 @@ func SendRunnerMetric(yaml CogYaml) {
 		log.Errorw("failed to marshal payload", "error", err)
 		return
 	}
-	resp, err := http.DefaultClient.Post(endpoint, "application/json", bytes.NewBuffer(body))
+	resp, err := HTTPClientWithRetry().Post(endpoint, "application/json", bytes.NewBuffer(body))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		log.Errorw("failed to send runner metrics", "error", err)
 	}

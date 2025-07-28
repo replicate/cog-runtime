@@ -5,10 +5,13 @@ import (
 	_ "embed"
 	"encoding/base32"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/replicate/go/httpclient"
 
 	"github.com/replicate/go/logging"
 
@@ -103,4 +106,8 @@ func Version() string {
 		return "0.0.0+unknown"
 	}
 	return strings.TrimSpace(string(bs))
+}
+
+func HTTPClientWithRetry() *http.Client {
+	return httpclient.ApplyRetryPolicy(http.DefaultClient)
 }

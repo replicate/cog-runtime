@@ -545,7 +545,12 @@ func SendWebhook(webhook string, pr *PredictionResponse) error {
 	body := bytes.NewBuffer(must.Get(json.Marshal(pr)))
 	req := must.Get(http.NewRequest("POST", webhook, body))
 	req.Header.Add("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	// Only retry on completed webhooks
+	client := http.DefaultClient
+	if pr.Status.IsCompleted() {
+		client = util.HTTPClientWithRetry()
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

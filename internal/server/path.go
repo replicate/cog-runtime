@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/replicate/cog-runtime/internal/util"
+
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/gabriel-vasile/mimetype"
@@ -155,7 +157,7 @@ func urlToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-	resp, err := http.DefaultClient.Get(s)
+	resp, err := util.HTTPClientWithRetry().Get(s)
 	if err != nil {
 		return "", err
 	}
@@ -212,7 +214,7 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		}
 		req.Header.Set("X-Prediction-ID", predictionId)
 		req.Header.Set("Content-Type", mimetype.Detect(bs).String())
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := util.HTTPClientWithRetry().Do(req)
 		if err != nil {
 			return "", err
 		}
