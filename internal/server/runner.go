@@ -321,12 +321,12 @@ func (r *Runner) config() {
 	if moduleName == "" || predictorName == "" {
 		y, err := util.ReadCogYaml(r.SrcDir())
 		if err != nil {
-			log.Errorw("failed to read cog.yaml", "err", err)
+			log.Errorw("failed to read cog.yaml", "error", err)
 			panic(err)
 		}
 		m, c, err := y.PredictModuleAndPredictor()
 		if err != nil {
-			log.Errorw("failed to parse predict", "err", err)
+			log.Errorw("failed to parse predict", "error", err)
 			panic(err)
 		}
 		moduleName = m
@@ -418,7 +418,7 @@ func (r *Runner) HandleIPC(s IPCStatus) {
 				r.maxConcurrency = 1
 			}
 			if err := r.handleReadinessProbe(); err != nil {
-				log.Errorw("fail to write ready file", "err", err)
+				log.Errorw("fail to write ready file", "error", err)
 			}
 		}
 		log.Info("runner is ready")
@@ -443,14 +443,14 @@ func (r *Runner) updateSchema() {
 	p := path.Join(r.workingDir, "openapi.json")
 	bs, err := os.ReadFile(p)
 	if err != nil {
-		log.Errorw("failed to read openapi.json", "path", p, "err", err)
+		log.Errorw("failed to read openapi.json", "path", p, "error", err)
 		return
 	}
 
 	loader := openapi3.NewLoader()
 	doc, err := loader.LoadFromData(bs)
 	if err != nil {
-		log.Errorw("failed to load OpenAPI schema", "err", err)
+		log.Errorw("failed to load OpenAPI schema", "error", err)
 	}
 
 	r.mu.Lock()
@@ -467,7 +467,7 @@ func (r *Runner) updateSetupResult() {
 	defer r.mu.Unlock()
 	r.setupResult.Logs = logs
 	if err := r.readJson("setup_result.json", &r.setupResult); err != nil {
-		log.Errorw("failed to read setup_result.json", "err", err)
+		log.Errorw("failed to read setup_result.json", "error", err)
 		r.setupResult.Status = SetupFailed
 		return
 	}
