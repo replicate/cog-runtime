@@ -120,7 +120,6 @@ func NewRunner(ipcUrl, uploadUrl string) *Runner {
 }
 
 func NewProcedureRunner(ipcUrl, uploadUrl, name, srcDir string) *Runner {
-	// Use srcDir as name
 	r := newRunner(name, ipcUrl, uploadUrl)
 	r.cmd.Dir = srcDir
 	return r
@@ -333,6 +332,12 @@ func (r *Runner) config() {
 		predictorName = c
 		// Default to 1 if not set in cog.yaml, regardless whether async predict or not
 		r.maxConcurrency = max(1, y.Concurrency.Max)
+
+		// Send metrics for normal single instance runner
+		// Do not send for multi-tenant procedure runners to reduce noise
+		if r.name == DefaultRunner {
+			go util.SendRunnerMetric(*y)
+		}
 	}
 	conf := PredictConfig{
 		ModuleName:     moduleName,

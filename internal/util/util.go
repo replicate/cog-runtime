@@ -10,17 +10,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/replicate/go/logging"
+
 	"github.com/replicate/go/must"
 	"github.com/replicate/go/uuid"
 
 	"gopkg.in/yaml.v3"
 )
 
+var logger = logging.New("cog-util")
+
+type Build struct {
+	GPU        bool `yaml:"gpu"`
+	Fast       bool `yaml:"fast"`
+	CogRuntime bool `yaml:"cog_runtime"`
+}
+
 type Concurrency struct {
 	Max int `yaml:"max"`
 }
 
 type CogYaml struct {
+	Build       Build       `yaml:"build"`
 	Concurrency Concurrency `yaml:"concurrency"`
 	Predict     string      `yaml:"predict"`
 }
