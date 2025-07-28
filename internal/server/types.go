@@ -1,9 +1,5 @@
 package server
 
-import (
-	"syscall"
-)
-
 type Status int
 
 const (
@@ -38,10 +34,6 @@ const (
 	SetupSucceeded SetupStatus = "succeeded"
 	SetupFailed    SetupStatus = "failed"
 )
-
-const SigOutput = syscall.SIGHUP
-const SigReady = syscall.SIGUSR1
-const SigBusy = syscall.SIGUSR2
 
 type Config struct {
 	UseProcedureMode      bool
