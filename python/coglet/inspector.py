@@ -3,6 +3,7 @@ import inspect
 import re
 import typing
 import warnings
+from enum import Enum
 from types import ModuleType
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Type
 
@@ -104,9 +105,15 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
         assert cog_in.min_length is None and cog_in.max_length is None, (
             f'choices and min_length/max_length are mutually exclusive: {in_repr}'
         )
-        assert all(
-            adt.PrimitiveType.from_type(type(x)) is cog_t for x in cog_in.choices
-        ), f'not all choices have the same type as input: {in_repr}'
+        # Normalize x: str=Input(choices=[enum_t.A, enum_t.B, ...]) before checking types
+        choices = []
+        for c in cog_in.choices:
+            if isinstance(c, Enum):
+                c = cog_t.normalize(c)
+            choices.append(c)
+        assert all(adt.PrimitiveType.from_type(type(x)) is cog_t for x in choices), (
+            f'not all choices have the same type as input: {in_repr}'
+        )
 
 
 def _input_adt(
@@ -122,6 +129,11 @@ def _input_adt(
     else:
         _validate_input(name, ft, cog_in)
         default = None if cog_in.default is None else ft.normalize(cog_in.default)
+        choices = (
+            None
+            if cog_in.choices is None
+            else [ft.primitive.normalize(c) for c in cog_in.choices]
+        )
         return adt.Input(
             name=name,
             order=order,
@@ -133,7 +145,7 @@ def _input_adt(
             min_length=cog_in.min_length,
             max_length=cog_in.max_length,
             regex=cog_in.regex,
-            choices=cog_in.choices,
+            choices=choices,
             deprecated=cog_in.deprecated,
         )
 

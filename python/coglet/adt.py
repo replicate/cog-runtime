@@ -81,15 +81,21 @@ class PrimitiveType(Enum):
 
     def normalize(self, value: Any) -> Any:
         pt = PrimitiveType._python_type()[self]
+        tpe = type(value)
         if self is PrimitiveType.CUSTOM:
             # Custom type, leave as is
             return value
         elif self in {self.PATH, self.SECRET}:
             # String-ly types, only upcast
-            return value if type(value) is pt else pt(value)
+            return value if tpe is pt else pt(value)
         else:
+            if issubclass(tpe, Enum):
+                assert issubclass(tpe, pt), (
+                    f'enum {tpe.__name__} is used as {pt.__name__} but does not extend it'
+                )
+                value = value.value
             v = pt(value)
-            assert v == value, f'failed to normalize value {value} as {pt}'
+            assert v == value, f'failed to normalize value {value} as {pt.__name__}'
             return v
 
     def python_type(self) -> str:
