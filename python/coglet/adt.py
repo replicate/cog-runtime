@@ -88,6 +88,8 @@ class PrimitiveType(Enum):
             # String-ly types, only upcast
             return value if type(value) is pt else pt(value)
         else:
+            if issubclass(type(value), Enum):
+                value = value.value
             v = pt(value)
             assert v == value, f'failed to normalize value {value} as {pt}'
             return v
