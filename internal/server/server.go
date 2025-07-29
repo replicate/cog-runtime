@@ -338,17 +338,13 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	}
 	uid := BaseUID + slot
 	if h.setUID {
-		// PrepareProcedureSourceURL creates new directories but symlink files
-		// Change owner of directories only so they are writable
-		// But keep root as owner of symlinks so they are read-only
+		// PrepareProcedureSourceURL copies all directories and files
+		// Change ownership to unprivileged user
 		err = filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if d.IsDir() {
-				return os.Lchown(path, uid, NoGroupGID)
-			}
-			return nil
+			return os.Lchown(path, uid, NoGroupGID)
 		})
 		if err != nil {
 			return nil, err

@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 )
 
-func copyRecursiveSymlink(srcRoot, dstRoot string) error {
+func copyRecursive(srcRoot, dstRoot string) error {
 	return filepath.WalkDir(srcRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -25,13 +25,22 @@ func copyRecursiveSymlink(srcRoot, dstRoot string) error {
 
 		dstPath := filepath.Join(dstRoot, relPath)
 
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
 		if d.IsDir() {
 			if path != srcRoot {
-				return os.MkdirAll(dstPath, 0o755)
+				return os.MkdirAll(dstPath, info.Mode())
 			}
 			return nil
 		}
-		return os.Symlink(path, dstPath)
+		bs, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(dstPath, bs, info.Mode())
 	})
 }
 
@@ -63,7 +72,7 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		err = copyRecursiveSymlink(u.Path, dstDir)
+		err = copyRecursive(u.Path, dstDir)
 		if err != nil {
 			return "", err
 		}
