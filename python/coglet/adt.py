@@ -109,7 +109,7 @@ class PrimitiveType(Enum):
         if self is self.FLOAT:
             return float(value)
         elif self in {self.PATH, self.SECRET}:
-            # Leave these as is and let file runner handle special encoding
+            # Leave these as is and let the file runner handle special encoding
             return value
         else:
             return value
@@ -131,7 +131,7 @@ class FieldType:
     def from_type(tpe: type):
         if typing.get_origin(tpe) is list:
             t_args = typing.get_args(tpe)
-            assert len(t_args) == 1, 'list must have one type argument'
+            assert len(t_args) == 1, 'List must have one type argument'
             elem_t = t_args[0]
             # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
             nested_t = typing.get_origin(elem_t)
