@@ -1,6 +1,7 @@
 import os
+import tempfile
 
-from cog import BasePredictor, Path
+from cog import BasePredictor
 
 
 class MyPath(os.PathLike):
@@ -16,17 +17,10 @@ class MyPath(os.PathLike):
         return f'MyPath({self._path!r})'
 
 
-FIXTURE = [
-    ({'x': 'foo.txt'}, Path('/tmp/foo.txt')),
-    ({'x': Path('bar.txt')}, Path('/tmp/bar.txt')),
-]
-
-
 class Predictor(BasePredictor):
-    setup_done = False
+    test_inputs = {'s': 'hello'}
 
-    def setup(self) -> None:
-        self.setup_done = True
-
-    def predict(self, x: Path) -> MyPath:
-        return MyPath(f'/tmp/{x}')
+    def predict(self, s: str) -> MyPath:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(f'*{s}*')
+        return MyPath(f.name)
