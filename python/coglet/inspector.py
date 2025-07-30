@@ -120,7 +120,10 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
 def _input_adt(
     order: int, name: str, tpe: type, cog_in: Optional[api.Input]
 ) -> adt.Input:
-    ft = adt.FieldType.from_type(tpe)
+    try:
+        ft = adt.FieldType.from_type(tpe)
+    except AssertionError as e:
+        raise AssertionError(f'invalid input field {name}: {e}')
     if cog_in is None:
         return adt.Input(
             name=name,

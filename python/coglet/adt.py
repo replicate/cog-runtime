@@ -142,7 +142,9 @@ class FieldType:
             elem_t = t_args[0]
             # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
             nested_t = typing.get_origin(elem_t)
-            assert nested_t is None, f'List cannot have nested type {type_name(nested_t)}'
+            assert nested_t is None, (
+                f'List cannot have nested type {type_name(nested_t)}'
+            )
             repetition = Repetition.REPEATED
         elif _is_union(tpe):
             t_args = typing.get_args(tpe)
@@ -152,7 +154,9 @@ class FieldType:
             elem_t = t_args[0] if t_args[1] is type(None) else t_args[1]
             # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
             nested_t = typing.get_origin(elem_t)
-            assert nested_t is None, f'Optional cannot have nested type {type_name(nested_t)}'
+            assert nested_t is None, (
+                f'Optional cannot have nested type {type_name(nested_t)}'
+            )
             repetition = Repetition.OPTIONAL
         else:
             elem_t = tpe
@@ -161,7 +165,7 @@ class FieldType:
         coder = None
         if cog_t is PrimitiveType.CUSTOM:
             coder = api.Coder.lookup(elem_t)
-            assert coder is not None, f'unsupported Cog type {elem_t}'
+            assert coder is not None, f'unsupported Cog type {type_name(elem_t)}'
 
         return FieldType(primitive=cog_t, repetition=repetition, coder=coder)
 
