@@ -34,3 +34,10 @@ def schema_json(obj):
         return str(obj)
     else:
         raise TypeError(f'Object of type {tpe} is not JSON serializable')
+
+
+def type_name(tpe) -> str:
+    try:
+        return tpe.__name__
+    except AttributeError:
+        return str(tpe)

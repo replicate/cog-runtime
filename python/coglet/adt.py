@@ -8,6 +8,7 @@ from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from coglet import api
+from coglet.util import type_name
 
 
 def _is_union(tpe: type) -> bool:
@@ -91,15 +92,15 @@ class PrimitiveType(Enum):
         else:
             if issubclass(tpe, Enum):
                 assert issubclass(tpe, pt), (
-                    f'enum {tpe.__name__} is used as {pt.__name__} but does not extend it'
+                    f'enum {type_name(tpe)} is used as {type_name(pt)} but does not extend it'
                 )
                 value = value.value
             v = pt(value)
-            assert v == value, f'failed to normalize value {value} as {pt.__name__}'
+            assert v == value, f'failed to normalize value {value} as {type_name(pt)}'
             return v
 
     def python_type(self) -> str:
-        return PrimitiveType._python_type()[self].__name__
+        return type_name(PrimitiveType._python_type()[self])
 
     def json_type(self) -> dict[str, Any]:
         jt: dict[str, Any] = {'type': self._json_type()[self]}
@@ -141,7 +142,7 @@ class FieldType:
             elem_t = t_args[0]
             # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
             nested_t = typing.get_origin(elem_t)
-            assert nested_t is None, f'List cannot have nested type {nested_t}'
+            assert nested_t is None, f'List cannot have nested type {type_name(nested_t)}'
             repetition = Repetition.REPEATED
         elif _is_union(tpe):
             t_args = typing.get_args(tpe)
@@ -151,7 +152,7 @@ class FieldType:
             elem_t = t_args[0] if t_args[1] is type(None) else t_args[1]
             # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
             nested_t = typing.get_origin(elem_t)
-            assert nested_t is None, f'Optional cannot have nested type {nested_t}'
+            assert nested_t is None, f'Optional cannot have nested type {type_name(nested_t)}'
             repetition = Repetition.OPTIONAL
         else:
             elem_t = tpe
@@ -324,7 +325,7 @@ class Output:
         if self.kind is Kind.OBJECT:
             # Further expand Output into dict
             tpe = type(o)
-            assert tpe.__name__ == 'Output' and any(
+            assert type_name(tpe) == 'Output' and any(
                 c is api.BaseModel for c in inspect.getmro(tpe)
             )
             r = {}
