@@ -8,6 +8,7 @@ from types import ModuleType
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Type
 
 from coglet import adt, api, asts
+from coglet.util import type_name
 
 
 def _check_parent(child: type, parent: type) -> bool:
@@ -176,8 +177,8 @@ def _output_adt(tpe: type) -> adt.Output:
         )
         return adt.Output(kind=adt.Kind.SINGLE, type=_any_type)  # type: ignore
     if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
-        assert tpe.__name__ == 'Output', (
-            f'output type must be named Output: {tpe.__name__}'
+        assert type_name(tpe) == 'Output', (
+            f'output type must be named Output: {type_name(tpe)}'
         )
         fields = {}
         for name, t in tpe.__annotations__.items():
@@ -205,7 +206,7 @@ def _output_adt(tpe: type) -> adt.Output:
         ft = adt.FieldType.from_type(t_args[0])
         assert ft.repetition is adt.Repetition.REQUIRED
         assert ft.primitive is adt.PrimitiveType.STRING, (
-            f'{tpe.__name__} must have str element'
+            f'{type_name(tpe)} must have str element'
         )
     else:
         ft = adt.FieldType.from_type(tpe)
