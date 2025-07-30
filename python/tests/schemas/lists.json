@@ -328,27 +328,40 @@
       "PredictionRequest": {
         "properties": {
           "input": {
-            "$ref": "#/components/schemas/Input"
+            "$ref": "#/components/schemas/Input",
+            "nullable": true
           },
           "id": {
             "title": "Id",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "created_at": {
             "title": "Created At",
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": true
+          },
+          "context": {
+            "title": "Context",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "nullable": true
           },
           "output_file_prefix": {
             "title": "Output File Prefix",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "webhook": {
             "title": "Webhook",
             "type": "string",
             "maxLength": 65536,
             "minLength": 1,
-            "format": "uri"
+            "format": "uri",
+            "nullable": true
           },
           "webhook_events_filter": {
             "default": [
@@ -360,7 +373,8 @@
             "items": {
               "$ref": "#/components/schemas/WebhookEvent"
             },
-            "type": "array"
+            "type": "array",
+            "nullable": true
           }
         },
         "type": "object",
@@ -369,33 +383,39 @@
       "PredictionResponse": {
         "properties": {
           "input": {
-            "$ref": "#/components/schemas/Input"
+            "$ref": "#/components/schemas/Input",
+            "nullable": true
           },
           "output": {
             "$ref": "#/components/schemas/Output"
           },
           "id": {
             "title": "Id",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "version": {
             "title": "Version",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "created_at": {
             "title": "Created At",
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": true
           },
           "started_at": {
             "title": "Started At",
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": true
           },
           "completed_at": {
             "title": "Completed At",
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "nullable": true
           },
           "logs": {
             "type": "string",
@@ -404,14 +424,18 @@
           },
           "error": {
             "title": "Error",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "status": {
-            "$ref": "#/components/schemas/Status"
+            "$ref": "#/components/schemas/Status",
+            "nullable": true
           },
           "metrics": {
             "title": "Metrics",
-            "type": "object"
+            "additionalProperties": true,
+            "type": "object",
+            "nullable": true
           }
         },
         "type": "object",

@@ -65,6 +65,15 @@ func TestPathOutOutput(t *testing.T) {
 	testPathOut(t, "path_out_output", true)
 }
 
+func TestPathOutPathLike(t *testing.T) {
+	// Compat: legacy Cog does not support PathLike
+	if *legacyCog {
+		t.SkipNow()
+	}
+	// Output type is os.PathLike
+	testPathOut(t, "path_out_pathlike", false)
+}
+
 func TestPathOutPydantic(t *testing.T) {
 	// Output type is a Pydantic base model
 	testPathOut(t, "path_out_pydantic", true)
