@@ -39,6 +39,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
+      - run: env
+      - run: whoami
+      - run: id -u
+      - run: id -g
       - run: ./script/init.sh
       - run: ./script/test.sh go
 
