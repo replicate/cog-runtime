@@ -1,11 +1,13 @@
 import os
 import tempfile
 
+from cog import Path
+
 BASE_UID = 9000
 NOGROUP_GID = 65534
 
 
-def predict(s: str) -> str:
+def predict(p: Path) -> Path:
     uid = os.getuid()
     gid = os.getgid()
     print(f'UID={uid}')
@@ -13,9 +15,8 @@ def predict(s: str) -> str:
     assert uid >= BASE_UID
     assert gid == NOGROUP_GID
 
-    # CWD is a "copy" of the procedure source
-    # where directories are created with UID/GID
-    # while files are symlinked
+    # CWD is a copy of the procedure source
+    # where all directories and files are owned by UID/GID
     cwd = os.getcwd()
     print(f'CWD={cwd}')
     stat = os.stat(cwd)
@@ -38,4 +39,8 @@ def predict(s: str) -> str:
         print(f'writing to file: {f.name}')
         f.write('out')
 
-    return s
+    with p.open() as fin:
+        with open('out.txt', 'w') as fout:
+            fout.write(fin.read())
+
+    return Path('out.txt')
