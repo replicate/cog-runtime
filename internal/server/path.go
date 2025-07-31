@@ -141,6 +141,7 @@ func base64ToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
+	os.Chmod(f.Name(), 0o666)
 	return f.Name(), nil
 }
 
@@ -166,6 +167,7 @@ func urlToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
+	os.Chmod(f.Name(), 0o666)
 	return f.Name(), nil
 }
 

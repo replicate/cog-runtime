@@ -36,7 +36,7 @@ resp="$(mktemp)"
 trap 'rm $resp; docker stop $name' EXIT
 curl -fsSL -X POST \
     -H 'Content-Type: application/json' \
-    --data '{"context":{"procedure_source_url": "file:///procedures/setuid", "replicate_api_token": "token"}, "input":{"s":"hello"}}' \
+    --data '{"context":{"procedure_source_url": "file:///procedures/setuid", "replicate_api_token": "token"}, "input":{"p":"https://raw.githubusercontent.com/replicate/cog-runtime/refs/heads/main/.python-version"}}' \
     "http://localhost:$port/procedures" > "$resp"
 
 status="$(jq --raw-output '.status' < "$resp")"
