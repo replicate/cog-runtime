@@ -136,20 +136,24 @@ func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	if bs, err := json.Marshal(h.healthCheck()); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	hc, err := h.healthCheck()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
-		w.WriteHeader(http.StatusOK)
-		writeBytes(w, bs)
+		json.NewEncoder(w).Encode(hc)
 	}
 }
 
-func (h *Handler) healthCheck() *HealthCheck {
+func (h *Handler) healthCheck() (*HealthCheck, error) {
 	// FIXME: remove ready/busy IPC
 	// Use Go runner as source of truth for readiness and concurrency
 	log := logger.Sugar()
 	var hc HealthCheck
 	if h.cfg.UseProcedureMode {
+		if err := writeReadyFile(); err != nil {
+			log.Errorw("failed to write ready file", "error", err)
+			return nil, err
+		}
 		hc = HealthCheck{
 			Setup: &SetupResult{
 				StartedAt:   util.FormatTime(h.startedAt),
@@ -193,7 +197,7 @@ func (h *Handler) healthCheck() *HealthCheck {
 			Concurrency: h.runners[DefaultRunner].Concurrency(),
 		}
 	}
-	return &hc
+	return &hc, nil
 }
 
 func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +469,8 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.UseProcedureMode {
 		// Although individual runners may have higher concurrency than the global max runners/concurrency
 		// We still bail early if the global max has been reached
-		concurrency := h.healthCheck().Concurrency
+		hc, _ := h.healthCheck()
+		concurrency := hc.Concurrency
 		if concurrency.Current == concurrency.Max {
 			http.Error(w, ErrConflict.Error(), http.StatusConflict)
 			return
@@ -577,4 +582,25 @@ func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	http.Error(w, "not found", http.StatusNotFound)
+}
+
+// writeReadyFile writes /var/run/cog/ready for the K8S pod readiness probe
+// https://github.com/replicate/cog/blob/main/python/cog/server/probes.py
+func writeReadyFile() error {
+	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+		return nil
+	}
+	dir := "/var/run/cog"
+	file := path.Join(dir, "ready")
+
+	if _, err := os.Stat(file); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(file, nil, 0o600); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
