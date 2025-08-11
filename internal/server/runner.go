@@ -390,22 +390,6 @@ func (r *Runner) wait() {
 	close(r.stopped)
 }
 
-// Compat: signal for K8S pod readiness probe
-// https://github.com/replicate/cog/blob/main/python/cog/server/probes.py
-func (r *Runner) handleReadinessProbe() error {
-	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
-		return nil
-	}
-	dir := "/var/run/cog"
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	if err := os.WriteFile(path.Join(dir, "ready"), nil, 0o600); err != nil {
-		return err
-	}
-	return nil
-}
-
 ////////////////////
 // IO handling
 
@@ -422,7 +406,7 @@ func (r *Runner) HandleIPC(s IPCStatus) {
 				log.Warnw("max concurrency > 1 for blocking predict, reset to 1", "max_concurrency", r.maxConcurrency)
 				r.maxConcurrency = 1
 			}
-			if err := r.handleReadinessProbe(); err != nil {
+			if err := writeReadyFile(); err != nil {
 				log.Errorw("fail to write ready file", "error", err)
 			}
 		}
