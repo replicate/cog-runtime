@@ -266,9 +266,12 @@ def check_input(
 ) -> Dict[str, Any]:
     kwargs: Dict[str, Any] = {}
     for name, value in inputs.items():
-        assert name in adt_ins, f'unknown input field: {name}'
-        adt_in = adt_ins[name]
-        kwargs[name] = adt_in.type.normalize(value)
+        # assert name in adt_ins, f'unknown input field: {name}'
+        adt_in = adt_ins.get(name)
+        if adt_in is None:
+            print(f'WARNING unknown input field ignored: {name}')
+        else:
+            kwargs[name] = adt_in.type.normalize(value)
     for name, adt_in in adt_ins.items():
         if name not in kwargs:
             # default=None is only allowed on `Optional[<type>]`
