@@ -206,6 +206,9 @@ class FileRunner:
 
             req_in = req['input']
             for k, v in req_in.items():
+                # ignore unknown input fields, let runner check for them and print warning
+                if k not in self.runner.inputs:
+                    continue
                 req_in[k] = self.runner.inputs[k].type.json_decode(v)
 
             if self.runner.is_iter():

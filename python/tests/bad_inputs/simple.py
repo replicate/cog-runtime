@@ -16,7 +16,9 @@ BAD_INPUTS = [
         {'i': 0, 's': 'foo'},
         'missing required input field: xs',
     ),
-    ({'x': 0}, 'unknown input field: x'),
+    # Allow unknown inputs for backwards compatibility
+    # Print a warning instead as part of logs
+    # ({'x': 0}, 'unknown input field: x'),
 ]
 
 
