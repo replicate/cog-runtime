@@ -350,6 +350,19 @@ def create_predictor(
     module_name: str, predictor_name: str, inspect_ast: bool = False
 ) -> adt.Predictor:
     module = importlib.import_module(module_name)
+
+    # "from __future__ import annotations" turns all type annotations from actual types to strings
+    # and break all inspection logic
+    import __future__
+
+    if (
+        hasattr(module, 'annotations')
+        and getattr(module, 'annotations') == __future__.annotations
+    ):
+        raise AssertionError(
+            'predictor with "from __future__ import annotations" is not supported'
+        )
+
     fullname = f'{module_name}.{predictor_name}'
     assert hasattr(module, predictor_name), f'predictor not found: {fullname}'
     p = getattr(module, predictor_name)
