@@ -8,6 +8,8 @@ import (
 	"strconv"
 
 	"github.com/replicate/go/must"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var (
@@ -57,6 +59,6 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 
 	return &http.Server{
 		Addr:    addr,
-		Handler: serveMux,
+		Handler: otelhttp.NewHandler(serveMux, "server"),
 	}
 }
