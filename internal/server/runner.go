@@ -529,11 +529,12 @@ func (r *Runner) handleResponses() {
 		} else {
 			pr.response.Output = output
 		}
-		for _, p := range paths {
-			if err := os.Remove(p); err != nil {
-				log.Errorw("failed to delete output file", "path", p, "error", err)
-			}
-		}
+		// Some models return a hard-coded baked-in file, do not delete them
+		// for _, p := range paths {
+		// 	if err := os.Remove(p); err != nil {
+		// 		log.Errorw("failed to delete output file", "path", p, "error", err)
+		// 	}
+		// }
 		pr.mu.Unlock()
 
 		if pr.response.Status == PredictionStarting {
