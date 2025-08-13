@@ -10,9 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUIDMinimum(t *testing.T) {
+	counter := newUIDCounter()
+	assert.Equal(t, counter.Load(), BaseUID)
+}
+
 func TestUID(t *testing.T) {
 	t.Run("AllocationThreadSafety", func(t *testing.T) {
-		resetUIDCounter()
+		uidCounter := uidCounter{}
 
 		const numGoroutines = 10
 		const uidsPerGoroutine = 5
@@ -25,7 +30,7 @@ func TestUID(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for range uidsPerGoroutine {
-					uid, err := allocateUID()
+					uid, err := uidCounter.allocate()
 					if err != nil {
 						t.Errorf("allocateUID failed: %v", err)
 						return
@@ -58,17 +63,16 @@ func TestUID(t *testing.T) {
 	})
 
 	t.Run("SequentialAllocation", func(t *testing.T) {
-		resetUIDCounter()
-
-		firstUID, err := allocateUID()
+		uidCounter := uidCounter{}
+		firstUID, err := uidCounter.allocate()
 		require.NoError(t, err, "allocateUID should not error")
 		assert.Equal(t, BaseUID, firstUID, "First UID should be BaseUID")
 
-		secondUID, err := allocateUID()
+		secondUID, err := uidCounter.allocate()
 		require.NoError(t, err, "allocateUID should not error")
 		assert.Equal(t, BaseUID+1, secondUID, "Second UID should be BaseUID+1")
 
-		thirdUID, err := allocateUID()
+		thirdUID, err := uidCounter.allocate()
 		require.NoError(t, err, "allocateUID should not error")
 		assert.Equal(t, BaseUID+2, thirdUID, "Third UID should be BaseUID+2")
 	})
@@ -78,10 +82,10 @@ func TestUID(t *testing.T) {
 		// This is hard to test in practice since UIDs 9000+ are usually available
 		// But this documents the expected error behavior
 
-		resetUIDCounter()
+		uidCounter := uidCounter{}
 
 		// Normal allocation should work
-		uid, err := allocateUID()
+		uid, err := uidCounter.allocate()
 		require.NoError(t, err, "Normal allocation should succeed")
 		assert.GreaterOrEqual(t, uid, BaseUID, "UID should be >= BaseUID")
 	})
