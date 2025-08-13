@@ -25,9 +25,30 @@ def run(subcmd: str, args: List[str]) -> None:
     cmd = f'cog-{goos}-{goarch}'
     exe = os.path.join(Path(__file__).parent.parent, cmd)
     args = [exe, subcmd] + args
+
+    env = os.environ.copy()
+
     # Replicate Go logger logs to stdout in production mode
     # Use stderr instead to be consistent with legacy Cog
-    env = os.environ.copy()
     if 'LOG_FILE' not in env:
         env['LOG_FILE'] = 'stderr'
+
+    # NOTE: Secrets are explicitly *not* expected in the default environment and are
+    # instead loaded from an 'envdir'-style path so that there is slightly less risk of
+    # accidental secrets leakage into child processes. This loading process must take
+    # place here in the wrapper level because there are `go` libraries that expect to take
+    # action based on the environment at process load time.
+    secrets_env_path = env.get('COG_RUNTIME_SECRETS_ENV')
+    if secrets_env_path is not None:
+        env |= load_envdir(secrets_env_path)
+
     os.execve(exe, args, env)
+
+
+def load_envdir(env_path: str) -> dict[str, str]:
+    """This is a mini / more brittle version of https://github.com/jezdez/envdir"""
+    return {
+        str(e.name).strip(): str(e.read_text(encoding='utf-8', errors='ignore')).strip()
+        for e in Path(env_path).absolute().glob("*")
+        if e.is_file() or e.is_symlink()
+    }
