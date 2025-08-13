@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,8 +33,13 @@ var (
 	_, b, _, _ = runtime.Caller(0)
 	basePath   = path.Dir(path.Dir(path.Dir(b)))
 	logger     = logging.New("cog-test")
-	legacyCog  = flag.Bool("legacy-cog", false, "Test with legacy Cog")
+	legacyCog  *bool
 )
+
+func init() {
+	isLegacy, _ := strconv.ParseBool(os.Getenv("LEGACY_COG"))
+	legacyCog = &isLegacy
+}
 
 type WebhookRequest struct {
 	Method   string
