@@ -53,7 +53,9 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
       - run: ./script/init.sh
-      - run: ./script/test.sh go -legacy-cog
+      - run: ./script/test.sh go
+        env:
+          LEGACY_COG: true
 
   test-set-uid:
     name: Test Set UID for procedure mode
