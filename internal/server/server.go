@@ -499,7 +499,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		}
 		c, err = h.predictWithRunner(r.Context(), procedureSourceUrl, req)
 	} else {
-		c, err = h.runners[DefaultRunner].Predict(req)
+		c, err = h.runners[DefaultRunner].Predict(r.Context(), req)
 	}
 
 	if errors.Is(err, ErrConflict) {
