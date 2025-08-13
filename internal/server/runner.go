@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/replicate/go/must"
 
@@ -197,24 +199,35 @@ func (r *Runner) Idle() bool {
 ////////////////////
 // Prediction
 
-func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error) {
+func (r *Runner) Predict(ctx context.Context, req PredictionRequest) (chan PredictionResponse, error) {
+	ctx, span := tracer.Start(ctx, "server.Runner.Predict")
+	defer span.End()
+
 	log := logger.Sugar()
 	if r.status == StatusSetupFailed {
 		log.Errorw("prediction rejected: setup failed")
+		span.SetStatus(codes.Error, "setup failed")
+		span.RecordError(ErrSetupFailed)
 		return nil, ErrSetupFailed
 	} else if r.status == StatusDefunct {
 		log.Errorw("prediction rejected: server is defunct")
+		span.SetStatus(codes.Error, "server is defunct")
+		span.RecordError(ErrDefunct)
 		return nil, ErrDefunct
 	}
 	r.mu.Lock()
 	if len(r.pending) >= r.maxConcurrency {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: Already running a prediction")
+		span.SetStatus(codes.Error, "already running a prediction")
+		span.RecordError(ErrConflict)
 		return nil, ErrConflict
 	}
 	if _, ok := r.pending[req.Id]; ok {
 		r.mu.Unlock()
 		log.Errorw("prediction rejected: prediction exists", "id", req.Id)
+		span.SetStatus(codes.Error, "prediction exists")
+		span.RecordError(ErrExists)
 		return nil, ErrExists
 	}
 	r.mu.Unlock()
@@ -231,16 +244,22 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	inputPaths := make([]string, 0)
 	input, err := handleInputPaths(req.Input, r.doc, &inputPaths, base64ToInput)
 	if err != nil {
+		span.SetStatus(codes.Error, "failed to handle base64 inputs")
+		span.RecordError(err)
 		return nil, err
 	}
 	input, err = handleInputPaths(req.Input, r.doc, &inputPaths, urlToInput)
 	if err != nil {
+		span.SetStatus(codes.Error, "failed to handle url inputs")
+		span.RecordError(err)
 		return nil, err
 	}
 	req.Input = input
 
 	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
 	if err := os.WriteFile(reqPath, must.Get(json.Marshal(req)), 0644); err != nil {
+		span.SetStatus(codes.Error, "failed to write request json")
+		span.RecordError(err)
 		return nil, err
 	}
 	resp := PredictionResponse{

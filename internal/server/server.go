@@ -15,6 +15,7 @@ import (
 	"strconv"
 
 	"github.com/replicate/go/must"
+	"github.com/replicate/go/telemetry"
 
 	"golang.org/x/sync/errgroup"
 
@@ -28,7 +29,10 @@ import (
 	"github.com/replicate/go/logging"
 )
 
-var logger = logging.New("cog-http-server")
+var (
+	logger = logging.New("cog-http-server")
+	tracer = telemetry.Tracer("cog-runtime", "server")
+)
 
 //go:embed openapi-procedure.json
 var procedureSchema string
@@ -279,7 +283,7 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan PredictionResponse, error) {
+func (h *Handler) predictWithRunner(ctx context.Context, srcURL string, req PredictionRequest) (chan PredictionResponse, error) {
 	log := logger.Sugar()
 
 	// Lock before checking to avoid thrashing runner replacements
@@ -293,7 +297,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		name := fmt.Sprintf("%02d:%s", i, srcURL)
 		runner, ok := h.runners[name]
 		if ok && runner.Concurrency().Current < runner.Concurrency().Max {
-			return runner.Predict(req)
+			return runner.Predict(ctx, req)
 		}
 	}
 
@@ -432,7 +436,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 
 	}
 	h.runners[name] = r
-	return r.Predict(req)
+	return r.Predict(ctx, req)
 }
 
 func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
@@ -493,7 +497,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "empty procedure_source_url or replicate_api_token", http.StatusBadRequest)
 			return
 		}
-		c, err = h.predictWithRunner(procedureSourceUrl, req)
+		c, err = h.predictWithRunner(r.Context(), procedureSourceUrl, req)
 	} else {
 		c, err = h.runners[DefaultRunner].Predict(req)
 	}
