@@ -151,7 +151,7 @@ func (r *Runner) Start() error {
 func (r *Runner) Stop() error {
 	log := logger.Sugar()
 	log.Infow("stop requested")
-	
+
 	// Clean up temp directory if it exists
 	if r.tmpDir != "" {
 		log.Infow("cleaning up temp directory", "tmpDir", r.tmpDir)
@@ -159,7 +159,7 @@ func (r *Runner) Stop() error {
 			log.Errorw("failed to clean up temp directory", "tmpDir", r.tmpDir, "error", err)
 		}
 	}
-	
+
 	if r.cmd.ProcessState != nil {
 		// Python process already exited
 		// Shutdown HTTP server

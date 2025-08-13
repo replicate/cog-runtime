@@ -77,9 +77,9 @@ func TestUID(t *testing.T) {
 		// Test that allocateUID returns proper error when it fails
 		// This is hard to test in practice since UIDs 9000+ are usually available
 		// But this documents the expected error behavior
-		
+
 		resetUIDCounter()
-		
+
 		// Normal allocation should work
 		uid, err := allocateUID()
 		require.NoError(t, err, "Normal allocation should succeed")
@@ -103,7 +103,7 @@ func TestTempDirectoryCleanup(t *testing.T) {
 
 		_, err = os.Stat(tmpDir)
 		assert.False(t, os.IsNotExist(err), "Temp directory should exist before cleanup")
-		
+
 		_, err = os.Stat(testFile)
 		assert.False(t, os.IsNotExist(err), "Test file should exist before cleanup")
 
