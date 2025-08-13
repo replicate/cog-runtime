@@ -1,7 +1,6 @@
 package server
 
 import (
-	"math"
 	"os"
 	"sync"
 	"testing"
@@ -12,15 +11,15 @@ import (
 )
 
 func TestUIDMinimum(t *testing.T) {
-	counter := newUIDCounter()
+	counter := &uidCounter{}
 	uid, err := counter.allocate()
 	require.NoError(t, err, "allocateUID should not error")
 	assert.Equal(t, BaseUID, uid)
 }
 
 func TestUIDWrapAround(t *testing.T) {
-	counter := newUIDCounter()
-	counter.Store(math.MaxUint32)
+	counter := &uidCounter{}
+	counter.uid = MaxUID
 	uid, err := counter.allocate()
 	require.NoError(t, err, "allocateUID should not error")
 	assert.Equal(t, BaseUID, uid)
@@ -28,7 +27,7 @@ func TestUIDWrapAround(t *testing.T) {
 
 func TestUID(t *testing.T) {
 	t.Run("AllocationThreadSafety", func(t *testing.T) {
-		uidCounter := newUIDCounter()
+		uidCounter := &uidCounter{}
 
 		const numGoroutines = 10
 		const uidsPerGoroutine = 5
@@ -74,7 +73,7 @@ func TestUID(t *testing.T) {
 	})
 
 	t.Run("SequentialAllocation", func(t *testing.T) {
-		uidCounter := newUIDCounter()
+		uidCounter := &uidCounter{}
 		firstUID, err := uidCounter.allocate()
 		require.NoError(t, err, "allocateUID should not error")
 		assert.Equal(t, BaseUID, firstUID, "First UID should be BaseUID")
@@ -93,7 +92,7 @@ func TestUID(t *testing.T) {
 		// This is hard to test in practice since UIDs 9000+ are usually available
 		// But this documents the expected error behavior
 
-		uidCounter := newUIDCounter()
+		uidCounter := &uidCounter{}
 
 		// Normal allocation should work
 		uid, err := uidCounter.allocate()
