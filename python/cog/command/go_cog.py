@@ -49,6 +49,6 @@ def load_envdir(env_path: str) -> dict[str, str]:
     """This is a mini / more brittle version of https://github.com/jezdez/envdir"""
     return {
         str(e.name).strip(): str(e.read_text(encoding='utf-8', errors='ignore')).strip()
-        for e in Path(env_path).absolute().glob("*")
+        for e in Path(env_path).absolute().glob('*')
         if e.is_file() or e.is_symlink()
     }
