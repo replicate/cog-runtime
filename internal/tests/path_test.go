@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/replicate/cog-runtime/internal/server"
-
 	"github.com/stretchr/testify/assert"
+
+	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func b64encode(s string) string {

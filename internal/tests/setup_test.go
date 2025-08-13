@@ -4,11 +4,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/replicate/cog-runtime/internal/server"
-
 	"github.com/replicate/go/must"
-
 	"github.com/stretchr/testify/assert"
+
+	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestSetupSucceeded(t *testing.T) {

@@ -19,14 +19,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/replicate/cog-runtime/internal/util"
-
 	"github.com/replicate/go/logging"
-
 	"github.com/replicate/go/must"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/util"
 )
 
 var (
