@@ -30,7 +30,7 @@ func (u *uidCounter) allocate() (int, error) {
 		nextUID := u.Add(1)
 
 		// Use modulo to loop aroundensure we don't exceed uint32 max
-		uid := int(uint32(nextUID) % math.MaxUint32)
+		uid := min(BaseUID, int(uint32(nextUID) % math.MaxUint32))
 
 		if _, err := user.LookupId(strconv.Itoa(uid)); err != nil {
 			return uid, nil
