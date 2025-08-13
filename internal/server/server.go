@@ -64,7 +64,7 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		shutdown:   shutdown,
 		startedAt:  time.Now(),
 		runners:    make(map[string]*Runner),
-		uidCounter: newUIDCounter(),
+		uidCounter: &uidCounter{},
 	}
 	// GOMAXPROCS is set by automaxprocs in main.go on server startup
 	// Reset Go server to 1 to make room for Python runners
