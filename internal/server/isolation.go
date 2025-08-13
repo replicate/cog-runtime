@@ -2,7 +2,6 @@ package server
 
 import (
 	"errors"
-	"math"
 	"os/user"
 	"strconv"
 	"sync/atomic"
@@ -15,7 +14,7 @@ const (
 )
 
 type uidCounter struct {
-	atomic.Int64
+	atomic.Uint32
 }
 
 func newUIDCounter() *uidCounter {
@@ -28,10 +27,13 @@ func (u *uidCounter) allocate() (int, error) {
 	maxAttempts := 1000
 	for range maxAttempts {
 		nextUID := u.Add(1)
+		if nextUID < BaseUID {
+			// This may cause us to skip some UIDs but that is fine, and it is unlikely to happen
+			// since we would have had to run >4MM iterations of this loop
+			nextUID = u.Add(BaseUID)
+		}
 
-		// Use modulo to loop aroundensure we don't exceed uint32 max
-		uid := min(BaseUID, int(uint32(nextUID) % math.MaxUint32))
-
+		uid := int(nextUID)
 		if _, err := user.LookupId(strconv.Itoa(uid)); err != nil {
 			return uid, nil
 		}
