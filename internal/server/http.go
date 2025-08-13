@@ -48,8 +48,11 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 		serveMux.HandleFunc("/_runners", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			var runners []string
-			for name, _ := range handler.runners {
-				runners = append(runners, name)
+			for _, runner := range handler.runners {
+				if runner == nil {
+					continue
+				}
+				runners = append(runners, runner.name)
 			}
 			must.Get(w.Write(must.Get(json.Marshal(runners))))
 		})

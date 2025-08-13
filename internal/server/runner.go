@@ -91,7 +91,8 @@ type Runner struct {
 	stopped        chan bool
 }
 
-const DefaultRunner = "default"
+const DefaultRunnerId = 0
+const DefaultRunnerName = "default"
 
 func newRunner(name, ipcUrl, uploadUrl string) *Runner {
 	workingDir := must.Get(os.MkdirTemp("", "cog-runner-"))
@@ -116,7 +117,7 @@ func newRunner(name, ipcUrl, uploadUrl string) *Runner {
 }
 
 func NewRunner(ipcUrl, uploadUrl string) *Runner {
-	return newRunner(DefaultRunner, ipcUrl, uploadUrl)
+	return newRunner(DefaultRunnerName, ipcUrl, uploadUrl)
 }
 
 func NewProcedureRunner(ipcUrl, uploadUrl, name, srcDir string) *Runner {
@@ -349,7 +350,7 @@ func (r *Runner) config() {
 
 		// Send metrics for normal single instance runner
 		// Do not send for multi-tenant procedure runners to reduce noise
-		if r.name == DefaultRunner {
+		if r.name == DefaultRunnerName {
 			go util.SendRunnerMetric(*y)
 		}
 	}

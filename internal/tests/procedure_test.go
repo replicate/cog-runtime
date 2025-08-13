@@ -92,12 +92,12 @@ func TestProcedure(t *testing.T) {
 	assert.Equal(t, server.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 2, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + barURL, "00:" + fooURL}, ct.Runners())
+	assert.Equal(t, []string{"00:" + fooURL, "01:" + barURL}, ct.Runners())
 
 	bazURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "baz")
 	badResp1 := procPredictionHTTP(ct, bazURL, "baztok", map[string]any{"i": 1, "s": "bazstr"})
 	assert.Equal(t, http.StatusConflict, badResp1.StatusCode)
-	assert.Equal(t, []string{"00:" + barURL, "00:" + fooURL}, ct.Runners())
+	assert.Equal(t, []string{"00:" + fooURL, "01:" + barURL}, ct.Runners())
 
 	// Wait for 1 slot to free up
 	wg2.Wait()
@@ -105,7 +105,7 @@ func TestProcedure(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 1, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + barURL, "00:" + fooURL}, ct.Runners())
+	assert.Equal(t, []string{"00:" + fooURL, "01:" + barURL}, ct.Runners())
 
 	badURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "bad")
 	badResp2 := procPrediction(ct, badURL, "badtok", map[string]any{"i": 1, "s": "badstr"})
@@ -132,7 +132,7 @@ func TestProcedure(t *testing.T) {
 	assert.Equal(t, server.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 2, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + bazURL, "00:" + fooURL}, ct.Runners())
+	assert.Equal(t, []string{"00:" + fooURL, "01:" + bazURL}, ct.Runners())
 
 	wg1.Wait()
 	wg3.Wait()
@@ -140,7 +140,7 @@ func TestProcedure(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + bazURL, "00:" + fooURL}, ct.Runners())
+	assert.Equal(t, []string{"00:" + fooURL, "01:" + bazURL}, ct.Runners())
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())

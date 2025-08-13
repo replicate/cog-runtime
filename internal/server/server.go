@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -51,7 +52,7 @@ type Handler struct {
 	startedAt  time.Time
 	maxRunners int
 	setUID     bool
-	runners    map[string]*Runner
+	runners    []*Runner
 	mu         sync.Mutex
 
 	uidCounter *uidCounter
@@ -63,7 +64,6 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		cfg:        cfg,
 		shutdown:   shutdown,
 		startedAt:  time.Now(),
-		runners:    make(map[string]*Runner),
 		uidCounter: &uidCounter{},
 	}
 	// GOMAXPROCS is set by automaxprocs in main.go on server startup
@@ -83,6 +83,7 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		// In the worst case scenario where all runners are non-async,
 		// completion of any runner frees up concurrency.
 		h.maxRunners = autoMaxProcs * concurrencyPerCPU
+		h.runners = make([]*Runner, h.maxRunners)
 
 		_, err := os.Stat("/.dockerenv")
 		inDocker := err == nil
@@ -98,15 +99,16 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		}
 		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
 	} else {
-		h.runners[DefaultRunner] = NewRunner(cfg.IPCUrl, cfg.UploadUrl)
-		if err := h.runners[DefaultRunner].Start(); err != nil {
+		h.runners = make([]*Runner, 1)
+		h.runners[DefaultRunnerId] = NewRunner(cfg.IPCUrl, cfg.UploadUrl)
+		if err := h.runners[DefaultRunnerId].Start(); err != nil {
 			return nil, err
 		}
 
 		if !cfg.AwaitExplicitShutdown {
 			go func() {
 				// Shut down as soon as runner exists
-				h.runners[DefaultRunner].WaitForStop()
+				h.runners[DefaultRunnerId].WaitForStop()
 				h.shutdown()
 			}()
 		}
@@ -119,10 +121,10 @@ func (h *Handler) ExitCode() int {
 		// No point aggregating across runners
 		return 0
 	} else {
-		if h.runners[DefaultRunner] == nil {
+		if h.runners[DefaultRunnerId] == nil {
 			return 0
 		}
-		return h.runners[DefaultRunner].ExitCode()
+		return h.runners[DefaultRunnerId].ExitCode()
 	}
 
 }
@@ -163,23 +165,22 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 		}
 		h.mu.Lock()
 		defer h.mu.Unlock()
-		toRemove := make([]string, 0)
-		for name, runner := range h.runners {
+		for i, runner := range h.runners {
+			if runner == nil {
+				continue
+			}
 			if runner.status == StatusDefunct || runner.status == StatusSetupFailed {
-				toRemove = append(toRemove, name)
-				log.Warnw("stopping stale runner", "name", name, "status", runner.status.String())
+				h.runners[i] = nil
+				log.Warnw("stopping stale runner", "name", runner.name, "status", runner.status.String())
 				go func() {
 					if err := runner.Stop(); err != nil {
-						log.Errorw("failed to stop runner", "name", name, "error", err)
+						log.Errorw("failed to stop runner", "name", runner.name, "error", err)
 					}
 				}()
 				continue
 			}
 			// Aggregate current concurrency across workers
 			hc.Concurrency.Current += runner.Concurrency().Current
-		}
-		for _, name := range toRemove {
-			delete(h.runners, name)
 		}
 		if hc.Concurrency.Current < hc.Concurrency.Max {
 			hc.Status = StatusReady.String()
@@ -188,9 +189,9 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 		}
 	} else {
 		hc = HealthCheck{
-			Status:      h.runners[DefaultRunner].status.String(),
-			Setup:       &h.runners[DefaultRunner].setupResult,
-			Concurrency: h.runners[DefaultRunner].Concurrency(),
+			Status:      h.runners[DefaultRunnerId].status.String(),
+			Setup:       &h.runners[DefaultRunnerId].setupResult,
+			Concurrency: h.runners[DefaultRunnerId].Concurrency(),
 		}
 	}
 	return &hc, nil
@@ -203,11 +204,11 @@ func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.runners[DefaultRunner].schema == "" {
+	if h.runners[DefaultRunnerId].schema == "" {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		writeBytes(w, []byte(h.runners[DefaultRunner].schema))
+		writeBytes(w, []byte(h.runners[DefaultRunnerId].schema))
 	}
 }
 
@@ -232,9 +233,12 @@ func (h *Handler) Stop() error {
 	// Stop all runners
 	var err error = nil
 	eg := errgroup.Group{}
-	for name, runner := range h.runners {
+	for _, runner := range h.runners {
+		if runner == nil {
+			continue
+		}
 		if err = runner.Stop(); err != nil {
-			log.Errorw("failed to stop runner", "name", name, "error", err)
+			log.Errorw("failed to stop runner", "name", runner.name, "error", err)
 		}
 		eg.Go(func() error {
 			runner.WaitForStop()
@@ -249,6 +253,18 @@ func (h *Handler) Stop() error {
 	return err
 }
 
+func (h *Handler) findRunnerWithName(name string) *Runner {
+	for _, runner := range h.runners {
+		if runner == nil {
+			continue
+		}
+		if runner.name == name {
+			return runner
+		}
+	}
+	return nil
+}
+
 func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 	log := logger.Sugar()
 	var ipc IPC
@@ -261,11 +277,11 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	name := DefaultRunner
+	name := DefaultRunnerName
 	if h.cfg.UseProcedureMode {
 		name = ipc.Name
 	}
-	if runner, ok := h.runners[name]; ok {
+	if runner := h.findRunnerWithName(name); runner != nil {
 		runner.HandleIPC(ipc.Status)
 	} else if !(h.cfg.UseProcedureMode && ipc.Status == IPCStatusReady) {
 		// This happens for the first ready IPC after procedure setup succeeded and before the runner is registered
@@ -285,54 +301,52 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	// Look for an existing runner copy for source URL in READY state
 	// There might be multiple copies if the # pending predictions > max concurrency of a single runner
 	// For non-async predictors, the same runner might occupy all runner slots
-	for i := 0; i <= h.maxRunners; i++ {
-		name := fmt.Sprintf("%02d:%s", i, srcURL)
-		runner, ok := h.runners[name]
-		if ok && runner.Concurrency().Current < runner.Concurrency().Max {
+	// Also memorize the first vacant index we see in case a new runner is needed
+	runnerIdx := -1
+	for i, runner := range h.runners {
+		if runner == nil {
+			if runnerIdx < 0 {
+				runnerIdx = i
+			}
+			continue
+		}
+		if strings.HasSuffix(runner.name, ":"+srcURL) && runner.Concurrency().Current < runner.Concurrency().Max {
 			return runner.Predict(req)
 		}
 	}
 
-	// Need to evict one
-	if len(h.runners) == h.maxRunners {
-		for name, runner := range h.runners {
+	// No vacancy, need to evict one
+	// FIXME: make this LRU or something more efficient
+	if runnerIdx < 0 {
+		for i, runner := range h.runners {
+			if runner == nil {
+				// Should not happen if no vacancy but anyway
+				continue
+			}
 			if !runner.Idle() {
 				continue
 			}
-			log.Infow("stopping procedure runner", "name", name)
+			log.Infow("stopping procedure runner", "name", runner.name)
 			if err := runner.Stop(); err != nil {
 				log.Errorw("failed to stop runner", "error", err)
-			} else {
-				delete(h.runners, name)
-				break
 			}
+			h.runners[i] = nil
+			runnerIdx = i
+			break
 		}
 	}
+
 	// Failed to evict one, this should not happen
-	if len(h.runners) == h.maxRunners {
+	if runnerIdx == -1 {
 		log.Errorw("failed to find idle runner to evict", "src_url", srcURL)
 		return nil, ErrConflict
 	}
 
-	// Find the first available slot for the new runner copy
-	var name string
-	var slot int
-	for i := 0; i <= h.maxRunners; i++ {
-		n := fmt.Sprintf("%02d:%s", i, srcURL)
-		if _, ok := h.runners[n]; !ok {
-			name = n
-			slot = i
-			break
-		}
-	}
-	// Max out slots, this should not happen
-	if name == "" {
-		log.Errorw("reached max copies of runner", "src_url", srcURL)
-		return nil, ErrConflict
-	}
+	// Name is index + source URL in case multiple instances of the same URL
+	name := fmt.Sprintf("%02d:%s", runnerIdx, srcURL)
 
 	// Start new runner
-	srcDir, err := util.PrepareProcedureSourceURL(srcURL, slot)
+	srcDir, err := util.PrepareProcedureSourceURL(srcURL, runnerIdx)
 	if err != nil {
 		return nil, err
 	}
@@ -402,7 +416,6 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 			break
 		}
 		if time.Since(start) > 10*time.Second {
-			delete(h.runners, name)
 			log.Errorw("stopping procedure runner after time out", "elapsed", time.Since(start))
 			if err := r.Stop(); err != nil {
 				log.Errorw("failed to stop procedure runner", "error", err)
@@ -440,7 +453,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		}
 
 	}
-	h.runners[name] = r
+	h.runners[runnerIdx] = r
 	return r.Predict(req)
 }
 
@@ -504,7 +517,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		}
 		c, err = h.predictWithRunner(procedureSourceUrl, req)
 	} else {
-		c, err = h.runners[DefaultRunner].Predict(req)
+		c, err = h.runners[DefaultRunnerId].Predict(req)
 	}
 
 	if errors.Is(err, ErrConflict) {
