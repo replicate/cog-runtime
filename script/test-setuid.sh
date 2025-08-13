@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# Unit tests
+# Test secure UID handling - verifies processes run with correct UID/GID
+# Tests the hardened implementation where Go sets UID via syscall.Credential
+# instead of Python calling setuid()
 
 set -euo pipefail
 
