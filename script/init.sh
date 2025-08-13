@@ -15,11 +15,3 @@ uv venv --python 3.13 .venv-legacy
 export VIRTUAL_ENV="$base_dir/.venv-legacy"
 export UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV"
 uv pip install cog==0.16.0
-
-# venv with pipelines
-if [ -d ../pipelines-runtime ]; then
-    uv venv --python 3.13 .venv-procedure
-    export VIRTUAL_ENV="$base_dir/.venv-procedure"
-    export UV_PROJECT_ENVIRONMENT="$VIRTUAL_ENV"
-    uv pip install ../pipelines-runtime
-fi

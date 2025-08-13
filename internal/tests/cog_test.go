@@ -185,14 +185,12 @@ func (ct *CogTest) runtimeCmd() *exec.Cmd {
 }
 
 func (ct *CogTest) legacyCmd() *exec.Cmd {
-	var tmpDir string
+	tmpDir := ct.t.TempDir()
 	var pythonBin string
 	if ct.procedure {
 		pythonBin = path.Join(basePath, ".venv-procedure", "bin", "python3")
-		tmpDir = path.Join(basePath, "..", "pipelines-runtime")
 	} else {
 		pythonBin = path.Join(basePath, ".venv-legacy", "bin", "python3")
-		tmpDir = ct.t.TempDir()
 		runnersPath := path.Join(basePath, "python", "tests", "runners")
 		module := fmt.Sprintf("%s.py", ct.module)
 		yamlLines := []string{`predict: "predict.py:Predictor"`}
