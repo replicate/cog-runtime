@@ -12,12 +12,9 @@ import (
 	"time"
 
 	"github.com/replicate/go/httpclient"
-
 	"github.com/replicate/go/logging"
-
 	"github.com/replicate/go/must"
 	"github.com/replicate/go/uuid"
-
 	"gopkg.in/yaml.v3"
 )
 

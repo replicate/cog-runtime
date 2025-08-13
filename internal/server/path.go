@@ -12,11 +12,10 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/replicate/cog-runtime/internal/util"
-
+	"github.com/gabriel-vasile/mimetype"
 	"github.com/getkin/kin-openapi/openapi3"
 
-	"github.com/gabriel-vasile/mimetype"
+	"github.com/replicate/cog-runtime/internal/util"
 )
 
 var Base64Regex = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)

@@ -7,10 +7,9 @@ import (
 	"time"
 
 	"github.com/replicate/go/must"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/replicate/cog-runtime/internal/server"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestPredictionSucceeded(t *testing.T) {

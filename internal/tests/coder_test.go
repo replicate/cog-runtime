@@ -3,9 +3,9 @@ package tests
 import (
 	"testing"
 
-	"github.com/replicate/cog-runtime/internal/server"
-
 	"github.com/stretchr/testify/assert"
+
+	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestPredictionDataclassCoderSucceeded(t *testing.T) {

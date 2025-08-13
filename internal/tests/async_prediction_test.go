@@ -7,11 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/replicate/cog-runtime/internal/server"
-
-	"github.com/stretchr/testify/assert"
+	"github.com/replicate/cog-runtime/internal/util"
 )
 
 func TestAsyncPredictionSucceeded(t *testing.T) {
