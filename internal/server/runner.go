@@ -77,6 +77,7 @@ func (pr *PendingPrediction) sendResponse() {
 type Runner struct {
 	name           string
 	workingDir     string
+	tmpDir         string // temp directory for process isolation
 	cmd            exec.Cmd
 	status         Status
 	schema         string
@@ -150,6 +151,15 @@ func (r *Runner) Start() error {
 func (r *Runner) Stop() error {
 	log := logger.Sugar()
 	log.Infow("stop requested")
+	
+	// Clean up temp directory if it exists
+	if r.tmpDir != "" {
+		log.Infow("cleaning up temp directory", "tmpDir", r.tmpDir)
+		if err := os.RemoveAll(r.tmpDir); err != nil {
+			log.Errorw("failed to clean up temp directory", "tmpDir", r.tmpDir, "error", err)
+		}
+	}
+	
 	if r.cmd.ProcessState != nil {
 		// Python process already exited
 		// Shutdown HTTP server
@@ -192,6 +202,11 @@ func (r *Runner) Idle() bool {
 	// * Busy: pending predictions = max concurrency
 	// However, only runners with 0 pending predictions can be evicted in procedure mode
 	return len(r.pending) == 0
+}
+
+// SetTmpDir sets the temp directory for testing purposes
+func (r *Runner) SetTmpDir(tmpDir string) {
+	r.tmpDir = tmpDir
 }
 
 ////////////////////

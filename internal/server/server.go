@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"syscall"
 
 	"github.com/replicate/go/must"
 
@@ -39,11 +40,6 @@ const (
 	IPCStatusReady  IPCStatus = "READY"
 	IPCStatusBUSY   IPCStatus = "BUSY"
 	IPCStatusOutput IPCStatus = "OUTPUT"
-)
-
-const (
-	BaseUID    = 9000
-	NoGroupGID = 65534
 )
 
 type IPC struct {
@@ -340,7 +336,10 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	if err != nil {
 		return nil, err
 	}
-	uid := BaseUID + slot
+	uid, err := allocateUID()
+	if err != nil {
+		return nil, err
+	}
 	if h.setUID {
 		// PrepareProcedureSourceURL copies all directories and files
 		// Change ownership to unprivileged user
@@ -368,9 +367,19 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		if err := os.Lchown(tmpDir, uid, NoGroupGID); err != nil {
 			return nil, err
 		}
+		// Set temp directory for cleanup and environment
+		r.tmpDir = tmpDir
 		r.cmd.Env = os.Environ()
 		r.cmd.Env = append(r.cmd.Env, "TMPDIR="+tmpDir)
-		r.cmd.Args = append(r.cmd.Args, "--set-uid", strconv.Itoa(uid))
+
+		// Use syscall.Credential to run process as unprivileged user from start
+		// This eliminates the need for Python process to call setuid()
+		r.cmd.SysProcAttr = &syscall.SysProcAttr{
+			Credential: &syscall.Credential{
+				Uid: uint32(uid),
+				Gid: uint32(NoGroupGID),
+			},
+		}
 	}
 
 	if err := r.Start(); err != nil {

@@ -57,9 +57,6 @@ def main() -> int:
     parser.add_argument(
         '--working-dir', metavar='DIR', required=True, help='working directory'
     )
-    parser.add_argument(
-        '--set-uid', metavar='UID', type=int, default=0, help='set UID on startup'
-    )
 
     logger = logging.getLogger('coglet')
     logger.setLevel(logging.INFO)
@@ -78,11 +75,6 @@ def main() -> int:
     sys.stderr.write = scope.ctx_write(_stderr_write)  # type: ignore
 
     args = parser.parse_args()
-
-    if args.set_uid != 0:
-        logger.info('setting UID to %d', args.set_uid)
-        os.setgid(65534)  # nogroup
-        os.setuid(args.set_uid)
 
     config = pre_setup(logger, args.working_dir)
     if config is None:
