@@ -7,26 +7,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"syscall"
-
-	"github.com/replicate/go/must"
-
-	"golang.org/x/sync/errgroup"
-
-	"io"
-	"net/http"
 	"sync"
+	"syscall"
 	"time"
 
-	"github.com/replicate/cog-runtime/internal/util"
-
 	"github.com/replicate/go/logging"
+	"github.com/replicate/go/must"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/replicate/cog-runtime/internal/util"
 )
 
 var logger = logging.New("cog-http-server")
@@ -56,15 +53,18 @@ type Handler struct {
 	setUID     bool
 	runners    map[string]*Runner
 	mu         sync.Mutex
+
+	uidCounter *uidCounter
 }
 
 func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 	log := logger.Sugar()
 	h := &Handler{
-		cfg:       cfg,
-		shutdown:  shutdown,
-		startedAt: time.Now(),
-		runners:   make(map[string]*Runner),
+		cfg:        cfg,
+		shutdown:   shutdown,
+		startedAt:  time.Now(),
+		runners:    make(map[string]*Runner),
+		uidCounter: newUIDCounter(),
 	}
 	// GOMAXPROCS is set by automaxprocs in main.go on server startup
 	// Reset Go server to 1 to make room for Python runners
@@ -336,7 +336,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	if err != nil {
 		return nil, err
 	}
-	uid, err := allocateUID()
+	uid, err := h.uidCounter.allocate()
 	if err != nil {
 		return nil, err
 	}

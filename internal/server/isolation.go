@@ -11,14 +11,23 @@ import (
 const (
 	BaseUID    = 9000
 	NoGroupGID = 65534
+	NoBodyUID  = 65534
 )
 
-var uidCounter int64 = BaseUID
+type uidCounter struct {
+	atomic.Int64
+}
 
-func allocateUID() (int, error) {
+func newUIDCounter() *uidCounter {
+	counter := &uidCounter{}
+	counter.Store(BaseUID - 1) // -1 to ensure we start at BaseUID
+	return counter
+}
+
+func (u *uidCounter) allocate() (int, error) {
 	maxAttempts := 1000
 	for range maxAttempts {
-		nextUID := atomic.AddInt64(&uidCounter, 1) - 1
+		nextUID := u.Add(1)
 
 		// Use modulo to loop aroundensure we don't exceed uint32 max
 		uid := int(uint32(nextUID) % math.MaxUint32)
@@ -27,9 +36,6 @@ func allocateUID() (int, error) {
 			return uid, nil
 		}
 	}
-	return 0, errors.New("failed to find unused UID after max attempts")
-}
-
-func resetUIDCounter() {
-	atomic.StoreInt64(&uidCounter, BaseUID)
+	// NoBodyUID is used here to ensure we do not accidently send back root's UID in a posix system
+	return NoBodyUID, errors.New("failed to find unused UID after max attempts")
 }
