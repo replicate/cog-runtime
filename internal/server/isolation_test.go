@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"os"
 	"sync"
 	"testing"
@@ -14,7 +15,15 @@ func TestUIDMinimum(t *testing.T) {
 	counter := newUIDCounter()
 	uid, err := counter.allocate()
 	require.NoError(t, err, "allocateUID should not error")
-	assert.Equal(t, uid, BaseUID)
+	assert.Equal(t, BaseUID, uid)
+}
+
+func TestUIDWrapAround(t *testing.T) {
+	counter := newUIDCounter()
+	counter.Store(math.MaxUint32)
+	uid, err := counter.allocate()
+	require.NoError(t, err, "allocateUID should not error")
+	assert.Equal(t, BaseUID, uid)
 }
 
 func TestUID(t *testing.T) {
