@@ -82,6 +82,7 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		// regardless what max concurrency each runner has.
 		// In the worst case scenario where all runners are non-async,
 		// completion of any runner frees up concurrency.
+		// See healthCheck() for concurrency aggregation across runners.
 		h.maxRunners = autoMaxProcs * concurrencyPerCPU
 		h.runners = make([]*Runner, h.maxRunners)
 
@@ -300,16 +301,17 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 
 	// Look for an existing runner copy for source URL in READY state
 	// There might be multiple copies if the # pending predictions > max concurrency of a single runner
-	// For non-async predictors, the same runner might occupy all runner slots
-	// Also memorize the first vacant index we see in case a new runner is needed
+	// For non-async predictors, the same runner might occupy all runner slots, each serving 0 or 1 prediction
 	runnerIdx := -1
 	for i, runner := range h.runners {
 		if runner == nil {
 			if runnerIdx < 0 {
+				// Memorize the first vacant index we see in case a new runner is needed
 				runnerIdx = i
 			}
 			continue
 		}
+		// Match runner with spare capacity
 		if strings.HasSuffix(runner.name, ":"+srcURL) && runner.Concurrency().Current < runner.Concurrency().Max {
 			return runner.Predict(req)
 		}
@@ -336,7 +338,10 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		}
 	}
 
-	// Failed to evict one, this should not happen
+	// Failed to evict one, this should not happen, because:
+	// We only enter this method when aggregated current concurrency < max concurrency, i.e. max runners
+	// * In the case where some runners are async and serving > 1 predictions, there must be idle runners serving 0
+	// * In the case where all runners are non-async, at least one must be idle
 	if runnerIdx == -1 {
 		log.Errorw("failed to find idle runner to evict", "src_url", srcURL)
 		return nil, ErrConflict
