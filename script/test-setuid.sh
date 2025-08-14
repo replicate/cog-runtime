@@ -34,20 +34,31 @@ docker run -it --rm --detach \
     -c "$SCRIPT"
 
 sleep 3  # wait for server startup
-resp="$(mktemp)"
-trap 'rm $resp; docker stop $name' EXIT
+trap 'rm $resp1 $resp2; docker stop $name' EXIT
+resp1="$(mktemp)"
+resp2="$(mktemp)"
 curl -fsSL -X POST \
     -H 'Content-Type: application/json' \
-    --data '{"context":{"procedure_source_url": "file:///procedures/setuid", "replicate_api_token": "token"}, "input":{"p":"https://raw.githubusercontent.com/replicate/cog-runtime/refs/heads/main/.python-version"}}' \
-    "http://localhost:$port/procedures" > "$resp"
+    --data '{"context":{"procedure_source_url": "file:///procedures/setuid", "replicate_api_token": "token"}, "input":{"p":"https://raw.githubusercontent.com/replicate/cog-runtime/refs/heads/main/.python-version","i":0}}' \
+    "http://localhost:$port/procedures" > "$resp1" &
+curl -fsSL -X POST \
+    -H 'Content-Type: application/json' \
+    --data '{"context":{"procedure_source_url": "file:///procedures/setuid", "replicate_api_token": "token"}, "input":{"p":"https://raw.githubusercontent.com/replicate/cog-runtime/refs/heads/main/.python-version","i":1}}' \
+    "http://localhost:$port/procedures" > "$resp2" &
 
-status="$(jq --raw-output '.status' < "$resp")"
-if [ "$status" != "succeeded" ]; then
+sleep 2  # wait for predictions to finish
+
+status1="$(jq --raw-output '.status' < "$resp1")"
+status2="$(jq --raw-output '.status' < "$resp2")"
+if [ "$status1" != "succeeded" ] || [ "$status2" != "succeeded" ]; then
     echo "Docker logs:"
     docker logs "$name"
     echo
-    echo "Response:"
-    cat "$resp"
+    echo "Response 1:"
+    cat "$resp1"
+    echo
+    echo "Response 2:"
+    cat "$resp2"
     echo
     echo "FAILED"
     exit 1
