@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/replicate/go/logging"
-	"github.com/replicate/go/must"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/replicate/cog-runtime/internal/util"
@@ -101,7 +100,11 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
 	} else {
 		h.runners = make([]*Runner, 1)
-		h.runners[DefaultRunnerId] = NewRunner(cfg.IPCUrl, cfg.UploadUrl)
+		runner, err := NewRunner(DefaultRunnerName, cfg.IPCUrl, cfg.UploadUrl)
+		if err != nil {
+			return nil, err
+		}
+		h.runners[DefaultRunnerId] = runner
 		if err := h.runners[DefaultRunnerId].Start(); err != nil {
 			return nil, err
 		}
@@ -248,7 +251,10 @@ func (h *Handler) Stop() error {
 	}
 	// Wait and shutdown
 	go func() {
-		must.Do(eg.Wait())
+		if err := eg.Wait(); err != nil {
+			log.Errorw("failed to wait for runners to stop", "error", err)
+			os.Exit(1)
+		}
 		h.shutdown()
 	}()
 	return err
@@ -283,7 +289,11 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 		name = ipc.Name
 	}
 	if runner := h.findRunnerWithName(name); runner != nil {
-		runner.HandleIPC(ipc.Status)
+		if err := runner.HandleIPC(ipc.Status); err != nil {
+			log.Errorw("failed to handle IPC", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	} else if !(h.cfg.UseProcedureMode && ipc.Status == IPCStatusReady) {
 		// This happens for the first ready IPC after procedure setup succeeded and before the runner is registered
 		// Safe to ignore in that case
@@ -374,7 +384,10 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	}
 
 	log.Infow("starting procedure runner", "src_url", srcURL, "src_dir", srcDir)
-	r := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, name, srcDir)
+	r, err := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, name, srcDir)
+	if err != nil {
+		return nil, err
+	}
 
 	if h.setUID {
 		// Make working dir writable by unprivileged Python process
@@ -382,7 +395,10 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 			return nil, err
 		}
 		// Create per runner TMPDIR
-		tmpDir := must.Get(os.MkdirTemp("", "cog-runner-tmp-"))
+		tmpDir, err := os.MkdirTemp("", "cog-runner-tmp-")
+		if err != nil {
+			return nil, err
+		}
 		if err := os.Lchown(tmpDir, uid, NoGroupGID); err != nil {
 			return nil, err
 		}
@@ -411,7 +427,10 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		// Instead we poll here for a ready file and status change
 		readyFile := path.Join(r.workingDir, "ready")
 		if _, err := os.Stat(readyFile); err == nil {
-			r.HandleIPC(IPCStatusReady)
+			if err := r.HandleIPC(IPCStatusReady); err != nil {
+				log.Errorw("failed to handle IPC", "error", err)
+				return nil, fmt.Errorf("failed to handle IPC: %w", err)
+			}
 			if err := os.Remove(readyFile); err != nil && !os.IsNotExist(err) {
 				log.Errorw("failed to remove ready file", "error", err)
 			}
@@ -570,8 +589,14 @@ func writeResponse(w http.ResponseWriter, resp PredictionResponse) {
 }
 
 func SendWebhook(webhook string, pr *PredictionResponse) error {
-	body := bytes.NewBuffer(must.Get(json.Marshal(pr)))
-	req := must.Get(http.NewRequest("POST", webhook, body))
+	body, err := json.Marshal(pr)
+	if err != nil {
+		return fmt.Errorf("failed to marshal prediction response: %w", err)
+	}
+	req, err := http.NewRequest("POST", webhook, bytes.NewBuffer(body))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
 	req.Header.Add("Content-Type", "application/json")
 	// Only retry on completed webhooks
 	client := http.DefaultClient

@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/replicate/go/must"
 
 	"github.com/replicate/cog-runtime/internal/util"
 )
@@ -94,8 +93,11 @@ type Runner struct {
 const DefaultRunnerId = 0
 const DefaultRunnerName = "default"
 
-func newRunner(name, ipcUrl, uploadUrl string) *Runner {
-	workingDir := must.Get(os.MkdirTemp("", "cog-runner-"))
+func NewRunner(name, ipcUrl, uploadUrl string) (*Runner, error) {
+	workingDir, err := os.MkdirTemp("", "cog-runner-")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create working directory: %w", err)
+	}
 	args := []string{
 		"-u",
 		"-m", "coglet",
@@ -113,17 +115,16 @@ func newRunner(name, ipcUrl, uploadUrl string) *Runner {
 		pending:        make(map[string]*PendingPrediction),
 		uploadUrl:      uploadUrl,
 		stopped:        make(chan bool),
+	}, nil
+}
+
+func NewProcedureRunner(ipcUrl, uploadUrl, name, srcDir string) (*Runner, error) {
+	r, err := NewRunner(name, ipcUrl, uploadUrl)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func NewRunner(ipcUrl, uploadUrl string) *Runner {
-	return newRunner(DefaultRunnerName, ipcUrl, uploadUrl)
-}
-
-func NewProcedureRunner(ipcUrl, uploadUrl, name, srcDir string) *Runner {
-	r := newRunner(name, ipcUrl, uploadUrl)
 	r.cmd.Dir = srcDir
-	return r
+	return r, nil
 }
 
 func (r *Runner) Start() error {
@@ -255,7 +256,11 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	req.Input = input
 
 	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
-	if err := os.WriteFile(reqPath, must.Get(json.Marshal(req)), 0644); err != nil {
+	bs, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+	if err := os.WriteFile(reqPath, bs, 0644); err != nil {
 		return nil, err
 	}
 	resp := PredictionResponse{
@@ -299,7 +304,7 @@ func (r *Runner) Cancel(pid string) error {
 ////////////////////
 // Background tasks
 
-func (r *Runner) config() {
+func (r *Runner) config() error {
 	log := logger.Sugar()
 
 	// Wait until user files become available and pass config to Python runner
@@ -328,7 +333,12 @@ func (r *Runner) config() {
 	predictorName := os.Getenv("TEST_COG_PREDICTOR_NAME")
 	maxConcurrencyStr := os.Getenv("TEST_COG_MAX_CONCURRENCY")
 	if maxConcurrencyStr != "" {
-		r.maxConcurrency = must.Get(strconv.Atoi(maxConcurrencyStr))
+		maxConcurrency, err := strconv.Atoi(maxConcurrencyStr)
+		if err != nil {
+			log.Errorw("failed to parse max concurrency, defaulting to 1", "error", err)
+			maxConcurrency = 1
+		}
+		r.maxConcurrency = maxConcurrency
 	}
 
 	// Otherwise read from cog.yaml
@@ -361,8 +371,14 @@ func (r *Runner) config() {
 	}
 	log.Infow("configuring runner", "module", moduleName, "predictor", predictorName, "max_concurrency", r.maxConcurrency)
 	confFile := path.Join(r.workingDir, "config.json")
-	f := must.Get(os.Create(confFile))
-	must.Do(json.NewEncoder(f).Encode(conf))
+	f, err := os.Create(confFile)
+	if err != nil {
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
+	if err := json.NewEncoder(f).Encode(conf); err != nil {
+		return fmt.Errorf("failed to encode config: %w", err)
+	}
+	return nil
 }
 
 func (r *Runner) wait() {
@@ -408,7 +424,7 @@ func (r *Runner) wait() {
 ////////////////////
 // IO handling
 
-func (r *Runner) HandleIPC(s IPCStatus) {
+func (r *Runner) HandleIPC(s IPCStatus) error {
 	log := logger.Sugar()
 	switch s {
 	case IPCStatusReady:
@@ -435,10 +451,14 @@ func (r *Runner) HandleIPC(s IPCStatus) {
 		r.status = StatusBusy
 		r.mu.Unlock()
 	case IPCStatusOutput:
-		r.handleResponses()
+		if err := r.handleResponses(); err != nil {
+			log.Errorw("failed to handle responses", "error", err)
+			return err
+		}
 	default:
 		log.Errorw("unknown IPC status", "status", s)
 	}
+	return nil
 }
 
 func (r *Runner) updateSchema() {
@@ -486,9 +506,13 @@ func (r *Runner) updateSetupResult() {
 	}
 }
 
-func (r *Runner) handleResponses() {
+func (r *Runner) handleResponses() error {
 	log := logger.Sugar()
-	for _, entry := range must.Get(os.ReadDir(r.workingDir)) {
+	entries, err := os.ReadDir(r.workingDir)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+	for _, entry := range entries {
 		// Entries are sorted, so we process response of the same prediction ID in increasing epoch
 		m := ResponseRegex.FindStringSubmatch(entry.Name())
 		if m == nil {
@@ -581,6 +605,7 @@ func (r *Runner) handleResponses() {
 			r.mu.Unlock()
 		}
 	}
+	return nil
 }
 
 func (r *Runner) readJson(filename string, v any) error {
