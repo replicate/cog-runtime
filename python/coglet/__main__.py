@@ -59,7 +59,7 @@ def main() -> int:
     )
 
     logger = logging.getLogger('coglet')
-    logger.setLevel(os.environ.get("COG_LOG_LEVEL", "INFO").upper())
+    logger.setLevel(os.environ.get('COG_LOG_LEVEL', 'INFO').upper())
     handler = logging.StreamHandler(sys.stderr)
     handler.setFormatter(
         logging.Formatter(
