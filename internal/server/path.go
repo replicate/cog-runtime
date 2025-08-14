@@ -11,7 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -209,11 +208,10 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		}
 		*paths = append(*paths, p)
 		filename := path.Base(p)
-		// Ensure there's a slash between upload URL and filename, e.g. http://localhost/upload/<filename>
-		if !strings.HasSuffix(uploadUrl, "/") {
-			uploadUrl = uploadUrl + "/"
+		uUpload, err := url.JoinPath(uploadUrl, filename)
+		if err != nil {
+			return "", err
 		}
-		uUpload := fmt.Sprintf("%s%s", uploadUrl, filename)
 		req, err := http.NewRequest(http.MethodPut, uUpload, bytes.NewReader(bs))
 		if err != nil {
 			return "", err
