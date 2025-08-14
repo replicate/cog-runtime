@@ -122,6 +122,10 @@ func CreateLogger(name string) *zap.Logger {
 	if logLevel == "" {
 		logLevel = "info"
 	}
-	lvl, _ := zapcore.ParseLevel(logLevel)
+	lvl, err := zapcore.ParseLevel(logLevel)
+	if err != nil {
+		fmt.Printf("Failed to parse log level \"%s\": %w\n", logLevel, err)
+		os.Exit(1)
+	}
 	return logging.New(name).WithOptions(zap.IncreaseLevel(lvl))
 }
