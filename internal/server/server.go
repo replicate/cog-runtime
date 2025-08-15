@@ -20,13 +20,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/replicate/go/logging"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-var logger = logging.New("cog-http-server")
+var logger = util.CreateLogger("cog-http-server")
 
 //go:embed openapi-procedure.json
 var procedureSchema string

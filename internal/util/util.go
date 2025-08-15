@@ -14,10 +14,12 @@ import (
 	"github.com/replicate/go/httpclient"
 	"github.com/replicate/go/logging"
 	"github.com/replicate/go/uuid"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
 )
 
-var logger = logging.New("cog-util")
+var logger = CreateLogger("cog-util")
 
 type Build struct {
 	GPU        bool `yaml:"gpu"`
@@ -113,4 +115,17 @@ func Version() string {
 
 func HTTPClientWithRetry() *http.Client {
 	return httpclient.ApplyRetryPolicy(http.DefaultClient)
+}
+
+func CreateLogger(name string) *zap.Logger {
+	logLevel := os.Getenv("COG_LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	lvl, err := zapcore.ParseLevel(logLevel)
+	if err != nil {
+		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err)
+		lvl = zapcore.InfoLevel
+	}
+	return logging.New(name).WithOptions(zap.IncreaseLevel(lvl))
 }

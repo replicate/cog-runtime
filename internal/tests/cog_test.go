@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/replicate/go/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -30,7 +29,7 @@ import (
 var (
 	_, b, _, _ = runtime.Caller(0)
 	basePath   = path.Dir(path.Dir(path.Dir(b)))
-	logger     = logging.New("cog-test")
+	logger     = util.CreateLogger("cog-test")
 	legacyCog  *bool
 )
 
