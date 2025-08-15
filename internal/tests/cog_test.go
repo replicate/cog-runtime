@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/replicate/go/logging"
-	"github.com/replicate/go/must"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
@@ -61,11 +61,13 @@ type WebhookHandler struct {
 
 func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log := logger.Sugar()
-	body := must.Get(io.ReadAll(r.Body))
+	body, err := io.ReadAll(r.Body)
+	require.NoError(h.ct.t, err)
 	if strings.HasPrefix(r.URL.Path, "/webhook") {
 		log.Infow("received webhook", "method", r.Method, "path", r.URL.Path)
 		var resp server.PredictionResponse
-		must.Do(json.Unmarshal(body, &resp))
+		err = json.Unmarshal(body, &resp)
+		require.NoError(h.ct.t, err)
 		req := WebhookRequest{
 			Method:   r.Method,
 			Path:     r.URL.Path,
@@ -158,7 +160,9 @@ func (ct *CogTest) StartWithPipes(stdout, stderr io.Writer) error {
 func (ct *CogTest) runtimeCmd() *exec.Cmd {
 	pathEnv := path.Join(basePath, ".venv", "bin")
 	pythonPathEnv := path.Join(basePath, "python")
-	ct.serverPort = util.FindPort()
+	serverPort, err := util.FindPort()
+	require.NoError(ct.t, err)
+	ct.serverPort = serverPort
 	args := []string{
 		"run", path.Join(basePath, "cmd", "cog", "main.go"), "server",
 		"--port", fmt.Sprintf("%d", ct.serverPort),
@@ -201,11 +205,15 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 			yamlLines = append(yamlLines, "  max: 2")
 		}
 		yaml := strings.Join(yamlLines, "\n")
-		must.Do(os.WriteFile(path.Join(tmpDir, "cog.yaml"), []byte(yaml), 0644))
-		must.Do(os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py")))
+		err := os.WriteFile(path.Join(tmpDir, "cog.yaml"), []byte(yaml), 0644)
+		require.NoError(ct.t, err)
+		err = os.Symlink(path.Join(runnersPath, module), path.Join(tmpDir, "predict.py"))
+		require.NoError(ct.t, err)
 	}
 
-	ct.serverPort = util.FindPort()
+	serverPort, err := util.FindPort()
+	require.NoError(ct.t, err)
+	ct.serverPort = serverPort
 	args := []string{
 		"-m", "cog.server.http",
 	}
@@ -222,14 +230,17 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 
 func (ct *CogTest) Cleanup() error {
 	if ct.webhookServer != nil {
-		must.Do(ct.webhookServer.Shutdown(context.Background()))
+		err := ct.webhookServer.Shutdown(context.Background())
+		require.NoError(ct.t, err)
 	}
 	return ct.cmd.Wait()
 }
 
 func (ct *CogTest) StartWebhook() {
 	log := logger.Sugar()
-	ct.webhookPort = util.FindPort()
+	webhookPort, err := util.FindPort()
+	require.NoError(ct.t, err)
+	ct.webhookPort = webhookPort
 	ct.webhookServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", ct.webhookPort),
 		Handler: &WebhookHandler{ct: ct},
@@ -294,9 +305,14 @@ func (ct *CogTest) ServerPid() int {
 		return ct.cmd.Process.Pid
 	} else {
 		url := fmt.Sprintf("http://localhost:%d/_pid", ct.serverPort)
-		resp := must.Get(http.DefaultClient.Get(url))
+		resp, err := http.DefaultClient.Get(url)
+		require.NoError(ct.t, err)
 		defer resp.Body.Close()
-		return must.Get(strconv.Atoi(string(must.Get(io.ReadAll(resp.Body)))))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(ct.t, err)
+		pid, err := strconv.Atoi(string(body))
+		require.NoError(ct.t, err)
+		return pid
 	}
 }
 
@@ -305,10 +321,14 @@ func (ct *CogTest) Runners() []string {
 		return nil
 	} else {
 		url := fmt.Sprintf("http://localhost:%d/_runners", ct.serverPort)
-		resp := must.Get(http.DefaultClient.Get(url))
+		resp, err := http.DefaultClient.Get(url)
+		require.NoError(ct.t, err)
 		defer resp.Body.Close()
 		var runners []string
-		must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &runners))
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(ct.t, err)
+		err = json.Unmarshal(body, &runners)
+		require.NoError(ct.t, err)
 		slices.Sort(runners)
 		return runners
 	}
@@ -321,7 +341,10 @@ func (ct *CogTest) HealthCheck() server.HealthCheck {
 		if err == nil {
 			defer resp.Body.Close()
 			var hc server.HealthCheck
-			must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &hc))
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(ct.t, err)
+			err = json.Unmarshal(body, &hc)
+			require.NoError(ct.t, err)
 			return hc
 		}
 
@@ -395,30 +418,39 @@ func (ct *CogTest) prediction(method string, path string, req server.PredictionR
 	}
 	ct.pending++
 	var pr server.PredictionResponse
-	must.Do(json.Unmarshal(must.Get(io.ReadAll(resp.Body)), &pr))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(ct.t, err)
+	err = json.Unmarshal(body, &pr)
+	require.NoError(ct.t, err)
 	return pr
 }
 
 func (ct *CogTest) PredictionReq(method string, path string, req server.PredictionRequest) *http.Response {
 	req.CreatedAt = util.NowIso()
-	data := bytes.NewReader(must.Get(json.Marshal(req)))
-	r := must.Get(http.NewRequest(method, ct.Url(path), data))
+	data, err := json.Marshal(req)
+	require.NoError(ct.t, err)
+	r, err := http.NewRequest(method, ct.Url(path), bytes.NewReader(data))
+	require.NoError(ct.t, err)
 	r.Header.Set("Content-Type", "application/json")
 	if req.Webhook != "" {
 		r.Header.Set("Prefer", "respond-async")
 	}
-	return must.Get(http.DefaultClient.Do(r))
+	resp, err := http.DefaultClient.Do(r)
+	require.NoError(ct.t, err)
+	return resp
 }
 
 func (ct *CogTest) Cancel(pid string) {
 	url := ct.Url(fmt.Sprintf("/predictions/%s/cancel", pid))
-	resp := must.Get(http.DefaultClient.Post(url, "application/json", nil))
+	resp, err := http.DefaultClient.Post(url, "application/json", nil)
+	require.NoError(ct.t, err)
 	assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
 }
 
 func (ct *CogTest) Shutdown() {
 	url := ct.Url("/shutdown")
-	resp := must.Get(http.DefaultClient.Post(url, "", nil))
+	resp, err := http.DefaultClient.Post(url, "", nil)
+	require.NoError(ct.t, err)
 	assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
 }
 

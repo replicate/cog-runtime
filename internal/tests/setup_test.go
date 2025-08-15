@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/replicate/go/must"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -20,7 +20,9 @@ func TestSetupSucceeded(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 	assert.Equal(t, "starting setup\nsetup in progress 1/1\ncompleted setup\n", hc.Setup.Logs)
-	assert.Equal(t, http.StatusOK, must.Get(http.DefaultClient.Get(ct.Url("/openapi.json"))).StatusCode)
+	resp, err := http.DefaultClient.Get(ct.Url("/openapi.json"))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	ct.Shutdown()
 	assert.NoError(t, ct.Cleanup())
