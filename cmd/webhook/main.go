@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"github.com/replicate/go/must"
 )
 
 func main() {
@@ -16,10 +14,16 @@ func main() {
 		for k, v := range r.Header {
 			fmt.Printf("%s: %v\n", k, v)
 		}
-		body := string(must.Get(io.ReadAll(r.Body)))
-		if body != "" {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			fmt.Printf("failed to read body: %v\n", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		bodyStr := string(body)
+		if bodyStr != "" {
 			fmt.Println("----- Body -----")
-			fmt.Println(body)
+			fmt.Println(bodyStr)
 		}
 		w.WriteHeader(http.StatusOK)
 	})
