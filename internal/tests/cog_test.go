@@ -223,7 +223,6 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", ct.serverPort))
 	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
 	cmd.Env = append(cmd.Env, ct.extraEnvs...)
-	cmd.Env = append(cmd.Env, "PROCEDURE_CACHE_PATH=/tmp/procedures")
 	return cmd
 }
 
