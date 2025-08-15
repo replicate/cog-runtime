@@ -3,8 +3,6 @@ package util
 import (
 	"net"
 	"sync"
-
-	"github.com/replicate/go/must"
 )
 
 var (
@@ -17,17 +15,23 @@ type PortFinder struct {
 	mu    sync.Mutex
 }
 
-func FindPort() int {
+func FindPort() (int, error) {
 	portsMu.Lock()
 	defer portsMu.Unlock()
 	for {
-		a := must.Get(net.ResolveTCPAddr("tcp", "localhost:0"))
-		l := must.Get(net.ListenTCP("tcp", a))
+		a, err := net.ResolveTCPAddr("tcp", "localhost:0")
+		if err != nil {
+			return 0, err
+		}
+		l, err := net.ListenTCP("tcp", a)
+		if err != nil {
+			return 0, err
+		}
 		p := l.Addr().(*net.TCPAddr).Port
 		if _, ok := ports[p]; !ok {
 			ports[p] = true
 			l.Close()
-			return p
+			return p, nil
 		}
 	}
 }

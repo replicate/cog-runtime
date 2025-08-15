@@ -13,7 +13,6 @@ import (
 
 	"github.com/replicate/go/httpclient"
 	"github.com/replicate/go/logging"
-	"github.com/replicate/go/must"
 	"github.com/replicate/go/uuid"
 	"gopkg.in/yaml.v3"
 )
@@ -59,14 +58,17 @@ func (y *CogYaml) PredictModuleAndPredictor() (string, string, error) {
 }
 
 // api.git: internal/logic/id.go
-func PredictionId() string {
-	u := must.Get(uuid.NewV7())
+func PredictionId() (string, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
 	shuffle := make([]byte, uuid.Size)
 	for i := 0; i < 4; i++ {
 		shuffle[i], shuffle[i+4], shuffle[i+8], shuffle[i+12] = u[i+12], u[i+4], u[i], u[i+8]
 	}
 	encoding := base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
-	return encoding.EncodeToString(shuffle)
+	return encoding.EncodeToString(shuffle), nil
 }
 
 const TimeLayout = "2006-01-02T15:04:05.999999-07:00"
@@ -80,8 +82,12 @@ func FormatTime(t time.Time) string {
 	return t.UTC().Format(TimeLayout)
 }
 
-func ParseTime(t string) time.Time {
-	return must.Get(time.Parse(TimeLayout, t))
+func ParseTime(t string) (time.Time, error) {
+	parsedTime, err := time.Parse(TimeLayout, t)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsedTime, nil
 }
 
 func JoinLogs(logs []string) string {
