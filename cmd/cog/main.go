@@ -13,7 +13,6 @@ import (
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
 	"github.com/replicate/go/logging"
-	"github.com/replicate/go/must"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/replicate/cog-runtime/internal/server"
@@ -40,7 +39,12 @@ func schemaCommand() *ff.Command {
 		Usage: "schema [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			y, err := util.ReadCogYaml(must.Get(os.Getwd()))
+			wd, err := os.Getwd()
+			if err != nil {
+				log.Errorw("failed to get working directory", "error", err)
+				return err
+			}
+			y, err := util.ReadCogYaml(wd)
 			if err != nil {
 				log.Errorw("failed to read cog.yaml", "error", err)
 				return err
@@ -50,18 +54,25 @@ func schemaCommand() *ff.Command {
 				log.Errorw("failed to parse predict", "error", err)
 				return err
 			}
-			bin := must.Get(exec.LookPath("python3"))
+			bin, err := exec.LookPath("python3")
+			if err != nil {
+				log.Errorw("failed to find python3", "error", err)
+				return err
+			}
 			return syscall.Exec(bin, []string{bin, "-m", "coglet.schema", m, c}, os.Environ())
 		},
 	}
 }
 
-func serverCommand() *ff.Command {
+func serverCommand() (*ff.Command, error) {
 	log := logger.Sugar()
 
 	var cfg ServerConfig
 	flags := ff.NewFlagSet("server")
-	must.Do(flags.AddStruct(&cfg))
+
+	if err := flags.AddStruct(&cfg); err != nil {
+		return nil, err
+	}
 
 	return &ff.Command{
 		Name:  "server",
@@ -88,11 +99,18 @@ func serverCommand() *ff.Command {
 				UploadUrl:             cfg.UploadUrl,
 			}
 			ctx, cancel := context.WithCancel(ctx)
-			h := must.Get(server.NewHandler(serverCfg, cancel))
+			h, err := server.NewHandler(serverCfg, cancel)
+			if err != nil {
+				log.Errorw("failed to create server handler", "error", err)
+				return err
+			}
 			s := server.NewServer(addr, h, cfg.UseProcedureMode)
 			go func() {
 				<-ctx.Done()
-				must.Do(s.Shutdown(ctx))
+				if err := s.Shutdown(ctx); err != nil {
+					log.Errorw("failed to shutdown server", "error", err)
+					os.Exit(1)
+				}
 			}()
 			go func() {
 				ch := make(chan os.Signal, 1)
@@ -103,7 +121,10 @@ func serverCommand() *ff.Command {
 						log.Warnw("ignoring signal to stop", "signal", sig)
 					} else {
 						log.Infow("stopping Cog HTTP server", "signal", sig)
-						must.Do(h.Stop())
+						if err := h.Stop(); err != nil {
+							log.Errorw("failed to stop server handler", "error", err)
+							os.Exit(1)
+						}
 					}
 				}
 			}()
@@ -119,7 +140,7 @@ func serverCommand() *ff.Command {
 				return err
 			}
 		},
-	}
+	}, nil
 }
 
 func testCommand() *ff.Command {
@@ -132,7 +153,12 @@ func testCommand() *ff.Command {
 		Usage: "test [FLAGS]",
 		Flags: flags,
 		Exec: func(ctx context.Context, args []string) error {
-			y, err := util.ReadCogYaml(must.Get(os.Getwd()))
+			wd, err := os.Getwd()
+			if err != nil {
+				log.Errorw("failed to get working directory", "error", err)
+				return err
+			}
+			y, err := util.ReadCogYaml(wd)
 			if err != nil {
 				log.Errorw("failed to read cog.yaml", "error", err)
 				return err
@@ -142,7 +168,11 @@ func testCommand() *ff.Command {
 				log.Errorw("failed to parse predict", "error", err)
 				return err
 			}
-			bin := must.Get(exec.LookPath("python3"))
+			bin, err := exec.LookPath("python3")
+			if err != nil {
+				log.Errorw("failed to find python3", "error", err)
+				return err
+			}
 			return syscall.Exec(bin, []string{bin, "-m", "coglet.test", m, c}, os.Environ())
 		},
 	}
@@ -151,6 +181,11 @@ func testCommand() *ff.Command {
 func main() {
 	log := logger.Sugar()
 	flags := ff.NewFlagSet("cog")
+	serverCommand, err := serverCommand()
+	if err != nil {
+		log.Errorw("failed to create server command", "error", err)
+		os.Exit(1)
+	}
 	cmd := &ff.Command{
 		Name:  "cog",
 		Usage: "cog <COMMAND> [FLAGS]",
@@ -160,14 +195,17 @@ func main() {
 		},
 		Subcommands: []*ff.Command{
 			schemaCommand(),
-			serverCommand(),
+			serverCommand,
 			testCommand(),
 		},
 	}
-	err := cmd.ParseAndRun(context.Background(), os.Args[1:])
+	err = cmd.ParseAndRun(context.Background(), os.Args[1:])
 	switch {
 	case errors.Is(err, ff.ErrHelp):
-		must.Get(fmt.Fprintln(os.Stderr, ffhelp.Command(cmd)))
+		_, err := fmt.Fprintln(os.Stderr, ffhelp.Command(cmd))
+		if err != nil {
+			log.Errorw("failed to print help", "error", err)
+		}
 		os.Exit(1)
 	case err != nil:
 		log.Error(err)
