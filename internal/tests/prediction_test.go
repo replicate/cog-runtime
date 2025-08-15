@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/replicate/go/must"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -87,8 +87,10 @@ func TestPredictionCrash(t *testing.T) {
 		resp := ct.PredictionReq(http.MethodPost, "/predictions", req)
 		// Compat: legacy Cog returns HTTP 500 and "Internal Server Error"
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-		body := string(must.Get(io.ReadAll(resp.Body)))
-		assert.Equal(t, "Internal Server Error", body)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		bodyStr := string(body)
+		assert.Equal(t, "Internal Server Error", bodyStr)
 		// Compat: flaky server?
 		time.Sleep(100 * time.Millisecond)
 		assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)

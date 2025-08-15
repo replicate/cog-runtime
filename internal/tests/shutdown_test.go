@@ -4,8 +4,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/replicate/go/must"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -22,7 +22,8 @@ func TestShutdownByServerSigInt(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGINT))
+	err := syscall.Kill(ct.ServerPid(), syscall.SIGINT)
+	require.NoError(t, err)
 	assert.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }
@@ -35,7 +36,8 @@ func TestShutdownByServerSigTerm(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGTERM))
+	err := syscall.Kill(ct.ServerPid(), syscall.SIGTERM)
+	require.NoError(t, err)
 	assert.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }
@@ -50,7 +52,8 @@ func TestShutdownIgnoreSignal(t *testing.T) {
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	// Ignore SIGTERM
-	must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGTERM))
+	err := syscall.Kill(ct.ServerPid(), syscall.SIGTERM)
+	require.NoError(t, err)
 	assert.Nil(t, ct.cmd.ProcessState)
 	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
 
@@ -59,7 +62,8 @@ func TestShutdownIgnoreSignal(t *testing.T) {
 		ct.Shutdown()
 	} else {
 		// Handle SIGINT
-		must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGINT))
+		err := syscall.Kill(ct.ServerPid(), syscall.SIGINT)
+		require.NoError(t, err)
 	}
 	assert.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
@@ -77,7 +81,8 @@ func TestShutdownProcedureIgnoreSignal(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	must.Do(syscall.Kill(ct.ServerPid(), syscall.SIGTERM))
+	err := syscall.Kill(ct.ServerPid(), syscall.SIGTERM)
+	require.NoError(t, err)
 	assert.Nil(t, ct.cmd.ProcessState)
 	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
 

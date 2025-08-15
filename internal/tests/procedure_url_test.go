@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/replicate/go/must"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/util"
 )
@@ -30,7 +30,9 @@ func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	assert.FileExists(t, filepath.Join(fooDst, "cog.yaml"))
 	fooPy := filepath.Join(fooDst, "predict.py")
 	assert.FileExists(t, fooPy)
-	assert.Contains(t, string(must.Get(os.ReadFile(fooPy))), "'predicting foo'")
+	fooPyContents, err := os.ReadFile(fooPy)
+	require.NoError(t, err)
+	assert.Contains(t, string(fooPyContents), "'predicting foo'")
 
 	fooDst2, err := util.PrepareProcedureSourceURL(srcDir, 1)
 	assert.NoError(t, err)
@@ -42,13 +44,18 @@ func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 
 	fooTar := filepath.Join(tmpDir, "foo.tar.gz")
 	fooDir := filepath.Join(proceduresPath, "foo")
-	must.Do(exec.Command("tar", "-czf", fooTar, "-C", fooDir, ".").Run())
+	cmd := exec.Command("tar", "-czf", fooTar, "-C", fooDir, ".")
+	err := cmd.Run()
+	require.NoError(t, err)
 
 	barTar := filepath.Join(tmpDir, "bar.tar.gz")
 	barDir := filepath.Join(proceduresPath, "bar")
-	must.Do(exec.Command("tar", "-czf", barTar, "-C", barDir, ".").Run())
+	cmd = exec.Command("tar", "-czf", barTar, "-C", barDir, ".")
+	err = cmd.Run()
+	require.NoError(t, err)
 
-	port := util.FindPort()
+	port, err := util.FindPort()
+	require.NoError(t, err)
 	s := http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: http.FileServer(http.Dir(tmpDir)),
@@ -65,7 +72,9 @@ func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 	assert.FileExists(t, filepath.Join(fooDst, "cog.yaml"))
 	fooPy := filepath.Join(fooDst, "predict.py")
 	assert.FileExists(t, fooPy)
-	assert.Contains(t, string(must.Get(os.ReadFile(fooPy))), "'predicting foo'")
+	fooPyContents, err := os.ReadFile(fooPy)
+	require.NoError(t, err)
+	assert.Contains(t, string(fooPyContents), "'predicting foo'")
 
 	barURL := fmt.Sprintf("http://localhost:%d/bar.tar.gz", port)
 	barDst, err := util.PrepareProcedureSourceURL(barURL, 0)
@@ -74,7 +83,9 @@ func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 	assert.FileExists(t, filepath.Join(barDst, "cog.yaml"))
 	barPy := filepath.Join(barDst, "predict.py")
 	assert.FileExists(t, barPy)
-	assert.Contains(t, string(must.Get(os.ReadFile(barPy))), "'predicting bar'")
+	barPyContents, err := os.ReadFile(barPy)
+	require.NoError(t, err)
+	assert.Contains(t, string(barPyContents), "'predicting bar'")
 
 	fooDst2, err := util.PrepareProcedureSourceURL(fooURL, 1)
 	assert.NoError(t, err)
