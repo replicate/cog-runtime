@@ -1,9 +1,11 @@
+//nolint:forbidigo // main function fmt.Print[ln|f|etc] is expected
 package main
 
 import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 func main() {
@@ -28,5 +30,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 	fmt.Println("Listening on :5150")
-	http.ListenAndServe(":5150", nil)
+	if err := http.ListenAndServe(":5150", nil); err != nil { //nolint:gosec // this is a test server
+		fmt.Printf("failed in listen and serve: %v\n", err)
+		os.Exit(1)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -14,7 +15,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 		t.SkipNow()
 	}
 	ct := NewCogTest(t, "dataclass")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -40,7 +41,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 	ct.AssertResponse(resp, server.PredictionSucceeded, output, "")
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionChatCoderSucceeded(t *testing.T) {
@@ -49,7 +50,7 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 		t.SkipNow()
 	}
 	ct := NewCogTest(t, "chat")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -60,5 +61,5 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 	ct.AssertResponse(resp, server.PredictionSucceeded, output, "")
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }

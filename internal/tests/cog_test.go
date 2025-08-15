@@ -61,12 +61,13 @@ type WebhookHandler struct {
 func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log := logger.Sugar()
 	body, err := io.ReadAll(r.Body)
-	require.NoError(h.ct.t, err)
-	if strings.HasPrefix(r.URL.Path, "/webhook") {
+	assert.NoError(h.ct.t, err)
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/webhook"):
 		log.Infow("received webhook", "method", r.Method, "path", r.URL.Path)
 		var resp server.PredictionResponse
 		err = json.Unmarshal(body, &resp)
-		require.NoError(h.ct.t, err)
+		assert.NoError(h.ct.t, err)
 		req := WebhookRequest{
 			Method:   r.Method,
 			Path:     r.URL.Path,
@@ -76,7 +77,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer h.mu.Unlock()
 		h.webhookRequests = append(h.webhookRequests, req)
 		w.WriteHeader(http.StatusOK)
-	} else if strings.HasPrefix(r.URL.Path, "/upload") {
+	case strings.HasPrefix(r.URL.Path, "/upload"):
 		log.Infow("received upload", "method", r.Method, "path", r.URL.Path)
 		filename, ok := strings.CutPrefix(r.URL.Path, "/upload/")
 		assert.True(h.ct.t, ok)
@@ -93,11 +94,11 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Compat: legacy Cog only sets this when --upload-url is set
 			pid := r.Header.Get("X-Prediction-Id")
 			assert.NotEmpty(h.ct.t, pid)
-			h.ct.WebhookUrl()
-			w.Header().Set("Location", fmt.Sprintf("%s%s", h.ct.UploadUrl(), filename))
+			h.ct.WebhookURL()
+			w.Header().Set("Location", fmt.Sprintf("%s%s", h.ct.UploadURL(), filename))
 		}
 		w.WriteHeader(http.StatusAccepted)
-	} else {
+	default:
 		log.Fatalw("received unknown request", "method", r.Method, "path", r.URL.Path)
 	}
 }
@@ -118,6 +119,7 @@ type CogTest struct {
 }
 
 func NewCogTest(t *testing.T, module string) *CogTest {
+	t.Helper()
 	t.Parallel()
 	return &CogTest{
 		t:      t,
@@ -126,6 +128,7 @@ func NewCogTest(t *testing.T, module string) *CogTest {
 }
 
 func NewCogProcedureTest(t *testing.T) *CogTest {
+	t.Helper()
 	// No parallel procedure test since they use the same temp source directory
 	return &CogTest{
 		t:         t,
@@ -183,7 +186,7 @@ func (ct *CogTest) runtimeCmd() *exec.Cmd {
 		cmd.Env = append(cmd.Env,
 			// Pass module and predictor to Runner, to avoid creating a one-off cog.yaml
 			fmt.Sprintf("TEST_COG_MODULE_NAME=tests.runners.%s", ct.module),
-			fmt.Sprintf("TEST_COG_PREDICTOR_NAME=Predictor"),
+			"TEST_COG_PREDICTOR_NAME=Predictor",
 		)
 	}
 	return cmd
@@ -218,7 +221,6 @@ func (ct *CogTest) legacyCmd() *exec.Cmd {
 	}
 	args = append(args, ct.extraArgs...)
 	cmd := exec.Command(pythonBin, args...)
-	cmd.Dir = tmpDir
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PORT=%d", ct.serverPort))
 	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
@@ -240,8 +242,9 @@ func (ct *CogTest) StartWebhook() {
 	require.NoError(ct.t, err)
 	ct.webhookPort = webhookPort
 	ct.webhookServer = &http.Server{
-		Addr:    fmt.Sprintf(":%d", ct.webhookPort),
-		Handler: &WebhookHandler{ct: ct},
+		Addr:        fmt.Sprintf(":%d", ct.webhookPort),
+		Handler:     &WebhookHandler{ct: ct},
+		ReadTimeout: 10 * time.Second,
 	}
 	go func() {
 		err := ct.webhookServer.ListenAndServe()
@@ -258,12 +261,13 @@ func (ct *CogTest) WaitForWebhookCompletion() []server.PredictionResponse {
 func (ct *CogTest) WaitForWebhook(fn func(response server.PredictionResponse) bool) []server.PredictionResponse {
 	for {
 		matches := make(map[string]bool)
-		for _, req := range ct.webhookServer.Handler.(*WebhookHandler).webhookRequests {
+		handler, _ := ct.webhookServer.Handler.(*WebhookHandler)
+		for _, req := range handler.webhookRequests {
 			if !strings.HasPrefix(req.Path, "/webhook") {
 				continue
 			}
 			if fn(req.Response) {
-				matches[req.Response.Id] = true
+				matches[req.Response.ID] = true
 			}
 		}
 		if len(matches) == ct.pending {
@@ -272,7 +276,8 @@ func (ct *CogTest) WaitForWebhook(fn func(response server.PredictionResponse) bo
 		time.Sleep(100 * time.Millisecond)
 	}
 	var r []server.PredictionResponse
-	for _, req := range ct.webhookServer.Handler.(*WebhookHandler).webhookRequests {
+	handler, _ := ct.webhookServer.Handler.(*WebhookHandler)
+	for _, req := range handler.webhookRequests {
 		if !strings.HasPrefix(req.Path, "/webhook") {
 			continue
 		}
@@ -283,53 +288,53 @@ func (ct *CogTest) WaitForWebhook(fn func(response server.PredictionResponse) bo
 }
 
 func (ct *CogTest) GetUploads() []UploadRequest {
-	return ct.webhookServer.Handler.(*WebhookHandler).uploadRequests
+	handler, _ := ct.webhookServer.Handler.(*WebhookHandler)
+	return handler.uploadRequests
 }
 
-func (ct *CogTest) Url(path string) string {
-	return fmt.Sprintf("http://localhost:%d%s", ct.serverPort, path)
+func (ct *CogTest) URL(pathStr string) string {
+	return fmt.Sprintf("http://localhost:%d%s", ct.serverPort, pathStr)
 }
 
-func (ct *CogTest) WebhookUrl() string {
+func (ct *CogTest) WebhookURL() string {
 	return fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort)
 }
 
-func (ct *CogTest) UploadUrl() string {
+func (ct *CogTest) UploadURL() string {
 	return fmt.Sprintf("http://localhost:%d/upload/", ct.webhookPort)
 }
 
 func (ct *CogTest) ServerPid() int {
 	if *legacyCog {
 		return ct.cmd.Process.Pid
-	} else {
-		url := fmt.Sprintf("http://localhost:%d/_pid", ct.serverPort)
-		resp, err := http.DefaultClient.Get(url)
-		require.NoError(ct.t, err)
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(ct.t, err)
-		pid, err := strconv.Atoi(string(body))
-		require.NoError(ct.t, err)
-		return pid
 	}
+	url := fmt.Sprintf("http://localhost:%d/_pid", ct.serverPort)
+	resp, err := http.DefaultClient.Get(url)
+	require.NoError(ct.t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(ct.t, err)
+	pid, err := strconv.Atoi(string(body))
+	require.NoError(ct.t, err)
+	return pid
 }
 
 func (ct *CogTest) Runners() []string {
 	if *legacyCog {
 		return nil
-	} else {
-		url := fmt.Sprintf("http://localhost:%d/_runners", ct.serverPort)
-		resp, err := http.DefaultClient.Get(url)
-		require.NoError(ct.t, err)
-		defer resp.Body.Close()
-		var runners []string
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(ct.t, err)
-		err = json.Unmarshal(body, &runners)
-		require.NoError(ct.t, err)
-		slices.Sort(runners)
-		return runners
 	}
+	url := fmt.Sprintf("http://localhost:%d/_runners", ct.serverPort)
+	resp, err := http.DefaultClient.Get(url)
+	require.NoError(ct.t, err)
+	defer resp.Body.Close()
+	var runners []string
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(ct.t, err)
+	err = json.Unmarshal(body, &runners)
+	require.NoError(ct.t, err)
+	slices.Sort(runners)
+	return runners
+
 }
 
 func (ct *CogTest) HealthCheck() server.HealthCheck {
@@ -337,12 +342,12 @@ func (ct *CogTest) HealthCheck() server.HealthCheck {
 	for {
 		resp, err := http.DefaultClient.Get(url)
 		if err == nil {
-			defer resp.Body.Close()
 			var hc server.HealthCheck
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(ct.t, err)
 			err = json.Unmarshal(body, &hc)
 			require.NoError(ct.t, err)
+			resp.Body.Close()
 			return hc
 		}
 
@@ -365,15 +370,15 @@ func (ct *CogTest) Prediction(input map[string]any) server.PredictionResponse {
 	return ct.prediction(http.MethodPost, "/predictions", req)
 }
 
-func (ct *CogTest) PredictionWithId(pid string, input map[string]any) server.PredictionResponse {
-	req := server.PredictionRequest{Id: pid, Input: input}
+func (ct *CogTest) PredictionWithID(pid string, input map[string]any) server.PredictionResponse {
+	req := server.PredictionRequest{ID: pid, Input: input}
 	return ct.prediction(http.MethodPut, fmt.Sprintf("/predictions/%s", pid), req)
 }
 
 func (ct *CogTest) PredictionWithUpload(input map[string]any) server.PredictionResponse {
 	req := server.PredictionRequest{
 		Input:            input,
-		OutputFilePrefix: ct.UploadUrl(),
+		OutputFilePrefix: ct.UploadURL(),
 	}
 	return ct.prediction(http.MethodPost, "/predictions", req)
 }
@@ -381,34 +386,35 @@ func (ct *CogTest) PredictionWithUpload(input map[string]any) server.PredictionR
 func (ct *CogTest) AsyncPrediction(input map[string]any) string {
 	req := server.PredictionRequest{
 		Input:   input,
-		Webhook: ct.WebhookUrl(),
+		Webhook: ct.WebhookURL(),
 	}
 	resp := ct.prediction(http.MethodPost, "/predictions", req)
-	return resp.Id
+	return resp.ID
 }
 
 func (ct *CogTest) AsyncPredictionWithFilter(input map[string]any, filter []server.WebhookEvent) string {
 	req := server.PredictionRequest{
 		Input:               input,
-		Webhook:             ct.WebhookUrl(),
+		Webhook:             ct.WebhookURL(),
 		WebhookEventsFilter: filter,
 	}
 	resp := ct.prediction(http.MethodPost, "/predictions", req)
-	return resp.Id
+	return resp.ID
 }
 
-func (ct *CogTest) AsyncPredictionWithId(pid string, input map[string]any) string {
+func (ct *CogTest) AsyncPredictionWithID(pid string, input map[string]any) string {
 	req := server.PredictionRequest{
-		Id:      pid,
+		ID:      pid,
 		Input:   input,
-		Webhook: ct.WebhookUrl(),
+		Webhook: ct.WebhookURL(),
 	}
 	resp := ct.prediction(http.MethodPut, fmt.Sprintf("/predictions/%s", pid), req)
-	return resp.Id
+	return resp.ID
 }
 
-func (ct *CogTest) prediction(method string, path string, req server.PredictionRequest) server.PredictionResponse {
-	resp := ct.PredictionReq(method, path, req)
+func (ct *CogTest) prediction(method string, pathStr string, req server.PredictionRequest) server.PredictionResponse {
+	resp := ct.PredictionReq(method, pathStr, req)
+	defer resp.Body.Close()
 	if req.Webhook == "" {
 		assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
 	} else {
@@ -423,11 +429,11 @@ func (ct *CogTest) prediction(method string, path string, req server.PredictionR
 	return pr
 }
 
-func (ct *CogTest) PredictionReq(method string, path string, req server.PredictionRequest) *http.Response {
+func (ct *CogTest) PredictionReq(method string, pathStr string, req server.PredictionRequest) *http.Response {
 	req.CreatedAt = util.NowIso()
 	data, err := json.Marshal(req)
 	require.NoError(ct.t, err)
-	r, err := http.NewRequest(method, ct.Url(path), bytes.NewReader(data))
+	r, err := http.NewRequest(method, ct.URL(pathStr), bytes.NewReader(data))
 	require.NoError(ct.t, err)
 	r.Header.Set("Content-Type", "application/json")
 	if req.Webhook != "" {
@@ -439,17 +445,19 @@ func (ct *CogTest) PredictionReq(method string, path string, req server.Predicti
 }
 
 func (ct *CogTest) Cancel(pid string) {
-	url := ct.Url(fmt.Sprintf("/predictions/%s/cancel", pid))
+	url := ct.URL(fmt.Sprintf("/predictions/%s/cancel", pid))
 	resp, err := http.DefaultClient.Post(url, "application/json", nil)
 	require.NoError(ct.t, err)
 	assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
+	_ = resp.Body.Close()
 }
 
 func (ct *CogTest) Shutdown() {
-	url := ct.Url("/shutdown")
+	url := ct.URL("/shutdown")
 	resp, err := http.DefaultClient.Post(url, "", nil)
 	require.NoError(ct.t, err)
 	assert.Equal(ct.t, http.StatusOK, resp.StatusCode)
+	_ = resp.Body.Close()
 }
 
 func (ct *CogTest) AssertResponse(
@@ -473,9 +481,9 @@ func (ct *CogTest) AssertResponses(
 		if i == l-1 {
 			assert.Equal(ct.t, finalStatus, r.Status)
 			assert.Equal(ct.t, finalOutput, r.Output)
-			assert.Contains(ct.t, r.Logs, finalLogs)
+			assert.Contains(ct.t, finalLogs, r.Logs)
 		} else {
-			assert.Equal(ct.t, r.Status, server.PredictionProcessing)
+			assert.Equal(ct.t, server.PredictionProcessing, r.Status)
 			// Logs are incremental
 			assert.Contains(ct.t, r.Logs, logs)
 			logs = r.Logs

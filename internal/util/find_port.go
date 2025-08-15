@@ -1,6 +1,7 @@
-package util
+package util //nolint:revive // TODO: this is not a meaningful package name, move functionality to where it's used
 
 import (
+	"fmt"
 	"net"
 	"sync"
 )
@@ -9,11 +10,6 @@ var (
 	ports   = make(map[int]bool)
 	portsMu sync.Mutex
 )
-
-type PortFinder struct {
-	ports map[int]bool
-	mu    sync.Mutex
-}
 
 func FindPort() (int, error) {
 	portsMu.Lock()
@@ -27,10 +23,14 @@ func FindPort() (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		p := l.Addr().(*net.TCPAddr).Port
+		addr, ok := l.Addr().(*net.TCPAddr)
+		if !ok {
+			return 0, fmt.Errorf("failed to get port from TCP address: %w", err)
+		}
+		p := addr.Port
 		if _, ok := ports[p]; !ok {
 			ports[p] = true
-			l.Close()
+			_ = l.Close()
 			return p, nil
 		}
 	}

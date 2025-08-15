@@ -40,5 +40,7 @@ func SendRunnerMetric(yaml CogYaml) {
 	resp, err := HTTPClientWithRetry().Post(endpoint, "application/json", bytes.NewBuffer(body))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		log.Errorw("failed to send runner metrics", "error", err)
+		return
 	}
+	_ = resp.Body.Close()
 }

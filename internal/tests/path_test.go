@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -23,7 +24,7 @@ func b64encodeLegacy(s string) string {
 
 func TestPredictionPathBase64Succeeded(t *testing.T) {
 	ct := NewCogTest(t, "path")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -39,12 +40,12 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 	}
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionPathURLSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "path")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -60,12 +61,12 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 	}
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionNotPathSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "not_path")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -76,13 +77,13 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 	ct.AssertResponse(resp, server.PredictionSucceeded, "*https://replicate.com*", "")
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "path")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -91,8 +92,9 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	resp := ct.PredictionWithUpload(map[string]any{"p": b64encode("bar")})
 	logs := "reading input file\nwriting output file\n"
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
-	output := resp.Output.(string)
-	assert.True(t, strings.HasPrefix(output, ct.UploadUrl()))
+	output, ok := resp.Output.(string)
+	assert.True(t, ok)
+	assert.True(t, strings.HasPrefix(output, ct.UploadURL()))
 	assert.Equal(t, logs, resp.Logs)
 
 	ul := ct.GetUploads()
@@ -107,14 +109,14 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	}
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "path")
 	ct.StartWebhook()
 	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -128,7 +130,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	logs := "reading input file\nwriting output file\n"
 	filename, ok := strings.CutPrefix(ul[0].Path, "/upload/")
 	assert.True(t, ok)
-	url := fmt.Sprintf("%s%s", ct.UploadUrl(), filename)
+	url := fmt.Sprintf("%s%s", ct.UploadURL(), filename)
 	ct.AssertResponses(wr, server.PredictionSucceeded, url, logs)
 
 	body := string(ul[0].Body)
@@ -141,14 +143,14 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	}
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionPathUploadIterator(t *testing.T) {
 	ct := NewCogTest(t, "path_out_iter")
 	ct.StartWebhook()
 	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -176,7 +178,7 @@ func TestPredictionPathUploadIterator(t *testing.T) {
 	assert.Equal(t, "out2", string(ul[2].Body))
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 const TestDataPrefix = "https://raw.githubusercontent.com/gabriel-vasile/mimetype/refs/heads/master/testdata/"
@@ -185,22 +187,22 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 	ct := NewCogTest(t, "mime")
 	ct.StartWebhook()
 	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	ct.AsyncPredictionWithId("p1", map[string]any{"u": TestDataPrefix + "gif.gif"})
+	ct.AsyncPredictionWithID("p1", map[string]any{"u": TestDataPrefix + "gif.gif"})
 	ct.WaitForWebhookCompletion()
 
-	ct.AsyncPredictionWithId("p2", map[string]any{"u": TestDataPrefix + "jar.jar"})
+	ct.AsyncPredictionWithID("p2", map[string]any{"u": TestDataPrefix + "jar.jar"})
 	ct.WaitForWebhookCompletion()
 
-	ct.AsyncPredictionWithId("p3", map[string]any{"u": TestDataPrefix + "tar.tar"})
+	ct.AsyncPredictionWithID("p3", map[string]any{"u": TestDataPrefix + "tar.tar"})
 	ct.WaitForWebhookCompletion()
 
-	ct.AsyncPredictionWithId("p4", map[string]any{"u": "https://www.gstatic.com/webp/gallery/1.sm.webp"})
+	ct.AsyncPredictionWithID("p4", map[string]any{"u": "https://www.gstatic.com/webp/gallery/1.sm.webp"})
 	ct.WaitForWebhookCompletion()
 
 	ul := ct.GetUploads()
@@ -216,20 +218,20 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 	assert.Equal(t, "image/webp", ul[3].ContentType)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionPathMultiMimeTypes(t *testing.T) {
 	ct := NewCogTest(t, "mimes")
 	ct.StartWebhook()
 	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	ct.AsyncPredictionWithId("p1", map[string]any{
+	ct.AsyncPredictionWithID("p1", map[string]any{
 		"us": []string{
 			TestDataPrefix + "gif.gif",
 			TestDataPrefix + "jar.jar",
@@ -251,5 +253,5 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 	assert.Equal(t, "image/webp", ul[3].ContentType)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }

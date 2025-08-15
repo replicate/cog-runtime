@@ -4,13 +4,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func testPathOut(t *testing.T, predictor string, nested bool) {
+	t.Helper()
 	ct := NewCogTest(t, predictor)
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -33,7 +35,7 @@ func testPathOut(t *testing.T, predictor string, nested bool) {
 	ct.AssertResponse(resp, server.PredictionSucceeded, output, "")
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPathOut(t *testing.T) {

@@ -16,7 +16,7 @@ func TestShutdownByServerSigInt(t *testing.T) {
 		t.SkipNow()
 	}
 	ct := NewCogTest(t, "sleep")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -24,13 +24,13 @@ func TestShutdownByServerSigInt(t *testing.T) {
 
 	err := syscall.Kill(ct.ServerPid(), syscall.SIGINT)
 	require.NoError(t, err)
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }
 
 func TestShutdownByServerSigTerm(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -38,14 +38,14 @@ func TestShutdownByServerSigTerm(t *testing.T) {
 
 	err := syscall.Kill(ct.ServerPid(), syscall.SIGTERM)
 	require.NoError(t, err)
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }
 
 func TestShutdownIgnoreSignal(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.AppendArgs("--await-explicit-shutdown=true")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -65,7 +65,7 @@ func TestShutdownIgnoreSignal(t *testing.T) {
 		err := syscall.Kill(ct.ServerPid(), syscall.SIGINT)
 		require.NoError(t, err)
 	}
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }
 
@@ -75,7 +75,7 @@ func TestShutdownProcedureIgnoreSignal(t *testing.T) {
 		t.SkipNow()
 	}
 	ct := NewCogProcedureTest(t)
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -87,6 +87,6 @@ func TestShutdownProcedureIgnoreSignal(t *testing.T) {
 	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 	assert.Equal(t, 0, ct.cmd.ProcessState.ExitCode())
 }

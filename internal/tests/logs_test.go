@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -16,7 +17,7 @@ func TestLogs(t *testing.T) {
 	ct.AppendEnvs("LOG_FILE=stderr")
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
-	assert.NoError(t, ct.StartWithPipes(stdout, stderr))
+	require.NoError(t, ct.StartWithPipes(stdout, stderr))
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -29,7 +30,7 @@ func TestLogs(t *testing.T) {
 	ct.AssertResponse(resp, server.PredictionSucceeded, "*bar*", logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 
 	sout := "STDOUT: starting setup\nSTDOUT: completed setup\nSTDOUT: starting prediction\nSTDOUT: completed prediction\n"
 	assert.Equal(t, sout, stdout.String())

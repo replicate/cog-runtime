@@ -1,8 +1,7 @@
-package util
+package util //nolint:revive // TODO: this is not a meaningful package name, move functionality to where it's used
 
 import (
 	"embed"
-	_ "embed"
 	"encoding/base32"
 	"fmt"
 	"net/http"
@@ -39,7 +38,7 @@ type CogYaml struct {
 
 func ReadCogYaml(dir string) (*CogYaml, error) {
 	var cogYaml CogYaml
-	bs, err := os.ReadFile(filepath.Join(dir, "cog.yaml"))
+	bs, err := os.ReadFile(filepath.Join(dir, "cog.yaml")) //nolint:gosec // expected dynamic path
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +59,7 @@ func (y *CogYaml) PredictModuleAndPredictor() (string, string, error) {
 }
 
 // api.git: internal/logic/id.go
-func PredictionId() (string, error) {
+func PredictionID() (string, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
 		return "", err
@@ -124,7 +123,7 @@ func CreateLogger(name string) *zap.Logger {
 	}
 	lvl, err := zapcore.ParseLevel(logLevel)
 	if err != nil {
-		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err)
+		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err) //nolint:forbidigo // this logs when logger can't be setup
 		lvl = zapcore.InfoLevel
 	}
 	return logging.New(name).WithOptions(zap.IncreaseLevel(lvl))

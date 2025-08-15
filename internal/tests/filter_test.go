@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -11,7 +12,7 @@ import (
 func TestPredictionFilterAll(t *testing.T) {
 	ct := NewCogTest(t, "iterator")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -40,7 +41,7 @@ func TestPredictionFilterAll(t *testing.T) {
 func TestPredictionFilterCompleted(t *testing.T) {
 	ct := NewCogTest(t, "iterator")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -61,7 +62,7 @@ func TestPredictionFilterCompleted(t *testing.T) {
 func TestPredictionFilterStartedCompleted(t *testing.T) {
 	ct := NewCogTest(t, "iterator")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -84,7 +85,7 @@ func TestPredictionFilterStartedCompleted(t *testing.T) {
 func TestPredictionFilterOutput(t *testing.T) {
 	ct := NewCogTest(t, "iterator")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -107,7 +108,7 @@ func TestPredictionFilterOutput(t *testing.T) {
 func TestPredictionFilterLogs(t *testing.T) {
 	ct := NewCogTest(t, "iterator")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)

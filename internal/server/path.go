@@ -20,7 +20,7 @@ import (
 
 var Base64Regex = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 
-func isUri(s *openapi3.SchemaRef) bool {
+func isURI(s *openapi3.SchemaRef) bool {
 	return s.Value.Type.Is("string") && s.Value.Format == "uri"
 }
 
@@ -45,7 +45,8 @@ func handleInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(strin
 		if !ok {
 			continue
 		}
-		if isUri(p) {
+		switch {
+		case isURI(p):
 			// field: Path or field: Optional[Path]
 			if s, ok := v.(string); ok {
 				o, err := fn(s, paths)
@@ -54,7 +55,7 @@ func handleInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(strin
 				}
 				m[k] = o
 			}
-		} else if p.Value.Type.Is("array") && isUri(p.Value.Items) {
+		case p.Value.Type.Is("array") && isURI(p.Value.Items):
 			// field: list[Path]
 			if xs, ok := v.([]any); ok {
 				for i, x := range xs {
@@ -67,7 +68,7 @@ func handleInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(strin
 					}
 				}
 			}
-		} else if p.Value.Type.Is("object") {
+		case p.Value.Type.Is("object"):
 			// field is Any with custom coder, e.g. dataclass, JSON, or Pydantic
 			// No known schema, try to handle all attributes
 			o, err := handlePath(v, paths, fn)
@@ -117,9 +118,8 @@ func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, e
 			}
 		}
 		return m, nil
-	} else {
-		return json, nil
 	}
+	return json, nil
 }
 
 func base64ToInput(s string, paths *[]string) (string, error) {
@@ -135,12 +135,15 @@ func base64ToInput(s string, paths *[]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // cleanup, safe to ignore err, always close
 	if _, err := f.Write(bs); err != nil {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
-	os.Chmod(f.Name(), 0o666)
+	err = os.Chmod(f.Name(), 0o666) //nolint:gosec // TODO: is 0o666 the correct mode?
+	if err != nil {
+		return "", fmt.Errorf("failed to chmod file: %w", err)
+	}
 	return f.Name(), nil
 }
 
@@ -156,7 +159,7 @@ func urlToInput(s string, paths *[]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // cleanup, safe to ignore err, always close
 	resp, err := util.HTTPClientWithRetry().Get(s)
 	if err != nil {
 		return "", err
@@ -166,7 +169,10 @@ func urlToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
-	os.Chmod(f.Name(), 0o666)
+	err = os.Chmod(f.Name(), 0o666) //nolint:gosec // TODO: is 0o666 the correct mode?
+	if err != nil {
+		return "", fmt.Errorf("failed to chmod file: %w", err)
+	}
 	return f.Name(), nil
 }
 
@@ -180,7 +186,7 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 	}
 	p := u.Path
 
-	bs, err := os.ReadFile(p)
+	bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
 	if err != nil {
 		return "", err
 	}
@@ -191,7 +197,7 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mt, b64), nil
 }
 
-func outputToUpload(uploadUrl string, predictionId string) func(s string, paths *[]string) (string, error) {
+func outputToUpload(uploadURL string, predictionID string) func(s string, paths *[]string) (string, error) {
 	return func(s string, paths *[]string) (string, error) {
 		u, err := url.Parse(s)
 		if err != nil {
@@ -202,13 +208,13 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		}
 		p := u.Path
 
-		bs, err := os.ReadFile(p)
+		bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
 		if err != nil {
 			return "", err
 		}
 		*paths = append(*paths, p)
 		filename := path.Base(p)
-		uUpload, err := url.JoinPath(uploadUrl, filename)
+		uUpload, err := url.JoinPath(uploadURL, filename)
 		if err != nil {
 			return "", err
 		}
@@ -216,13 +222,13 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		if err != nil {
 			return "", err
 		}
-		req.Header.Set("X-Prediction-ID", predictionId)
+		req.Header.Set("X-Prediction-ID", predictionID)
 		req.Header.Set("Content-Type", mimetype.Detect(bs).String())
 		resp, err := util.HTTPClientWithRetry().Do(req)
 		if err != nil {
 			return "", err
 		}
-		resp.Body.Close()
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 			return "", fmt.Errorf("failed to upload file: status %s", resp.Status)
 		}

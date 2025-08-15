@@ -17,6 +17,33 @@ concurrency:
   cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 
 jobs:
+  lint-go:
+    name: Go Linting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '^1.25.0'
+          cache: true
+          cache-dependency-path: ./go.sum
+      - uses: golangci/golangci-lint-action@v8.0.0
+        with:
+          version: v2.3.1
+          cache: true
+          cache-dependency-path: ./go.sum
+      - name: Run format check with CGI
+        run: |
+          go install github.com/daixiang0/gci@0.13.7
+          OUTPUT=$(gci diff --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .)
+          if [ -n "$OUTPUT" ]; then
+            echo "gci formatting issues: run `script/format.sh` to fix"
+            echo "$OUTPUT"
+            exit 1
+          fi
+
   check-go:
     name: Check Go
     runs-on: ubuntu-latest

@@ -39,7 +39,7 @@ type Config struct {
 	UseProcedureMode      bool
 	AwaitExplicitShutdown bool
 	IPCUrl                string
-	UploadUrl             string
+	UploadURL             string
 }
 
 type PredictConfig struct {
@@ -91,7 +91,7 @@ type SetupResult struct {
 
 type PredictionRequest struct {
 	Input               any            `json:"input"`
-	Id                  string         `json:"id"`
+	ID                  string         `json:"id"`
 	CreatedAt           string         `json:"created_at"`
 	StartedAt           string         `json:"started_at"`
 	Webhook             string         `json:"webhook,omitempty"`
@@ -103,7 +103,7 @@ type PredictionRequest struct {
 type PredictionResponse struct {
 	Input       any              `json:"input"`
 	Output      any              `json:"output,omitempty"`
-	Id          string           `json:"id"`
+	ID          string           `json:"id"`
 	CreatedAt   string           `json:"created_at,omitempty"`
 	StartedAt   string           `json:"started_at,omitempty"`
 	CompletedAt string           `json:"completed_at,omitempty"`
