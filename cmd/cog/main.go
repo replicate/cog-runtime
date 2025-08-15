@@ -12,7 +12,6 @@ import (
 
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
-	"github.com/replicate/go/logging"
 	_ "go.uber.org/automaxprocs"
 
 	"github.com/replicate/cog-runtime/internal/server"
