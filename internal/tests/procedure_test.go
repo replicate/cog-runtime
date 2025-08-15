@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -44,7 +45,7 @@ func TestProcedure(t *testing.T) {
 	// Force max runners and max concurrency to 2
 	ct.AppendEnvs("GOMAXPROCS=1")
 	ct.AppendEnvs("COG_PROCEDURE_CONCURRENCY_PER_CPU=2")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -96,6 +97,7 @@ func TestProcedure(t *testing.T) {
 
 	bazURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "baz")
 	badResp1 := procPredictionHTTP(ct, bazURL, "baztok", map[string]any{"i": 1, "s": "bazstr"})
+	defer badResp1.Body.Close()
 	assert.Equal(t, http.StatusConflict, badResp1.StatusCode)
 	assert.Equal(t, []string{"00:" + fooURL, "01:" + barURL}, ct.Runners())
 
@@ -143,7 +145,7 @@ func TestProcedure(t *testing.T) {
 	assert.Equal(t, []string{"00:" + fooURL, "01:" + bazURL}, ct.Runners())
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestProcedureAsyncConcurrency(t *testing.T) {
@@ -156,7 +158,7 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 	// Force max runners and max concurrency to 4
 	ct.AppendEnvs("GOMAXPROCS=1")
 	ct.AppendEnvs("COG_PROCEDURE_CONCURRENCY_PER_CPU=4")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -202,6 +204,7 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 	assert.Equal(t, []string{"00:" + fooURL, "01:" + fooURL}, ct.Runners())
 
 	badResp := procPredictionHTTP(ct, fooURL, "badtok", map[string]any{"i": 1, "s": "badstr"})
+	defer badResp.Body.Close()
 	assert.Equal(t, http.StatusConflict, badResp.StatusCode)
 	assert.Equal(t, []string{"00:" + fooURL, "01:" + fooURL}, ct.Runners())
 
@@ -214,7 +217,7 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 	assert.Equal(t, []string{"00:" + fooURL, "01:" + fooURL}, ct.Runners())
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestProcedureNonAsyncConcurrency(t *testing.T) {
@@ -227,7 +230,7 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 	// Force max runners and max concurrency to 4
 	ct.AppendEnvs("GOMAXPROCS=1")
 	ct.AppendEnvs("COG_PROCEDURE_CONCURRENCY_PER_CPU=4")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -273,6 +276,7 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 	assert.Equal(t, []string{"00:" + barURL, "01:" + barURL, "02:" + barURL, "03:" + barURL}, ct.Runners())
 
 	badResp := procPredictionHTTP(ct, barURL, "badtok", map[string]any{"i": 1, "s": "badstr"})
+	defer badResp.Body.Close()
 	assert.Equal(t, http.StatusConflict, badResp.StatusCode)
 	assert.Equal(t, []string{"00:" + barURL, "01:" + barURL, "02:" + barURL, "03:" + barURL}, ct.Runners())
 
@@ -285,5 +289,5 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 	assert.Equal(t, []string{"00:" + barURL, "01:" + barURL, "02:" + barURL, "03:" + barURL}, ct.Runners())
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }

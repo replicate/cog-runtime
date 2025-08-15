@@ -45,7 +45,7 @@ func TestUID(t *testing.T) {
 						t.Errorf("allocateUID failed: %v", err)
 						return
 					}
-					uidChan <- uid
+					uidChan <- int(uid)
 				}
 			}()
 		}
@@ -134,6 +134,6 @@ func TestTempDirectoryCleanup(t *testing.T) {
 		runner := &Runner{}
 
 		err := runner.Stop()
-		assert.NoError(t, err, "Runner.Stop() should not error when tmpDir is empty")
+		require.NoError(t, err, "Runner.Stop() should not error when tmpDir is empty")
 	})
 }

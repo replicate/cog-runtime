@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/replicate/go/logging"
 )
@@ -25,7 +26,7 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 	serveMux := http.NewServeMux()
 	serveMux.HandleFunc("GET /{$}", handler.Root)
 	serveMux.HandleFunc("GET /health-check", handler.HealthCheck)
-	serveMux.HandleFunc("GET /openapi.json", handler.OpenApi)
+	serveMux.HandleFunc("GET /openapi.json", handler.OpenAPI)
 	serveMux.HandleFunc("POST /shutdown", handler.Shutdown)
 
 	if useProcedureMode {
@@ -78,7 +79,8 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 	}
 
 	return &http.Server{
-		Addr:    addr,
-		Handler: serveMux,
+		Addr:        addr,
+		Handler:     serveMux,
+		ReadTimeout: 10 * time.Second,
 	}
 }

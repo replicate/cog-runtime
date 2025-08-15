@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
@@ -25,9 +26,10 @@ func TestPredictionAsyncIteratorSucceeded(t *testing.T) {
 }
 
 func testPredictionIteratorSucceeded(t *testing.T, module string) {
+	t.Helper()
 	ct := NewCogTest(t, module)
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -39,7 +41,7 @@ func testPredictionIteratorSucceeded(t *testing.T, module string) {
 	ct.AssertResponses(wr, server.PredictionSucceeded, []any{"*bar-0*", "*bar-1*"}, logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
@@ -50,21 +52,22 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	ct := NewCogTest(t, "async_iterator")
 	ct.AppendEnvs("TEST_COG_MAX_CONCURRENCY=2")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	barId := ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	bazId := ct.AsyncPrediction(map[string]any{"i": 2, "s": "baz"})
+	barID := ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
+	bazID := ct.AsyncPrediction(map[string]any{"i": 2, "s": "baz"})
 	wr := ct.WaitForWebhookCompletion()
 	var barR []server.PredictionResponse
 	var bazR []server.PredictionResponse
 	for _, r := range wr {
-		if r.Id == barId {
+		switch r.ID {
+		case barID:
 			barR = append(barR, r)
-		} else if r.Id == bazId {
+		case bazID:
 			bazR = append(bazR, r)
 		}
 	}
@@ -74,5 +77,5 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	ct.AssertResponses(bazR, server.PredictionSucceeded, []any{"*baz-0*", "*baz-1*"}, bazLogs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }

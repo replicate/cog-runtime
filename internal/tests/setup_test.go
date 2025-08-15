@@ -13,26 +13,27 @@ import (
 func TestSetupSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.AppendEnvs("SETUP_SLEEP=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 	assert.Equal(t, server.StatusStarting.String(), ct.HealthCheck().Status)
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 	assert.Equal(t, "starting setup\nsetup in progress 1/1\ncompleted setup\n", hc.Setup.Logs)
-	resp, err := http.DefaultClient.Get(ct.Url("/openapi.json"))
+	resp, err := http.DefaultClient.Get(ct.URL("/openapi.json"))
 	require.NoError(t, err)
+	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestSetupFailure(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.AppendArgs("--await-explicit-shutdown=true")
 	ct.AppendEnvs("SETUP_FAILURE=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
@@ -45,14 +46,14 @@ func TestSetupFailure(t *testing.T) {
 	}
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestSetupCrash(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.AppendArgs("--await-explicit-shutdown=true")
 	ct.AppendEnvs("SETUP_CRASH=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
@@ -66,5 +67,5 @@ func TestSetupCrash(t *testing.T) {
 	}
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
@@ -16,7 +17,7 @@ import (
 func TestAsyncPredictionSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -28,32 +29,32 @@ func TestAsyncPredictionSucceeded(t *testing.T) {
 	ct.AssertResponses(wr, server.PredictionSucceeded, "*bar*", logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	ct.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
+	ct.AsyncPredictionWithID("p01", map[string]any{"i": 1, "s": "bar"})
 	wr := ct.WaitForWebhookCompletion()
 	logs := "starting prediction\nprediction in progress 1/1\ncompleted prediction\n"
 	ct.AssertResponses(wr, server.PredictionSucceeded, "*bar*", logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionFailure(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.StartWebhook()
 	ct.AppendEnvs("PREDICTION_FAILURE=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -65,7 +66,7 @@ func TestAsyncPredictionFailure(t *testing.T) {
 	ct.AssertResponses(wr, server.PredictionFailed, nil, logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionCrash(t *testing.T) {
@@ -73,7 +74,7 @@ func TestAsyncPredictionCrash(t *testing.T) {
 	ct.StartWebhook()
 	ct.AppendArgs("--await-explicit-shutdown=true")
 	ct.AppendEnvs("PREDICTION_CRASH=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -91,7 +92,7 @@ func TestAsyncPredictionCrash(t *testing.T) {
 	assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionCanceled(t *testing.T) {
@@ -99,14 +100,14 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 	ct.StartWebhook()
 	ct.AppendArgs("--await-explicit-shutdown=true")
 	ct.AppendEnvs("PREDICTION_CRASH=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	pid := "p01"
-	ct.AsyncPredictionWithId(pid, map[string]any{"i": 60, "s": "bar"})
+	ct.AsyncPredictionWithID(pid, map[string]any{"i": 60, "s": "bar"})
 	if *legacyCog {
 		// Compat: legacy Cog does not send output webhook
 		time.Sleep(time.Second)
@@ -121,13 +122,13 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 	ct.AssertResponses(wr, server.PredictionCanceled, nil, logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestAsyncPredictionConcurrency(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -154,11 +155,12 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 	}
 	resp := ct.PredictionReq(http.MethodPost, "/predictions", req)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	_ = resp.Body.Close()
 
 	wr := ct.WaitForWebhookCompletion()
 	logs := "starting prediction\nprediction in progress 1/1\ncompleted prediction\n"
 	ct.AssertResponses(wr, server.PredictionSucceeded, "*bar*", logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }

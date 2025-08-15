@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestPredictionOutputSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "output")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -32,5 +33,5 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 	ct.AssertResponse(resp, server.PredictionSucceeded, output, logs)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }

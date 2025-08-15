@@ -1,7 +1,7 @@
 package server
 
 import (
-	"errors"
+	"fmt"
 	"os/user"
 	"strconv"
 	"sync"
@@ -15,11 +15,11 @@ const (
 )
 
 type uidCounter struct {
-	uid int16
+	uid uint32
 	mu  sync.Mutex
 }
 
-func (u *uidCounter) allocate() (int, error) {
+func (u *uidCounter) allocate() (uint32, error) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
@@ -29,10 +29,10 @@ func (u *uidCounter) allocate() (int, error) {
 		if u.uid < BaseUID || u.uid > MaxUID {
 			u.uid = BaseUID
 		}
-		if _, err := user.LookupId(strconv.Itoa(int(u.uid))); err != nil {
-			return int(u.uid), nil
+		if _, err := user.LookupId(strconv.FormatUint(uint64(u.uid), 10)); err != nil {
+			return u.uid, nil
 		}
 	}
-	// NoBodyUID is used here to ensure we do not accidently send back root's UID in a posix system
-	return NoBodyUID, errors.New("failed to find unused UID after max attempts")
+	// NoBodyUID is used here to ensure we do not accidentally send back root's UID in a posix system
+	return NoBodyUID, fmt.Errorf("failed to find unused UID after max attempts")
 }

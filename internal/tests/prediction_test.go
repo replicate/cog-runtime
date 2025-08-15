@@ -14,7 +14,7 @@ import (
 
 func TestPredictionSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -24,35 +24,35 @@ func TestPredictionSucceeded(t *testing.T) {
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
 	assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
-	assert.Equal(t, 1.0, resp.Metrics["i"])
-	assert.Equal(t, 3.0, resp.Metrics["s_len"])
+	assert.Equal(t, 1.0, resp.Metrics["i"])     //nolint:testifylint // explicit float value test
+	assert.Equal(t, 3.0, resp.Metrics["s_len"]) //nolint:testifylint // explicit float value test
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionWithIdSucceeded(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-	resp := ct.PredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
+	resp := ct.PredictionWithID("p01", map[string]any{"i": 1, "s": "bar"})
 	assert.Equal(t, server.PredictionSucceeded, resp.Status)
 	assert.Equal(t, "*bar*", resp.Output)
-	assert.Equal(t, "p01", resp.Id)
+	assert.Equal(t, "p01", resp.ID)
 	assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionFailure(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.AppendEnvs("PREDICTION_FAILURE=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -60,21 +60,21 @@ func TestPredictionFailure(t *testing.T) {
 
 	resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
 	assert.Equal(t, server.PredictionFailed, resp.Status)
-	assert.Equal(t, nil, resp.Output)
+	assert.Nil(t, resp.Output)
 	logs := "starting prediction\nprediction in progress 1/1\nprediction failed\n"
 	// Compat: legacy Cog also includes Traceback
 	assert.Contains(t, resp.Logs, logs)
 	assert.Equal(t, "prediction failed", resp.Error)
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionCrash(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
 	ct.AppendArgs("--await-explicit-shutdown=true")
 	ct.AppendEnvs("PREDICTION_CRASH=1")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -88,6 +88,7 @@ func TestPredictionCrash(t *testing.T) {
 		// Compat: legacy Cog returns HTTP 500 and "Internal Server Error"
 		assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		require.NoError(t, err)
 		bodyStr := string(body)
 		assert.Equal(t, "Internal Server Error", bodyStr)
@@ -97,7 +98,7 @@ func TestPredictionCrash(t *testing.T) {
 	} else {
 		resp := ct.Prediction(map[string]any{"i": 1, "s": "bar"})
 		assert.Equal(t, server.PredictionFailed, resp.Status)
-		assert.Equal(t, nil, resp.Output)
+		assert.Nil(t, resp.Output)
 		assert.Contains(t, resp.Logs, "starting prediction\nprediction in progress 1/1\nprediction crashed\n")
 		assert.Contains(t, resp.Logs, "SystemExit: 1\n")
 		assert.Equal(t, "prediction failed", resp.Error)
@@ -105,12 +106,12 @@ func TestPredictionCrash(t *testing.T) {
 	}
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
 
 func TestPredictionConcurrency(t *testing.T) {
 	ct := NewCogTest(t, "sleep")
-	assert.NoError(t, ct.Start())
+	require.NoError(t, ct.Start())
 
 	hc := ct.WaitForSetup()
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -129,9 +130,10 @@ func TestPredictionConcurrency(t *testing.T) {
 	// Fail prediction requests when one is in progress
 	go func() {
 		req := server.PredictionRequest{Input: map[string]any{"i": 1, "s": "baz"}}
-		resp := ct.PredictionReq("POST", "/predictions", req)
+		resp := ct.PredictionReq(http.MethodPost, "/predictions", req)
 		assert.Equal(t, http.StatusConflict, resp.StatusCode)
 		done2 <- true
+		_ = resp.Body.Close()
 	}()
 
 	<-done1
@@ -142,5 +144,5 @@ func TestPredictionConcurrency(t *testing.T) {
 	<-done2
 
 	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	require.NoError(t, ct.Cleanup())
 }
