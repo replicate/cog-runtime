@@ -586,7 +586,15 @@ func (r *Runner) handleResponses() error {
 			pr.sendWebhook(WebhookOutput)
 		} else if pr.response.Status.IsCompleted() {
 			if pr.response.Status == PredictionSucceeded {
-				t := util.ParseTime(pr.response.CompletedAt).Sub(util.ParseTime(pr.response.StartedAt)).Seconds()
+				completedAt, err := util.ParseTime(pr.response.CompletedAt)
+				if err != nil {
+					return fmt.Errorf("failed to parse time: %w", err)
+				}
+				startedAt, err := util.ParseTime(pr.response.StartedAt)
+				if err != nil {
+					return fmt.Errorf("failed to parse time: %w", err)
+				}
+				t := completedAt.Sub(startedAt).Seconds()
 				if pr.response.Metrics == nil {
 					pr.response.Metrics = make(map[string]any)
 				}

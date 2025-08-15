@@ -508,7 +508,11 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		req.Id = id
 	}
 	if req.Id == "" {
-		req.Id = util.PredictionId()
+		req.Id, err = util.PredictionId()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	var c chan PredictionResponse
