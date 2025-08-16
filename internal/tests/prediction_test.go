@@ -18,7 +18,9 @@ func TestPredictionSucceeded(t *testing.T) {
 	t.Parallel()
 	runtimeServer := setupCogRuntimeServer(t, false, false, false, "", "sleep", "Predictor")
 
-	waitForSetupComplete(t, runtimeServer)
+	hc := waitForSetupComplete(t, runtimeServer)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	input := map[string]any{"i": 1, "s": "bar"}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
@@ -44,7 +46,9 @@ func TestPredictionSucceeded(t *testing.T) {
 func TestPredictionWithIdSucceeded(t *testing.T) {
 	t.Parallel()
 	runtimeServer := setupCogRuntimeServer(t, false, false, false, "", "sleep", "Predictor")
-	waitForSetupComplete(t, runtimeServer)
+	hc := waitForSetupComplete(t, runtimeServer)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	input := map[string]any{"i": 1, "s": "bar"}
 	predictionId, err := util.PredictionId()
@@ -75,7 +79,9 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 func TestPredictionFailure(t *testing.T) {
 	t.Parallel()
 	runtimeServer := setupCogRuntimeServer(t, false, false, false, "", "sleep", "PredictionFailingPredictor")
-	waitForSetupComplete(t, runtimeServer)
+	hc := waitForSetupComplete(t, runtimeServer)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	input := map[string]any{"i": 1, "s": "bar"}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
@@ -101,7 +107,9 @@ func TestPredictionCrash(t *testing.T) {
 	t.Parallel()
 
 	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "sleep", "PredictionCrashingPredictor")
-	waitForSetupComplete(t, runtimeServer)
+	hc := waitForSetupComplete(t, runtimeServer)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	input := map[string]any{"i": 1, "s": "bar"}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
@@ -115,7 +123,7 @@ func TestPredictionCrash(t *testing.T) {
 	var predictionResponse server.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
-	hc := healthCheck(t, runtimeServer)
+	hc = healthCheck(t, runtimeServer)
 	switch resp.StatusCode {
 	case http.StatusInternalServerError:
 		// This is "legacy" cog semantics
@@ -140,7 +148,9 @@ func TestPredictionConcurrency(t *testing.T) {
 	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "sleep", "Predictor")
 	receiverServer := testHarnessReceiverServer(t)
 
-	waitForSetupComplete(t, runtimeServer)
+	hc := waitForSetupComplete(t, runtimeServer)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	input := map[string]any{"i": 5, "s": "bar"}
 

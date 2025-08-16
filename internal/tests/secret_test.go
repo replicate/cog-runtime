@@ -16,7 +16,9 @@ func TestPredictionSecretSucceeded(t *testing.T) {
 	t.Parallel()
 
 	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "secret", "Predictor")
-	waitForSetupComplete(t, runtimeServer)
+	hc := waitForSetupComplete(t, runtimeServer)
+	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
 	input := map[string]any{"s": "bar"}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})

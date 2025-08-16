@@ -33,10 +33,13 @@ class Predictor(BasePredictor):
 
 class SetupSleepingPredictor(Predictor):
     def setup(self) -> None:
-        i = int(os.environ.get('SETUP_SLEEP', '0'))
+        print('starting setup')
+
+        i = 1
         for x in range(i):
             print(f'setup in progress {x + 1}/{i}')
             time.sleep(0.1)
+        print('completed setup')
 
 class SetupFailingPredictor(BasePredictor):
     def setup(self) -> None:

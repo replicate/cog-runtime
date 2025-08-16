@@ -219,8 +219,6 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server) server.Heal
 	for range timer.C {
 		hc := healthCheck(t, testServer)
 		if hc.Status != server.StatusStarting.String() {
-			assert.Equal(t, server.StatusReady.String(), hc.Status)
-			assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 			return hc
 		}
 	}
