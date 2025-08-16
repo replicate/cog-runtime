@@ -24,6 +24,7 @@ type ServerConfig struct {
 	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
+	WorkingDirectory      string `ff:"long: working-directory, nodefault, usage: working directory"`
 }
 
 var logger = util.CreateLogger("cog")
@@ -96,6 +97,7 @@ func serverCommand() (*ff.Command, error) {
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
 				UploadUrl:             cfg.UploadUrl,
+				WorkingDirectory:      cfg.WorkingDirectory,
 			}
 			ctx, cancel := context.WithCancel(ctx)
 			h, err := server.NewHandler(serverCfg, cancel)
@@ -103,7 +105,11 @@ func serverCommand() (*ff.Command, error) {
 				log.Errorw("failed to create server handler", "error", err)
 				return err
 			}
-			s := server.NewServer(addr, h, cfg.UseProcedureMode)
+			mux := server.NewServeMux(h, cfg.UseProcedureMode)
+			s := &http.Server{
+				Addr:    addr,
+				Handler: mux,
+			}
 			go func() {
 				<-ctx.Done()
 				if err := s.Shutdown(ctx); err != nil {

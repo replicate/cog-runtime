@@ -40,6 +40,9 @@ type Config struct {
 	AwaitExplicitShutdown bool
 	IPCUrl                string
 	UploadUrl             string
+	WorkingDirectory      string
+	EnvSet                map[string]string
+	EnvUnset              []string
 }
 
 type PredictConfig struct {

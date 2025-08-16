@@ -54,6 +54,8 @@ type Handler struct {
 	mu         sync.Mutex
 
 	uidCounter *uidCounter
+
+	cwd string
 }
 
 func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
@@ -63,6 +65,7 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		shutdown:   shutdown,
 		startedAt:  time.Now(),
 		uidCounter: &uidCounter{},
+		cwd:        cfg.WorkingDirectory,
 	}
 	// GOMAXPROCS is set by automaxprocs in main.go on server startup
 	// Reset Go server to 1 to make room for Python runners
@@ -99,7 +102,7 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
 	} else {
 		h.runners = make([]*Runner, 1)
-		runner, err := NewRunner(DefaultRunnerName, cfg.IPCUrl, cfg.UploadUrl)
+		runner, err := NewRunner(DefaultRunnerName, h.cwd, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -383,7 +386,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	}
 
 	log.Infow("starting procedure runner", "src_url", srcURL, "src_dir", srcDir)
-	r, err := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, name, srcDir)
+	r, err := NewProcedureRunner(name, srcDir, h.cfg)
 	if err != nil {
 		return nil, err
 	}

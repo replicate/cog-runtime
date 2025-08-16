@@ -93,7 +93,7 @@ type Runner struct {
 const DefaultRunnerId = 0
 const DefaultRunnerName = "default"
 
-func NewRunner(name, ipcUrl, uploadUrl string) (*Runner, error) {
+func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 	workingDir, err := os.MkdirTemp("", "cog-runner-")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create working directory: %w", err)
@@ -102,10 +102,14 @@ func NewRunner(name, ipcUrl, uploadUrl string) (*Runner, error) {
 		"-u",
 		"-m", "coglet",
 		"--name", name,
-		"--ipc-url", ipcUrl,
+		"--ipc-url", cfg.IPCUrl,
 		"--working-dir", workingDir,
 	}
 	cmd := exec.Command("python3", args...)
+	cmd.Dir = cwd
+
+	cmd.Env = mergeEnv(os.Environ(), cfg.EnvSet, cfg.EnvUnset)
+
 	return &Runner{
 		name:           name,
 		workingDir:     workingDir,
@@ -113,17 +117,16 @@ func NewRunner(name, ipcUrl, uploadUrl string) (*Runner, error) {
 		status:         StatusStarting,
 		maxConcurrency: 1,
 		pending:        make(map[string]*PendingPrediction),
-		uploadUrl:      uploadUrl,
+		uploadUrl:      cfg.UploadUrl,
 		stopped:        make(chan bool),
 	}, nil
 }
 
-func NewProcedureRunner(ipcUrl, uploadUrl, name, srcDir string) (*Runner, error) {
-	r, err := NewRunner(name, ipcUrl, uploadUrl)
+func NewProcedureRunner(name, srcDir string, cfg Config) (*Runner, error) {
+	r, err := NewRunner(name, srcDir, cfg)
 	if err != nil {
 		return nil, err
 	}
-	r.cmd.Dir = srcDir
 	return r, nil
 }
 
@@ -345,7 +348,7 @@ func (r *Runner) config() error {
 	if moduleName == "" || predictorName == "" {
 		y, err := util.ReadCogYaml(r.SrcDir())
 		if err != nil {
-			log.Errorw("failed to read cog.yaml", "error", err)
+			log.Errorw("failed to read cog.yaml", "path", r.SrcDir(), "error", err)
 			panic(err)
 		}
 		m, c, err := y.PredictModuleAndPredictor()
@@ -708,4 +711,23 @@ func (r *Runner) setupLogging(cmdStart chan bool) error {
 		return err
 	}
 	return nil
+}
+
+func mergeEnv(env []string, envSet map[string]string, envUnset []string) []string {
+	environment := make(map[string]string)
+	for _, e := range env {
+		parts := strings.SplitN(e, "=", 2)
+		environment[parts[0]] = parts[1]
+	}
+	for k, v := range envSet {
+		environment[k] = v
+	}
+	for _, k := range envUnset {
+		delete(environment, k)
+	}
+	finalEnv := make([]string, 0, len(environment))
+	for k, v := range environment {
+		finalEnv = append(finalEnv, fmt.Sprintf("%s=%s", k, v))
+	}
+	return finalEnv
 }
