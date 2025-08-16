@@ -1,25 +1,37 @@
 package tests
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestPredictionSecretSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "secret")
-	assert.NoError(t, ct.Start())
+	t.Parallel()
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "secret", "Predictor")
+	waitForSetupComplete(t, runtimeServer)
 
-	resp := ct.Prediction(map[string]any{"s": "bar"})
-	logs := "reading secret\nwriting secret\n"
-	ct.AssertResponse(resp, server.PredictionSucceeded, "**********", logs)
+	input := map[string]any{"s": "bar"}
+	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
+
+	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, "**********", predictionResponse.Output)
+	assert.Contains(t, predictionResponse.Logs, "reading secret\nwriting secret\n")
 }
