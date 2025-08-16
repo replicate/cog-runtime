@@ -23,7 +23,7 @@ import (
 )
 
 // This file implements the basis for the test harness. It is used to test the
-// runtime server and the webhook server.
+// runtime server.
 
 type webhookData struct {
 	Method string
@@ -107,8 +107,6 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 	var pathEnv string
 
 	// SetupEnvs for downstream use
-	// FIXME: This is super hacky. Instead we should dynamically create the cog.yaml file, this is for compatibility with the
-	// `cog_test` test harness while we migrate to in-process testing instead of dynamic dispatching via `go run`
 	switch {
 	case legacyCog && procedureMode:
 		pathEnv = path.Join(basePath, ".venv-procedure", "bin")
@@ -118,8 +116,6 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 		pathEnv = path.Join(basePath, ".venv", "bin")
 	}
 
-	// FIXME: We shouldn't rely on ENV, it makes t.Parallel() impossible. Refactor to supply as direct attributes to the server
-	// in real main() we can derive these values from ENV
 	pythonPathEnv := path.Join(basePath, "python")
 
 	// NOTE(morgan): this is a special case, we need the IPCUrl which is homed on the server before we create the handler. Create a nil
@@ -143,7 +139,7 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 	}
 	writeCogConfig(t, tempDir, predictorClass, concurrencyMax)
 	linkPythonModule(t, basePath, tempDir, module)
-	// Setup Environment Variables
+
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
