@@ -173,7 +173,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.S
 		EnvUnset:              cfg.envUnset,
 		PythonBinPath:         path.Join(pathEnv, "python3"),
 	}
-	concurrencyMax := min(cfg.concurrencyMax, 1)
+	concurrencyMax := max(cfg.concurrencyMax, 1)
 	t.Logf("concurrency max: %d", concurrencyMax)
 
 	writeCogConfig(t, tempDir, cfg.predictorClass, concurrencyMax)
