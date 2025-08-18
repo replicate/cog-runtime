@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +25,12 @@ import (
 
 // This file implements the basis for the test harness. It is used to test the
 // runtime server.
+
+// Test-Suite Wide variables.
+var (
+	basePath  string
+	legacyCog *bool = new(bool)
+)
 
 type webhookData struct {
 	Method string
@@ -96,13 +103,8 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 	t.Helper()
 	tempDir := t.TempDir()
 	t.Logf("Working directory: %s", tempDir)
-	t.Cleanup(func() {
-		os.RemoveAll(tempDir)
-	})
 	// FIXME: This is for compatibility with the `cog_test` test harness while we migrate to in-process testing. This allows us
 	// to specify the python venvs and binary in the same way as for minimizing the blast radius of changes.
-	_, b, _, _ := runtime.Caller(0)
-	basePath := path.Dir(path.Dir(path.Dir(b)))
 
 	var pathEnv string
 
@@ -110,10 +112,13 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 	switch {
 	case legacyCog && procedureMode:
 		pathEnv = path.Join(basePath, ".venv-procedure", "bin")
+		t.Logf("using legacy Cog with venv: %s", pathEnv)
 	case legacyCog:
 		pathEnv = path.Join(basePath, ".venv-legacy", "bin")
+		t.Logf("using legacy Cog with venv: %s", pathEnv)
 	default:
 		pathEnv = path.Join(basePath, ".venv", "bin")
+		t.Logf("using cog with venv: %s", pathEnv)
 	}
 
 	pythonPathEnv := path.Join(basePath, "python")
@@ -132,6 +137,7 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 			"PATH":       fmt.Sprintf("%s:%s", pathEnv, os.Getenv("PATH")),
 			"PYTHONPATH": pythonPathEnv,
 		},
+		PythonBinPath: path.Join(pathEnv, "python3"),
 	}
 	concurrencyMax := 1
 	if strings.HasPrefix(module, "async_") {
@@ -237,4 +243,14 @@ func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, receive
 		req.Header.Set("Prefer", "respond-async")
 	}
 	return req
+}
+
+func TestMain(m *testing.M) {
+	_, b, _, _ := runtime.Caller(0)
+	basePath = path.Dir(path.Dir(path.Dir(b)))
+	isLegacy, err := strconv.ParseBool(os.Getenv("LEGACY_COG"))
+	if err == nil {
+		legacyCog = &isLegacy
+	}
+	os.Exit(m.Run())
 }

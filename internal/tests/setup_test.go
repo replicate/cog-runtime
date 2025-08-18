@@ -52,4 +52,5 @@ func TestSetupCrash(t *testing.T) {
 	} else {
 		assert.Equal(t, "starting setup\nsetup crashed\n", hc.Setup.Logs)
 	}
+
 }

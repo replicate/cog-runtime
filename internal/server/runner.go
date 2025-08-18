@@ -94,6 +94,12 @@ const DefaultRunnerId = 0
 const DefaultRunnerName = "default"
 
 func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
+	// Ensure we default to the default path based python3 binary
+	pythonBinPath := "python3"
+	if cfg.PythonBinPath != "" {
+		pythonBinPath = cfg.PythonBinPath
+	}
+
 	workingDir, err := os.MkdirTemp("", "cog-runner-")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create working directory: %w", err)
@@ -105,7 +111,7 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 		"--ipc-url", cfg.IPCUrl,
 		"--working-dir", workingDir,
 	}
-	cmd := exec.Command("python3", args...)
+	cmd := exec.Command(pythonBinPath, args...)
 	cmd.Dir = cwd
 
 	cmd.Env = mergeEnv(os.Environ(), cfg.EnvSet, cfg.EnvUnset)

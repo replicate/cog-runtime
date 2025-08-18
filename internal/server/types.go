@@ -43,6 +43,11 @@ type Config struct {
 	WorkingDirectory      string
 	EnvSet                map[string]string
 	EnvUnset              []string
+
+	// PythonBinPath is the path to the python binary to use for all runners. Future
+	// implementations may support alternate venvs or alternate python versions per
+	// runner.
+	PythonBinPath string
 }
 
 type PredictConfig struct {

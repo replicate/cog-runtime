@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -27,16 +26,8 @@ import (
 )
 
 var (
-	_, b, _, _ = runtime.Caller(0)
-	basePath   = path.Dir(path.Dir(path.Dir(b)))
-	logger     = util.CreateLogger("cog-test")
-	legacyCog  *bool
+	logger = util.CreateLogger("cog-test")
 )
-
-func init() {
-	isLegacy, _ := strconv.ParseBool(os.Getenv("LEGACY_COG"))
-	legacyCog = &isLegacy
-}
 
 type WebhookRequest struct {
 	Method   string
