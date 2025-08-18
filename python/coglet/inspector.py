@@ -34,17 +34,21 @@ def _validate_setup(f: Callable) -> None:
     assert spec.annotations.get('return') is None, 'setup() must return None'
 
 
-def _validate_predict(f: Callable, is_class_fn: bool) -> None:
-    assert inspect.isfunction(f), 'predict is not a function'
+def _validate_predict(f: Callable, f_name: str, is_class_fn: bool) -> None:
+    assert inspect.isfunction(f), f'{f_name} is not a function'
     spec = inspect.getfullargspec(f)
 
     if is_class_fn:
-        assert spec.args[:1] == ['self'], "predict() must have 'self' first argument"
-    assert spec.varargs is None, 'predict() must not have *args'
-    assert spec.varkw is None, 'predict() must not have **kwargs'
-    assert spec.kwonlyargs == [], 'predict() must not have keyword-only args'
-    assert spec.kwonlydefaults is None, 'predict() must not have keyword-only defaults'
-    assert spec.annotations.get('return') is not None, 'predict() must not return None'
+        assert spec.args[:1] == ['self'], f"{f_name}() must have 'self' first argument"
+    assert spec.varargs is None, f'{f_name}() must not have *args'
+    assert spec.varkw is None, f'{f_name}() must not have **kwargs'
+    assert spec.kwonlyargs == [], f'{f_name}() must not have keyword-only args'
+    assert spec.kwonlydefaults is None, (
+        f'{f_name}() must not have keyword-only defaults'
+    )
+    assert spec.annotations.get('return') is not None, (
+        f'{f_name}() must not return None'
+    )
 
 
 def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
@@ -225,9 +229,9 @@ def _output_adt(tpe: type) -> adt.Output:
 
 
 def _predictor_adt(
-    module_name: str, predictor_name: str, f: Callable, is_class_fn: bool
+    module_name: str, predictor_name: str, f: Callable, f_name: str, is_class_fn: bool
 ) -> adt.Predictor:
-    _validate_predict(f, is_class_fn)
+    _validate_predict(f, f_name, is_class_fn)
     spec = inspect.getfullargspec(f)
     # 1st argument is self for class fn
     names = spec.args[1:] if is_class_fn else spec.args
@@ -374,9 +378,11 @@ def create_predictor(
         assert hasattr(p, 'setup'), f'setup method not found: {fullname}'
         assert hasattr(p, 'predict'), f'predict method not found: {fullname}'
         _validate_setup(_unwrap(getattr(p, 'setup')))
-        predict_fn = _unwrap(getattr(p, 'predict'))
+        predict_fn_name = 'predict'
+        predict_fn = _unwrap(getattr(p, predict_fn_name))
         is_class_fn = True
     elif inspect.isfunction(p):
+        predict_fn_name = predictor_name
         predict_fn = _unwrap(p)
         is_class_fn = False
     else:
@@ -385,13 +391,16 @@ def create_predictor(
     # Find coders users by module before validating predict function
     _find_coders(module)
 
-    predictor = _predictor_adt(module_name, predictor_name, predict_fn, is_class_fn)
+    predictor = _predictor_adt(
+        module_name, predictor_name, predict_fn, predict_fn_name, is_class_fn
+    )
 
     # AST checks at the end after all other checks pass
     # Only check when running from cog.command.openapi_schema -> coglet.schema
     # So that old models that violate this check can still run
     if inspect_ast and module.__file__ is not None:
-        asts.inspect(module.__file__)
+        method = 'predict' if is_class_fn else predictor_name
+        asts.inspect(module.__file__, method)
 
     return predictor
 
