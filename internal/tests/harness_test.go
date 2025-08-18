@@ -33,9 +33,9 @@ var (
 )
 
 type webhookData struct {
-	Method string
-	Path   string
-	Body   []byte
+	Method   string
+	Path     string
+	Response server.PredictionResponse
 }
 
 type uploadData struct {
@@ -52,7 +52,7 @@ type testHarnessReceiver struct {
 	webhookRequests []webhookData
 	uploadRequests  []uploadData
 
-	webhookReceived chan bool
+	webhookReceived chan webhookData
 	uploadReceived  chan bool
 }
 
@@ -62,12 +62,17 @@ func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc {
 		defer tr.mu.Unlock()
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
-		tr.webhookRequests = append(tr.webhookRequests, webhookData{
-			Method: r.Method,
-			Path:   r.URL.Path,
-			Body:   body,
-		})
-		tr.webhookReceived <- true
+		assert.Equal(t, http.MethodPost, r.Method)
+		var resp server.PredictionResponse
+		err = json.Unmarshal(body, &resp)
+		assert.NoError(t, err)
+		message := webhookData{
+			Method:   r.Method,
+			Path:     r.URL.Path,
+			Response: resp,
+		}
+		tr.webhookRequests = append(tr.webhookRequests, message)
+		tr.webhookReceived <- message
 	}
 }
 
@@ -77,6 +82,7 @@ func (tr *testHarnessReceiver) uploadHandler(t *testing.T) http.HandlerFunc {
 		defer tr.mu.Unlock()
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
+		assert.Equal(t, http.MethodPost, r.Method)
 		tr.uploadRequests = append(tr.uploadRequests, uploadData{
 			Method:      r.Method,
 			Path:        r.URL.Path,
@@ -93,8 +99,12 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", tr.webhookHandler(t))
 	mux.HandleFunc("/upload", tr.uploadHandler(t))
-	tr.webhookReceived = make(chan bool, 1)
-	tr.uploadReceived = make(chan bool, 1)
+	// NOTE: buffered channels are used here to prevent issues arising from the handler
+	// blocking while holding the lock. ~10 should be enough for the synthetic/small number
+	// of requests in testing. Increase if needed. This allows the test to determine if it
+	// wants to read from the channel or introspect the slice.
+	tr.webhookReceived = make(chan webhookData, 10)
+	tr.uploadReceived = make(chan bool, 10)
 	tr.Server = httptest.NewServer(mux)
 	return tr
 }
@@ -233,10 +243,22 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server) server.Heal
 
 func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, receiverServer *testHarnessReceiver, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
+	assert.Empty(t, prediction.Id)
+	return httpPredictionReq(t, http.MethodPost, runtimeServer, receiverServer, prediction)
+}
+
+func httpPredictionRequestWithId(t *testing.T, runtimeServer *httptest.Server, receiverServer *testHarnessReceiver, prediction server.PredictionRequest) *http.Request {
+	t.Helper()
+	assert.NotEmpty(t, prediction.Id)
+	return httpPredictionReq(t, http.MethodPost, runtimeServer, receiverServer, prediction)
+}
+
+func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Server, receiverServer *testHarnessReceiver, prediction server.PredictionRequest) *http.Request {
+	t.Helper()
 	url := runtimeServer.URL + "/predictions"
 	body, err := json.Marshal(prediction)
 	require.NoError(t, err)
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	if receiverServer != nil && prediction.Webhook != "" {

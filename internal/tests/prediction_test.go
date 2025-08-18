@@ -169,23 +169,18 @@ func TestPredictionConcurrency(t *testing.T) {
 		close(firstPredictionSent)
 		require.NoError(t, err)
 		defer resp.Body.Close()
+		_, _ = io.Copy(io.Discard, resp.Body)
 		assert.Equal(t, http.StatusAccepted, resp.StatusCode)
-		<-receiverServer.webhookReceived
-		webhook := receiverServer.webhookRequests[0]
-		assert.Equal(t, http.MethodPost, webhook.Method)
-		assert.Equal(t, "/webhook", webhook.Path)
-		var predictionWebhookResp server.PredictionResponse
-		err = json.Unmarshal(webhook.Body, &predictionWebhookResp)
-		require.NoError(t, err)
-		assert.Equal(t, server.PredictionSucceeded, predictionWebhookResp.Status)
+		webhook := <-receiverServer.webhookReceived
+		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
 		// NOTE(morgan): since we're using the webhook format, the deserialization
 		// of `i` is a float64, so we need to convert it to an int, since we've already
 		// shipped the input, we can change it directly
 		expectedInput := input
 		expectedInput["i"] = float64(5)
-		assert.Equal(t, expectedInput, predictionWebhookResp.Input)
-		assert.Equal(t, "*bar*", predictionWebhookResp.Output)
-		assert.Contains(t, predictionWebhookResp.Logs, "starting prediction\nprediction in progress 1/5\nprediction in progress 2/5\nprediction in progress 3/5\nprediction in progress 4/5\nprediction in progress 5/5\ncompleted prediction\n")
+		assert.Equal(t, expectedInput, webhook.Response.Input)
+		assert.Equal(t, "*bar*", webhook.Response.Output)
+		assert.Contains(t, webhook.Response.Logs, "starting prediction\nprediction in progress 1/5\nprediction in progress 2/5\nprediction in progress 3/5\nprediction in progress 4/5\nprediction in progress 5/5\ncompleted prediction\n")
 		wg.Done()
 	}()
 
