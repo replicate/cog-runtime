@@ -14,15 +14,17 @@ import (
 
 func TestIteratorTypes(t *testing.T) {
 	testCases := []struct {
-		module        string
-		skipLegacyCog bool
+		module         string
+		skipLegacyCog  bool
+		maxConcurrency int
 	}{
 		{
 			module: "iterator",
 		},
 		{
-			module:        "async_iterator",
-			skipLegacyCog: true,
+			module:         "async_iterator",
+			skipLegacyCog:  true,
+			maxConcurrency: 2,
 		},
 		{
 			module: "concat_iterator",
@@ -40,6 +42,7 @@ func TestIteratorTypes(t *testing.T) {
 				uploadURL:        "",
 				module:           tc.module,
 				predictorClass:   "Predictor",
+				concurrencyMax:   tc.maxConcurrency,
 			})
 			receiverServer := testHarnessReceiverServer(t)
 
@@ -84,6 +87,7 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 		uploadURL:        "",
 		module:           "async_iterator",
 		predictorClass:   "Predictor",
+		concurrencyMax:   2,
 	})
 	receiverServer := testHarnessReceiverServer(t)
 

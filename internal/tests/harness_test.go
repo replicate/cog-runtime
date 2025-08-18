@@ -12,7 +12,6 @@ import (
 	"path"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -115,6 +114,7 @@ type cogRuntimeServerConfig struct {
 	uploadURL        string
 	module           string
 	predictorClass   string
+	concurrencyMax   int
 
 	envSet   map[string]string
 	envUnset []string
@@ -169,17 +169,13 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.S
 		UploadUrl:             cfg.uploadURL,
 		WorkingDirectory:      tempDir,
 		IPCUrl:                s.URL + "/_ipc",
-		EnvSet: map[string]string{
-			"PATH":       fmt.Sprintf("%s:%s", pathEnv, os.Getenv("PATH")),
-			"PYTHONPATH": pythonPathEnv,
-		},
-		EnvUnset:      cfg.envUnset,
-		PythonBinPath: path.Join(pathEnv, "python3"),
+		EnvSet:                envSet,
+		EnvUnset:              cfg.envUnset,
+		PythonBinPath:         path.Join(pathEnv, "python3"),
 	}
-	concurrencyMax := 1
-	if strings.HasPrefix(cfg.module, "async_") {
-		concurrencyMax = 2
-	}
+	concurrencyMax := min(cfg.concurrencyMax, 1)
+	t.Logf("concurrency max: %d", concurrencyMax)
+
 	writeCogConfig(t, tempDir, cfg.predictorClass, concurrencyMax)
 	linkPythonModule(t, basePath, tempDir, cfg.module)
 
