@@ -116,26 +116,12 @@ type cogRuntimeServerConfig struct {
 	module           string
 	predictorClass   string
 
-	setEnvs   []string
-	unsetEnvs []string
+	envSet   map[string]string
+	envUnset []string
 }
 
 func (cfg *cogRuntimeServerConfig) validate(t *testing.T) {
 	t.Helper()
-	// Ensure no duplicate envs
-	envs := make(map[string]bool)
-	for _, env := range cfg.setEnvs {
-		if envs[env] {
-			t.Fatalf("duplicate env: %s", env)
-		}
-		envs[env] = true
-	}
-	for _, env := range cfg.unsetEnvs {
-		if envs[env] {
-			t.Fatalf("duplicate env: %s", env)
-		}
-		envs[env] = true
-	}
 	assert.NotEmpty(t, cfg.module)
 	assert.NotEmpty(t, cfg.predictorClass)
 }
@@ -169,6 +155,14 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.S
 	// handler server and then set the handler after.
 	s := httptest.NewServer(nil)
 
+	envSet := map[string]string{
+		"PATH":       fmt.Sprintf("%s:%s", pathEnv, os.Getenv("PATH")),
+		"PYTHONPATH": pythonPathEnv,
+	}
+	for k, v := range cfg.envSet {
+		envSet[k] = v
+	}
+
 	serverCfg := server.Config{
 		UseProcedureMode:      cfg.procedureMode,
 		AwaitExplicitShutdown: cfg.explicitShutdown,
@@ -179,6 +173,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.S
 			"PATH":       fmt.Sprintf("%s:%s", pathEnv, os.Getenv("PATH")),
 			"PYTHONPATH": pythonPathEnv,
 		},
+		EnvUnset:      cfg.envUnset,
 		PythonBinPath: path.Join(pathEnv, "python3"),
 	}
 	concurrencyMax := 1
