@@ -9,7 +9,7 @@ def format_errs(
     end = min(len(lines), lineno + 2)
     w = len(str(end))
     errs = [f'{file}:{lineno}:{col_offset}: {msg}']
-    for i in range(start, end + 1):
+    for i in range(start, end):
         errs.append(f'%-{w}d | %s' % (i, lines[i]))
         if i == lineno:
             errs.append('%s | %s^' % (' ' * w, ' ' * col_offset))
