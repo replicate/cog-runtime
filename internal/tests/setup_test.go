@@ -12,7 +12,13 @@ import (
 
 func TestSetupSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "sleep", "SetupSleepingPredictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "SetupSleepingPredictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
@@ -25,7 +31,13 @@ func TestSetupSucceeded(t *testing.T) {
 
 func TestSetupFailure(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "sleep", "SetupFailingPredictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "SetupFailingPredictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
 	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
@@ -41,7 +53,13 @@ func TestSetupFailure(t *testing.T) {
 
 func TestSetupCrash(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "sleep", "SetupCrashingPredictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "SetupCrashingPredictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
 	assert.Equal(t, server.SetupFailed, hc.Setup.Status)

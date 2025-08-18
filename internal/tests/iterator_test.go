@@ -33,7 +33,13 @@ func TestIteratorTypes(t *testing.T) {
 		if tc.skipLegacyCog && *legacyCog {
 			t.Skipf("skipping %s due to legacy Cog configuration", tc.module)
 		}
-		runtimeServer := setupCogRuntimeServer(t, false, *legacyCog, false, "", tc.module, "Predictor")
+		runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+			procedureMode:    false,
+			explicitShutdown: false,
+			uploadURL:        "",
+			module:           tc.module,
+			predictorClass:   "Predictor",
+		})
 		receiverServer := testHarnessReceiverServer(t)
 
 		hc := waitForSetupComplete(t, runtimeServer)
@@ -70,7 +76,13 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 		t.Skipf("skipping async iterator concurrency test due to legacy cog configuration")
 	}
 
-	runtimeServer := setupCogRuntimeServer(t, false, *legacyCog, false, "", "async_iterator", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: false,
+		uploadURL:        "",
+		module:           "async_iterator",
+		predictorClass:   "Predictor",
+	})
 	receiverServer := testHarnessReceiverServer(t)
 
 	hc := waitForSetupComplete(t, runtimeServer)
@@ -117,7 +129,6 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 			break
 		}
 	}
-
 	assert.Equal(t, server.PredictionSucceeded, barR.Status)
 	assert.Equal(t, []any{"*bar-0*"}, barR.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", barR.Logs)

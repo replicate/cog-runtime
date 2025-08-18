@@ -15,7 +15,13 @@ import (
 func TestPredictionSecretSucceeded(t *testing.T) {
 	t.Parallel()
 
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "secret", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "secret",
+		predictorClass:   "Predictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)

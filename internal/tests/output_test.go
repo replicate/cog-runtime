@@ -14,7 +14,13 @@ import (
 
 func TestPredictionOutputSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "output", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "output",
+		predictorClass:   "Predictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)

@@ -19,7 +19,13 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 		t.Skip("legacy Cog does not support custom coder")
 	}
 
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "dataclass", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "dataclass",
+		predictorClass:   "Predictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
@@ -62,7 +68,13 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 		t.Skip("legacy Cog does not support custom coder")
 	}
 
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "chat", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "chat",
+		predictorClass:   "Predictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)

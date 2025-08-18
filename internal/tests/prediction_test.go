@@ -16,7 +16,13 @@ import (
 
 func TestPredictionSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, false, false, false, "", "sleep", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: false,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "Predictor",
+	})
 
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
@@ -45,7 +51,13 @@ func TestPredictionSucceeded(t *testing.T) {
 
 func TestPredictionWithIdSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, false, false, false, "", "sleep", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: false,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "Predictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
@@ -78,7 +90,13 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 
 func TestPredictionFailure(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, false, false, false, "", "sleep", "PredictionFailingPredictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: false,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "PredictionFailingPredictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
@@ -106,7 +124,13 @@ func TestPredictionFailure(t *testing.T) {
 func TestPredictionCrash(t *testing.T) {
 	t.Parallel()
 
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "sleep", "PredictionCrashingPredictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "PredictionCrashingPredictor",
+	})
 	hc := waitForSetupComplete(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
@@ -145,7 +169,13 @@ func TestPredictionCrash(t *testing.T) {
 func TestPredictionConcurrency(t *testing.T) {
 	t.Parallel()
 
-	runtimeServer := setupCogRuntimeServer(t, false, false, true, "", "sleep", "Predictor")
+	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "Predictor",
+	})
 	receiverServer := testHarnessReceiverServer(t)
 
 	hc := waitForSetupComplete(t, runtimeServer)

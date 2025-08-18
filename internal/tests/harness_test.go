@@ -109,8 +109,40 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 	return tr
 }
 
-func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, explicitShutdown bool, uploadURL string, module string, predictorClass string) *httptest.Server {
+type cogRuntimeServerConfig struct {
+	procedureMode    bool
+	explicitShutdown bool
+	uploadURL        string
+	module           string
+	predictorClass   string
+
+	setEnvs   []string
+	unsetEnvs []string
+}
+
+func (cfg *cogRuntimeServerConfig) validate(t *testing.T) {
 	t.Helper()
+	// Ensure no duplicate envs
+	envs := make(map[string]bool)
+	for _, env := range cfg.setEnvs {
+		if envs[env] {
+			t.Fatalf("duplicate env: %s", env)
+		}
+		envs[env] = true
+	}
+	for _, env := range cfg.unsetEnvs {
+		if envs[env] {
+			t.Fatalf("duplicate env: %s", env)
+		}
+		envs[env] = true
+	}
+	assert.NotEmpty(t, cfg.module)
+	assert.NotEmpty(t, cfg.predictorClass)
+}
+
+func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.Server {
+	t.Helper()
+	cfg.validate(t)
 	tempDir := t.TempDir()
 	t.Logf("Working directory: %s", tempDir)
 	// FIXME: This is for compatibility with the `cog_test` test harness while we migrate to in-process testing. This allows us
@@ -120,10 +152,10 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 
 	// SetupEnvs for downstream use
 	switch {
-	case legacyCog && procedureMode:
+	case *legacyCog && cfg.procedureMode:
 		pathEnv = path.Join(basePath, ".venv-procedure", "bin")
 		t.Logf("using legacy Cog with venv: %s", pathEnv)
-	case legacyCog:
+	case *legacyCog:
 		pathEnv = path.Join(basePath, ".venv-legacy", "bin")
 		t.Logf("using legacy Cog with venv: %s", pathEnv)
 	default:
@@ -138,9 +170,9 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 	s := httptest.NewServer(nil)
 
 	serverCfg := server.Config{
-		UseProcedureMode:      procedureMode,
-		AwaitExplicitShutdown: explicitShutdown,
-		UploadUrl:             uploadURL,
+		UseProcedureMode:      cfg.procedureMode,
+		AwaitExplicitShutdown: cfg.explicitShutdown,
+		UploadUrl:             cfg.uploadURL,
 		WorkingDirectory:      tempDir,
 		IPCUrl:                s.URL + "/_ipc",
 		EnvSet: map[string]string{
@@ -150,11 +182,11 @@ func setupCogRuntimeServer(t *testing.T, procedureMode bool, legacyCog bool, exp
 		PythonBinPath: path.Join(pathEnv, "python3"),
 	}
 	concurrencyMax := 1
-	if strings.HasPrefix(module, "async_") {
+	if strings.HasPrefix(cfg.module, "async_") {
 		concurrencyMax = 2
 	}
-	writeCogConfig(t, tempDir, predictorClass, concurrencyMax)
-	linkPythonModule(t, basePath, tempDir, module)
+	writeCogConfig(t, tempDir, cfg.predictorClass, concurrencyMax)
+	linkPythonModule(t, basePath, tempDir, cfg.module)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
