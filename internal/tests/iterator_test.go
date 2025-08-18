@@ -13,7 +13,6 @@ import (
 )
 
 func TestIteratorTypes(t *testing.T) {
-	t.Parallel()
 	testCases := []struct {
 		module        string
 		skipLegacyCog bool
@@ -30,43 +29,46 @@ func TestIteratorTypes(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		if tc.skipLegacyCog && *legacyCog {
-			t.Skipf("skipping %s due to legacy Cog configuration", tc.module)
-		}
-		runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
-			procedureMode:    false,
-			explicitShutdown: false,
-			uploadURL:        "",
-			module:           tc.module,
-			predictorClass:   "Predictor",
-		})
-		receiverServer := testHarnessReceiverServer(t)
-
-		hc := waitForSetupComplete(t, runtimeServer)
-		assert.Equal(t, server.StatusReady.String(), hc.Status)
-		assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-		input := map[string]any{"i": 2, "s": "bar"}
-		req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: input, Webhook: receiverServer.URL + "/webhook"})
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusAccepted, resp.StatusCode)
-		_, _ = io.Copy(io.Discard, resp.Body)
-		require.NoError(t, err)
-		var predictionResponse server.PredictionResponse
-		for webhook := range receiverServer.webhookReceived {
-			if webhook.Response.Status == server.PredictionSucceeded {
-				predictionResponse = webhook.Response
-				break
+		t.Run(tc.module, func(t *testing.T) {
+			t.Parallel()
+			if tc.skipLegacyCog && *legacyCog {
+				t.Skipf("skipping %s due to legacy Cog configuration", tc.module)
 			}
-		}
+			runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+				procedureMode:    false,
+				explicitShutdown: false,
+				uploadURL:        "",
+				module:           tc.module,
+				predictorClass:   "Predictor",
+			})
+			receiverServer := testHarnessReceiverServer(t)
 
-		expectedOutput := []any{"*bar-0*", "*bar-1*"}
+			hc := waitForSetupComplete(t, runtimeServer)
+			assert.Equal(t, server.StatusReady.String(), hc.Status)
+			assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
 
-		assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
-		assert.Equal(t, expectedOutput, predictionResponse.Output)
-		assert.Equal(t, "starting prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted prediction\n", predictionResponse.Logs)
+			input := map[string]any{"i": 2, "s": "bar"}
+			req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: input, Webhook: receiverServer.URL + "/webhook"})
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+			_, _ = io.Copy(io.Discard, resp.Body)
+			require.NoError(t, err)
+			var predictionResponse server.PredictionResponse
+			for webhook := range receiverServer.webhookReceived {
+				if webhook.Response.Status == server.PredictionSucceeded {
+					predictionResponse = webhook.Response
+					break
+				}
+			}
+
+			expectedOutput := []any{"*bar-0*", "*bar-1*"}
+
+			assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+			assert.Equal(t, expectedOutput, predictionResponse.Output)
+			assert.Equal(t, "starting prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted prediction\n", predictionResponse.Logs)
+		})
 	}
 }
 

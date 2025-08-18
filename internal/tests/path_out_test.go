@@ -8,6 +8,54 @@ import (
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
+// func TestPathOut(t *testing.T) {
+// 	testCases := []struct {
+// 		predictor     string
+// 		nested        bool
+// 		skipLegacyCog bool
+// 	}{
+// 		{
+// 			predictor:     "path_out",
+// 			nested:        false,
+// 			skipLegacyCog: false,
+// 		},
+// 		{
+// 			predictor: "path_out_any",
+// 			nested:    true,
+// 		},
+// 		{
+// 			predictor:     "path_out_dataclass",
+// 			nested:        true,
+// 			skipLegacyCog: true,
+// 		},
+// 		{
+// 			predictor:     "path_out_json",
+// 			nested:        true,
+// 			skipLegacyCog: false,
+// 		},
+// 		{
+// 			predictor:     "path_out_output",
+// 			nested:        true,
+// 			skipLegacyCog: false,
+// 		},
+// 		{
+// 			predictor:     "path_out_pathlike",
+// 			nested:        false,
+// 			skipLegacyCog: true,
+// 		},
+// 		{
+// 			predictor:     "path_out_pydantic",
+// 			nested:        true,
+// 			skipLegacyCog: false,
+// 		},
+// 	}
+// 	for _, testCase := range testCases {
+// 		t.Run(testCase.predictor, func(t *testing.T) {
+// 			testPathOut(t, testCase.predictor, testCase.nested)
+// 		})
+// 	}
+// }
+
 func testPathOut(t *testing.T, predictor string, nested bool) {
 	ct := NewCogTest(t, predictor)
 	assert.NoError(t, ct.Start())
