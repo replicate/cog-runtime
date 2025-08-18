@@ -105,6 +105,7 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 	tr.webhookReceived = make(chan webhookData, 10)
 	tr.uploadReceived = make(chan bool, 10)
 	tr.Server = httptest.NewServer(mux)
+	t.Cleanup(tr.Server.Close)
 	return tr
 }
 
@@ -154,6 +155,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.S
 	// NOTE(morgan): this is a special case, we need the IPCUrl which is homed on the server before we create the handler. Create a nil
 	// handler server and then set the handler after.
 	s := httptest.NewServer(nil)
+	t.Cleanup(s.Close)
 
 	envSet := map[string]string{
 		"PATH":       fmt.Sprintf("%s:%s", pathEnv, os.Getenv("PATH")),
