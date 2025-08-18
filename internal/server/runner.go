@@ -22,7 +22,7 @@ import (
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-var LogRegex = regexp.MustCompile(`^\[pid=(?P<pid>[^\\]+)] (?P<msg>.*)$`)
+var LogRegex = regexp.MustCompile(`^\[pid=(?P<pid>[^]]+)] (?P<msg>.*)$`)
 var ResponseRegex = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
 var CancelFmt = "cancel-%s"
 
