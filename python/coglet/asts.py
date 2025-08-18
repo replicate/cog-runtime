@@ -40,8 +40,7 @@ def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> List[str]:
     errs = []
     n = len(node.args.defaults)
     for a, d in zip(node.args.args[-n:], node.args.defaults):
-        # <name>: <type>
-        if type(a.annotation) is not ast.Name:
+        if a.annotation is None:
             continue
         # <name>: <type> = Input(...)
         if (
@@ -56,14 +55,31 @@ def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> List[str]:
             continue
         if type(kws[0].value) is not ast.Constant or kws[0].value.value is not None:
             continue
+
+        if type(a.annotation) is ast.Name:
+            # <name>: <type>
+            msg = 'input with default=None must be Optional'
+            help_msg = f'Change input type to `{a.arg}: Optional[{ast.unparse(a.annotation)}]` instead'
+        elif (
+            type(a.annotation) is ast.Subscript
+            and type(a.annotation.value) is ast.Name
+            and a.annotation.value.id in {'list', 'List'}
+        ):
+            # <name>: list[<type>]
+            msg = 'list input should use default=[] instead of default=None'
+            help_msg = 'Change `default=None` to `default=[]` instead'
+        else:
+            # unknown types, shouldn't happen?
+            continue
+
         errs.append(
             format_errs(
                 file,
                 lines,
                 kws[0].lineno,
                 kws[0].col_offset,
-                'input with default=None must be Optional',
-                f'Change input type to `{a.arg}: Optional[{ast.unparse(a.annotation)}]` instead',
+                msg,
+                help_msg,
             )
         )
     return errs
@@ -79,5 +95,5 @@ def inspect(file: str):
 
     errs = visit(root, file, lines, inspect_optional)
     if len(errs) > 0:
-        errs = ['input with default=None must be Optional'] + errs
+        errs = ['error-prone usage of default=None'] + errs
         raise AssertionError('\n\n'.join(errs))
