@@ -391,7 +391,8 @@ def create_predictor(
     # Only check when running from cog.command.openapi_schema -> coglet.schema
     # So that old models that violate this check can still run
     if inspect_ast and module.__file__ is not None:
-        asts.inspect(module.__file__)
+        method = 'predict' if is_class_fn else predictor_name
+        asts.inspect(module.__file__, method)
 
     return predictor
 

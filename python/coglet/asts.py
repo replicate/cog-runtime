@@ -20,21 +20,24 @@ def format_errs(
 def visit(
     root: ast.AST,
     file: str,
+    name: str,
     lines: List[str],
-    f: Callable[[ast.AST, str, List[str]], List[str]],
+    f: Callable[[ast.AST, str, str, List[str]], List[str]],
 ) -> List[str]:
     errs = []
     for node in ast.iter_child_nodes(root):
-        errs += f(node, file, lines)
-        errs += visit(node, file, lines, f)
+        errs += f(node, file, name, lines)
+        errs += visit(node, file, name, lines, f)
     return errs
 
 
-def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> List[str]:
+def inspect_optional(
+    node: ast.AST, file: str, name: str, lines: List[str]
+) -> List[str]:
     if type(node) is not ast.FunctionDef:
         return []
 
-    if node.name != 'predict':
+    if node.name != name:
         return []
 
     errs = []
@@ -85,7 +88,7 @@ def inspect_optional(node: ast.AST, file: str, lines: List[str]) -> List[str]:
     return errs
 
 
-def inspect(file: str):
+def inspect(file: str, method: str):
     with open(file, 'r') as f:
         content = f.read()
 
@@ -93,7 +96,7 @@ def inspect(file: str):
     # line numbers are 1-indexed
     lines = [''] + content.splitlines()
 
-    errs = visit(root, file, lines, inspect_optional)
+    errs = visit(root, file, method, lines, inspect_optional)
     if len(errs) > 0:
         errs = ['error-prone usage of default=None'] + errs
         raise AssertionError('\n\n'.join(errs))

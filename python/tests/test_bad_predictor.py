@@ -28,4 +28,7 @@ def run(module_name: str, predictor_name: str) -> None:
 @pytest.mark.parametrize('predictor', get_predictors())
 def test_bad_predictor(predictor):
     module_name = f'tests.bad_predictors.{predictor}'
-    run(module_name, 'Predictor')
+    if predictor.startswith('procedure_'):
+        run(module_name, 'run')
+    else:
+        run(module_name, 'Predictor')
