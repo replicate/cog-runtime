@@ -5,7 +5,7 @@ from tests.util import check_python_version
 
 check_python_version(min_version=(3, 10))
 
-ERROR = 'input with default=None must be Optional'
+ERROR = 'error-prone usage of default=None'
 
 
 class Predictor(BasePredictor):
