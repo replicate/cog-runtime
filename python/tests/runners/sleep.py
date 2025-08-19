@@ -63,10 +63,17 @@ class SetupCrashingPredictor(BasePredictor):
 class PredictionFailingPredictor(BasePredictor):
     def predict(self, i: int, s: str) -> str:
         print('starting prediction')
+        # FIXME(morgan): The sleep is required to yield execution to the main thread so that the
+        # async task is scheduled.
+        time.sleep(0.1)
         print('prediction failed')
         raise Exception('prediction failed')
 
 class PredictionCrashingPredictor(BasePredictor):
     def predict(self, i: int, s: str) -> str:
         print('starting prediction')
+        # FIXME(morgan): The sleep is required to yield execution to the main thread so that the
+        # async task is scheduled.
+        time.sleep(0.1)
+        print('prediction crashed')
         sys.exit(1)
