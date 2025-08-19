@@ -18,7 +18,6 @@ import (
 func TestLogs(t *testing.T) {
 	// TODO: Assess if we need this test, we're testing replicate/go/logging not anything
 	// in cog-runtime
-	t.Parallel()
 	originalStdout := os.Stdout
 	originalStderr := os.Stderr
 	stdout := new(bytes.Buffer)
