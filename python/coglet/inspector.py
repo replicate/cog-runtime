@@ -351,7 +351,7 @@ def _find_coders(module: ModuleType) -> None:
 
 
 def create_predictor(
-    module_name: str, predictor_name: str, inspect_ast: bool = False
+    module_name: str, predictor_name: str, inspect_ast: bool = True
 ) -> adt.Predictor:
     module = importlib.import_module(module_name)
 

@@ -28,7 +28,7 @@ def main():
         # - Bad dependencies
         # - Bad input/output types
         # - Libraries downloading weights on init
-        p = inspector.create_predictor(sys.argv[1], sys.argv[2], inspect_ast=True)
+        p = inspector.create_predictor(sys.argv[1], sys.argv[2])
 
         # Skipping these for now as old models have no test inputs and will fail schema validation
         # Check that test_inputs exists and is valid
