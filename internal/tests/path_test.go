@@ -414,7 +414,6 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 }
 
 func TestPredictionPathMultiMimeTypes(t *testing.T) {
-	t.Parallel()
 	receiverServer := testHarnessReceiverServer(t)
 	contentServer := testDataContentServer(t)
 	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
