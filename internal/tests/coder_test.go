@@ -19,7 +19,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 		t.Skip("legacy Cog does not support custom coder")
 	}
 
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -68,7 +68,7 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 		t.Skip("legacy Cog does not support custom coder")
 	}
 
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",

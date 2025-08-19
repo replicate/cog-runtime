@@ -69,7 +69,7 @@ func TestPathOut(t *testing.T) {
 			if testCase.skipLegacyCog && *legacyCog {
 				t.Skipf("skipping %s due to legacy Cog configuration", testCase.predictor)
 			}
-			runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+			runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 				procedureMode:    false,
 				explicitShutdown: false,
 				uploadURL:        "",

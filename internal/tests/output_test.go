@@ -14,7 +14,7 @@ import (
 
 func TestPredictionOutputSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",

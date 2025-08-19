@@ -39,7 +39,7 @@ func TestLogs(t *testing.T) {
 		ew.Close()
 	})
 
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: false,
 		uploadURL:        "",

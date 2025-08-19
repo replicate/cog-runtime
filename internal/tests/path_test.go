@@ -39,7 +39,7 @@ func b64encodeLegacy(s string) string {
 
 func TestPredictionPathBase64Succeeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -76,7 +76,7 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 
 func TestPredictionPathURLSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -114,7 +114,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 
 func TestPredictionNotPathSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -149,7 +149,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	t.Parallel()
 	receiverServer := testHarnessReceiverServer(t)
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        receiverServer.URL + "/upload/",
@@ -201,7 +201,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	t.Parallel()
 	receiverServer := testHarnessReceiverServer(t)
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        receiverServer.URL + "/upload/",
@@ -257,7 +257,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 func TestPredictionPathUploadIterator(t *testing.T) {
 	t.Parallel()
 	receiverServer := testHarnessReceiverServer(t)
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        receiverServer.URL + "/upload/",
@@ -324,7 +324,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 	t.Parallel()
 	receiverServer := testHarnessReceiverServer(t)
 	contentServer := testDataContentServer(t)
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        receiverServer.URL + "/upload/",
@@ -416,7 +416,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 func TestPredictionPathMultiMimeTypes(t *testing.T) {
 	receiverServer := testHarnessReceiverServer(t)
 	contentServer := testDataContentServer(t)
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        receiverServer.URL + "/upload/",

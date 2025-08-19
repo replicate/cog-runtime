@@ -36,7 +36,7 @@ func TestIteratorTypes(t *testing.T) {
 			if tc.skipLegacyCog && *legacyCog {
 				t.Skipf("skipping %s due to legacy Cog configuration", tc.module)
 			}
-			runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+			runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 				procedureMode:    false,
 				explicitShutdown: false,
 				uploadURL:        "",
@@ -81,7 +81,7 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 		t.Skipf("skipping async iterator concurrency test due to legacy cog configuration")
 	}
 
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: false,
 		uploadURL:        "",

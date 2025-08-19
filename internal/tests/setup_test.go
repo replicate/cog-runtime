@@ -12,7 +12,7 @@ import (
 
 func TestSetupSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -31,7 +31,7 @@ func TestSetupSucceeded(t *testing.T) {
 
 func TestSetupFailure(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -53,7 +53,7 @@ func TestSetupFailure(t *testing.T) {
 
 func TestSetupCrash(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",

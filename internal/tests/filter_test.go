@@ -94,7 +94,7 @@ func TestPredictionWebhookFilter(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			receiverServer := testHarnessReceiverServer(t)
-			runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+			runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 				procedureMode:    false,
 				explicitShutdown: true,
 				uploadURL:        "",

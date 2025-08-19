@@ -17,7 +17,7 @@ import (
 
 func TestPredictionSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: false,
 		uploadURL:        "",
@@ -52,7 +52,7 @@ func TestPredictionSucceeded(t *testing.T) {
 
 func TestPredictionWithIdSucceeded(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: false,
 		uploadURL:        "",
@@ -91,7 +91,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 
 func TestPredictionFailure(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: false,
 		uploadURL:        "",
@@ -125,7 +125,7 @@ func TestPredictionFailure(t *testing.T) {
 func TestPredictionCrash(t *testing.T) {
 	t.Parallel()
 
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -170,7 +170,7 @@ func TestPredictionCrash(t *testing.T) {
 func TestPredictionConcurrency(t *testing.T) {
 	t.Parallel()
 
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",

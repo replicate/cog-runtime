@@ -51,7 +51,7 @@ func TestAsyncPrediction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			receiverServer := testHarnessReceiverServer(t)
-			runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+			runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 				procedureMode:    false,
 				explicitShutdown: true,
 				uploadURL:        "",
@@ -109,7 +109,7 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 	// part, we'll just swallow the cancellation request and continue to process the prediction (similar to how TRTLLM worked under cog).
 	t.Skipf("FIXME: Due to a mismatch how file_runner.py handles sync python with an async runner, it is impossible to cancel a sync python predictor without crashing the prediction before trying to cancel it.")
 	receiverServer := testHarnessReceiverServer(t)
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -184,7 +184,7 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 		t.Skipf("HealthCheck concurrency is not implemented in legacy Cog")
 	}
 	receiverServer := testHarnessReceiverServer(t)
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
 		uploadURL:        "",

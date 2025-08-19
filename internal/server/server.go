@@ -122,6 +122,15 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 	return h, nil
 }
 
+// ActiveRunners returns a copy of the runners slice
+// This is used to understand the active runners for testing purposes
+// It is not safe to use this method in production code
+func (h *Handler) ActiveRunners() []*Runner {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.runners
+}
+
 func (h *Handler) ExitCode() int {
 	if h.cfg.UseProcedureMode {
 		// No point aggregating across runners

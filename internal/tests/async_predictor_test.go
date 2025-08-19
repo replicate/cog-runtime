@@ -17,7 +17,7 @@ import (
 
 func TestAsyncPredictorConcurrency(t *testing.T) {
 	t.Parallel()
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: false,
 		uploadURL:        "",
@@ -85,7 +85,7 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 		t.Skipf("skipping due to cancellation bug: https://github.com/replicate/cog/issues/2212")
 	}
 
-	runtimeServer := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: false,
 		uploadURL:        "",

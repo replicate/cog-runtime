@@ -130,7 +130,14 @@ func (cfg *cogRuntimeServerConfig) validate(t *testing.T) {
 	assert.NotEmpty(t, cfg.predictorClass)
 }
 
-func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.Server {
+// setupCogRuntime is a convenience function that returns the server without the handler
+func setupCogRuntime(t *testing.T, cfg cogRuntimeServerConfig) *httptest.Server {
+	t.Helper()
+	s, _ := setupCogRuntimeServer(t, cfg)
+	return s
+}
+
+func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.Server, *server.Handler) {
 	t.Helper()
 	cfg.validate(t)
 	tempDir := t.TempDir()
@@ -201,7 +208,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) *httptest.S
 		<-ctx.Done()
 		s.Close()
 	}()
-	return s
+	return s, handler
 }
 
 type cogConfig struct {
