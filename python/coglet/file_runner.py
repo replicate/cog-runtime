@@ -72,8 +72,9 @@ class FileRunner:
         self.logger.info('setup started')
         setup_result: Dict[str, Any] = {'started_at': util.now_iso()}
         try:
+            # Skip AST inspection for older models built before it was created
             p = inspector.create_predictor(
-                self.config.module_name, self.config.predictor_name
+                self.config.module_name, self.config.predictor_name, inspect_ast=False
             )
             with open(openapi_file, 'w') as f:
                 schema = schemas.to_json_schema(p)

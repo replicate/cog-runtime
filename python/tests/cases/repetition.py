@@ -16,7 +16,7 @@ class Output(BaseModel):
     od2: Optional[str]
     # List[T] not allowed for outputs, CSV instead
     ld0: str
-    ld1: str
+    # ld1: str
     ld2: str
 
 
@@ -28,7 +28,7 @@ FIXTURE = [
             'rd0': 'foo1',
             # 'rd1': 'foo2',  # Invalid default=None
             'ld0': ['bar1', 'baz1'],
-            'ld1': ['bar2', 'baz2'],
+            # 'ld1': ['bar2', 'baz2'],  # Invalid default=None
         },
         Output(
             rs='foo0',
@@ -41,7 +41,7 @@ FIXTURE = [
             od1=None,
             od2='bar',
             ld0='bar1,baz1',
-            ld1='bar2,baz2',
+            # ld1='bar2,baz2',  # Invalid default=None
             ld2='',
         ),
     ),
@@ -57,7 +57,7 @@ FIXTURE = [
             'od1': 'foo5',
             'od2': 'foo6',
             'ld0': ['bar1', 'baz1'],
-            'ld1': ['bar2', 'baz2'],
+            # 'ld1': ['bar2', 'baz2'],  # Invalid default=None
             'ld2': ['bar3', 'baz3'],
         },
         Output(
@@ -71,7 +71,7 @@ FIXTURE = [
             od1='foo5',
             od2='foo6',
             ld0='bar1,baz1',
-            ld1='bar2,baz2',
+            # ld1='bar2,baz2',  # Invalid default=None
             ld2='bar3,baz3',
         ),
     ),
@@ -99,7 +99,7 @@ class Predictor(BasePredictor):
         od1: Optional[str] = Input(default=None),
         od2: Optional[str] = Input(default='bar'),
         ld0: List[str] = Input(),
-        ld1: List[str] = Input(default=None),
+        # ld1: List[str] = Input(default=None),  # Invalid default=None
         ld2: List[str] = Input(default=[]),
     ) -> Output:
         return Output(
@@ -113,6 +113,6 @@ class Predictor(BasePredictor):
             od1=od1,
             od2=od2,
             ld0=','.join(ld0),
-            ld1=','.join(ld1),
+            # ld1=','.join(ld1),  # Invalid default=None
             ld2=','.join(ld2),
         )
