@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -51,8 +52,8 @@ type testHarnessReceiver struct {
 	webhookRequests []webhookData
 	uploadRequests  []uploadData
 
-	webhookReceived chan webhookData
-	uploadReceived  chan bool
+	webhookReceiverChan chan webhookData
+	uploadReceiverChan  chan uploadData
 }
 
 func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc {
@@ -71,7 +72,7 @@ func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc {
 			Response: resp,
 		}
 		tr.webhookRequests = append(tr.webhookRequests, message)
-		tr.webhookReceived <- message
+		tr.webhookReceiverChan <- message
 	}
 }
 
@@ -81,14 +82,15 @@ func (tr *testHarnessReceiver) uploadHandler(t *testing.T) http.HandlerFunc {
 		defer tr.mu.Unlock()
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
-		assert.Equal(t, http.MethodPost, r.Method)
-		tr.uploadRequests = append(tr.uploadRequests, uploadData{
+		assert.True(t, slices.Contains([]string{http.MethodPut, http.MethodPost}, r.Method))
+		message := uploadData{
 			Method:      r.Method,
 			Path:        r.URL.Path,
 			ContentType: r.Header.Get("Content-Type"),
 			Body:        body,
-		})
-		tr.uploadReceived <- true
+		}
+		tr.uploadRequests = append(tr.uploadRequests, message)
+		tr.uploadReceiverChan <- message
 	}
 }
 
@@ -97,13 +99,13 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 	tr := &testHarnessReceiver{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/webhook", tr.webhookHandler(t))
-	mux.HandleFunc("/upload", tr.uploadHandler(t))
+	mux.HandleFunc("/upload/{filename}", tr.uploadHandler(t))
 	// NOTE: buffered channels are used here to prevent issues arising from the handler
 	// blocking while holding the lock. ~10 should be enough for the synthetic/small number
 	// of requests in testing. Increase if needed. This allows the test to determine if it
 	// wants to read from the channel or introspect the slice.
-	tr.webhookReceived = make(chan webhookData, 10)
-	tr.uploadReceived = make(chan bool, 10)
+	tr.webhookReceiverChan = make(chan webhookData, 10)
+	tr.uploadReceiverChan = make(chan uploadData, 10)
 	tr.Server = httptest.NewServer(mux)
 	t.Cleanup(tr.Server.Close)
 	return tr

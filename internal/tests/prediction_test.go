@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -187,8 +188,8 @@ func TestPredictionConcurrency(t *testing.T) {
 	firstPredictionSent := make(chan bool, 1)
 
 	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
+
+	wg.Go(func() {
 		predictionReq := server.PredictionRequest{
 			Input:               input,
 			Webhook:             receiverServer.URL + "/webhook",
@@ -201,7 +202,12 @@ func TestPredictionConcurrency(t *testing.T) {
 		defer resp.Body.Close()
 		_, _ = io.Copy(io.Discard, resp.Body)
 		assert.Equal(t, http.StatusAccepted, resp.StatusCode)
-		webhook := <-receiverServer.webhookReceived
+		var webhook webhookData
+		select {
+		case webhook = <-receiverServer.webhookReceiverChan:
+		case <-time.After(10 * time.Second):
+			assert.Fail(t, "timeout waiting for webhook")
+		}
 		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
 		// NOTE(morgan): since we're using the webhook format, the deserialization
 		// of `i` is a float64, so we need to convert it to an int, since we've already
@@ -211,15 +217,18 @@ func TestPredictionConcurrency(t *testing.T) {
 		assert.Equal(t, expectedInput, webhook.Response.Input)
 		assert.Equal(t, "*bar*", webhook.Response.Output)
 		assert.Contains(t, webhook.Response.Logs, "starting prediction\nprediction in progress 1/5\nprediction in progress 2/5\nprediction in progress 3/5\nprediction in progress 4/5\nprediction in progress 5/5\ncompleted prediction\n")
-		wg.Done()
-	}()
+	})
 
 	predictionReq := server.PredictionRequest{
 		Input: input,
 	}
 	req := httpPredictionRequest(t, runtimeServer, receiverServer, predictionReq)
 	t.Log("waiting for first prediction to be sent")
-	<-firstPredictionSent
+	select {
+	case <-firstPredictionSent:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for first prediction to be sent")
+	}
 	t.Log("first prediction sent, attempting second prediction send")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)

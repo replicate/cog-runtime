@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,7 +60,7 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 	var barRCompleted bool
 	var bazRCompleted bool
 
-	for webhook := range receiverServer.webhookReceived {
+	for webhook := range receiverServer.webhookReceiverChan {
 		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
 		switch webhook.Response.Id {
 		case barId:
@@ -117,7 +118,12 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 	require.NoError(t, err)
 
 	// Get the start webhook, then continue.
-	webhook := <-receiverServer.webhookReceived
+	var webhook webhookData
+	select {
+	case webhook = <-receiverServer.webhookReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
+	}
 	assert.Equal(t, barId, webhook.Response.Id)
 
 	// cancel the prediction now that we're sure it has "Started " (for some value of "Started")
@@ -127,7 +133,11 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 	assert.Equal(t, http.StatusOK, cancelResp.StatusCode)
 	_, _ = io.Copy(io.Discard, cancelResp.Body)
 
-	webhook = <-receiverServer.webhookReceived
+	select {
+	case webhook = <-receiverServer.webhookReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
+	}
 
 	assert.Equal(t, server.PredictionCanceled, webhook.Response.Status)
 	assert.Equal(t, barId, webhook.Response.Id)
