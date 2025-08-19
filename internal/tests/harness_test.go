@@ -28,8 +28,9 @@ import (
 
 // Test-Suite Wide variables.
 var (
-	basePath  string
-	legacyCog *bool = new(bool)
+	basePath       string
+	legacyCog      *bool = new(bool)
+	proceduresPath string
 )
 
 type webhookData struct {
@@ -301,5 +302,6 @@ func TestMain(m *testing.M) {
 	if err == nil {
 		legacyCog = &isLegacy
 	}
+	proceduresPath = path.Join(basePath, "python", "tests", "procedures")
 	os.Exit(m.Run())
 }

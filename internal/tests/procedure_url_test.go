@@ -1,21 +1,23 @@
 package tests
 
 import (
-	"context"
+	"archive/tar"
+	"bytes"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/util"
 )
-
-var proceduresPath = filepath.Join(basePath, "python", "tests", "procedures")
 
 func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	badDir, err := util.PrepareProcedureSourceURL("file:///foo/bar", 0)
@@ -39,33 +41,82 @@ func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	assert.NotEqual(t, fooDst, fooDst2)
 }
 
+// createMemTarFile creates a tarball in memory from the given directory and returns the []byte of the tarball
+// so that it can then be served from an http.FileServer for test fixture reasons.
+func createMemTarFile(t *testing.T, root string) []byte {
+	t.Helper()
+
+	fi, err := os.Stat(root)
+	require.NoError(t, err)
+	require.True(t, fi.IsDir())
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	defer func() { require.NoError(t, tw.Close()) }()
+
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return nil // skip non-regulars; add handling if you want links, etc.
+		}
+
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+
+		hdr, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = filepath.ToSlash(rel) // portable path in tar
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+
+		f, err := os.Open(p)
+		if err != nil {
+			return err
+		}
+		_, copyErr := io.Copy(tw, f)
+		closeErr := f.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		return closeErr
+	})
+	require.NoError(t, err)
+
+	return buf.Bytes()
+}
+
 func TestPrepareProcedureSourceURLRemote(t *testing.T) {
-	tmpDir := t.TempDir()
+	t.Parallel()
 
-	fooTar := filepath.Join(tmpDir, "foo.tar.gz")
-	fooDir := filepath.Join(proceduresPath, "foo")
-	cmd := exec.Command("tar", "-czf", fooTar, "-C", fooDir, ".")
-	err := cmd.Run()
-	require.NoError(t, err)
+	fooTar := createMemTarFile(t, filepath.Join(proceduresPath, "foo"))
+	barTar := createMemTarFile(t, filepath.Join(proceduresPath, "bar"))
 
-	barTar := filepath.Join(tmpDir, "bar.tar.gz")
-	barDir := filepath.Join(proceduresPath, "bar")
-	cmd = exec.Command("tar", "-czf", barTar, "-C", barDir, ".")
-	err = cmd.Run()
-	require.NoError(t, err)
-
-	port, err := util.FindPort()
-	require.NoError(t, err)
-	s := http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: http.FileServer(http.Dir(tmpDir)),
+	testFS := fstest.MapFS{
+		"foo.tar.gz": {
+			Data: fooTar,
+		},
+		"bar.tar.gz": {
+			Data: barTar,
+		},
 	}
-	defer s.Shutdown(context.Background())
-	go func() {
-		s.ListenAndServe()
-	}()
+	fileServer := httptest.NewServer(http.FileServerFS(testFS))
+	t.Cleanup(fileServer.Close)
 
-	fooURL := fmt.Sprintf("http://localhost:%d/foo.tar.gz", port)
+	fooURL := fileServer.URL + "/foo.tar.gz"
 	fooDst, err := util.PrepareProcedureSourceURL(fooURL, 0)
 	assert.NoError(t, err)
 	assert.DirExists(t, fooDst)
@@ -76,7 +127,7 @@ func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(fooPyContents), "'predicting foo'")
 
-	barURL := fmt.Sprintf("http://localhost:%d/bar.tar.gz", port)
+	barURL := fileServer.URL + "/bar.tar.gz"
 	barDst, err := util.PrepareProcedureSourceURL(barURL, 0)
 	assert.NoError(t, err)
 	assert.DirExists(t, barDst)
