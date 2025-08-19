@@ -70,7 +70,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 		Id:    predictionId,
 		Input: input,
 	}
-	req := httpPredictionRequest(t, runtimeServer, nil, predictionReq)
+	req := httpPredictionRequestWithId(t, runtimeServer, nil, predictionReq)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
