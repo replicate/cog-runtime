@@ -44,6 +44,9 @@ class SetupFailingPredictor(BasePredictor):
     def setup(self) -> None:
         print('starting setup')
         print('setup failed')
+        # FIXME(morgan): The sleep is required to yield execution to the main thread so that the
+        # async task is scheduled.
+        time.sleep(0.1)
         raise Exception('setup failed')
 
     def predict(self, i: int, s: str) -> str:
@@ -54,6 +57,9 @@ class SetupCrashingPredictor(BasePredictor):
     def setup(self) -> None:
         print('starting setup')
         print('setup crashed')
+        # FIXME(morgan): The sleep is required to yield execution to the main thread so that the
+        # async task is scheduled.
+        time.sleep(0.1)
         sys.exit(1)
 
     def predict(self, i: int, s: str) -> str:
