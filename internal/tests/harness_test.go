@@ -26,6 +26,10 @@ import (
 // This file implements the basis for the test harness. It is used to test the
 // runtime server.
 
+const (
+	procedureFilePathURITemplate = "file://%s/python/tests/procedures/%s"
+)
+
 // Test-Suite Wide variables.
 var (
 	basePath       string
@@ -113,13 +117,13 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 }
 
 type cogRuntimeServerConfig struct {
-	procedureMode     bool
-	explicitShutdown  bool
-	uploadURL         string
-	module            string
-	predictorClass    string
-	concurrencyMax    int
-	concurrencyPerCPU int
+	procedureMode    bool
+	explicitShutdown bool
+	uploadURL        string
+	module           string
+	predictorClass   string
+	concurrencyMax   int
+	maxRunners       int
 
 	envSet   map[string]string
 	envUnset []string
@@ -127,8 +131,10 @@ type cogRuntimeServerConfig struct {
 
 func (cfg *cogRuntimeServerConfig) validate(t *testing.T) {
 	t.Helper()
-	assert.NotEmpty(t, cfg.module)
-	assert.NotEmpty(t, cfg.predictorClass)
+	if !cfg.procedureMode {
+		assert.NotEmpty(t, cfg.module)
+		assert.NotEmpty(t, cfg.predictorClass)
+	}
 }
 
 // setupCogRuntime is a convenience function that returns the server without the handler
@@ -188,13 +194,17 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		EnvSet:                envSet,
 		EnvUnset:              cfg.envUnset,
 		PythonBinPath:         path.Join(pathEnv, "python3"),
-		ConcurrencyPerCPU:     cfg.concurrencyPerCPU,
+		MaxRunners:            cfg.maxRunners,
 	}
 	concurrencyMax := max(cfg.concurrencyMax, 1)
 	t.Logf("concurrency max: %d", concurrencyMax)
 
-	if cfg.procedureMode && cfg.concurrencyPerCPU > 0 {
-		t.Logf("concurrency per CPU: %d", cfg.concurrencyPerCPU)
+	if cfg.procedureMode {
+		if cfg.maxRunners > 0 {
+			t.Logf("max runners: %d", cfg.maxRunners)
+		} else {
+			t.Logf("max runners: %d (default)", runtime.NumCPU()*4)
+		}
 	}
 
 	if !cfg.procedureMode {
@@ -324,4 +334,15 @@ func TestMain(m *testing.M) {
 	}
 	proceduresPath = path.Join(basePath, "python", "tests", "procedures")
 	os.Exit(m.Run())
+}
+
+// safeCloseChannel is a helper function to close a channel only if it is not already closed.
+// it assumes that a single goroutine owns closing the channel and should only be used in
+// the test harness in that scenario.
+func safeCloseChannel(ch chan struct{}) {
+	select {
+	case <-ch:
+	default:
+		close(ch)
+	}
 }

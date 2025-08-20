@@ -136,6 +136,10 @@ func NewProcedureRunner(name, srcDir string, cfg Config) (*Runner, error) {
 	return r, nil
 }
 
+func (r *Runner) String() string {
+	return r.name
+}
+
 func (r *Runner) Start() error {
 	log := logger.Sugar()
 	cmdStart := make(chan bool)

@@ -14,7 +14,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -66,25 +65,16 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		startedAt:  time.Now(),
 		uidCounter: &uidCounter{},
 		cwd:        cfg.WorkingDirectory,
+		maxRunners: cfg.MaxRunners,
 	}
-	// GOMAXPROCS is set by automaxprocs in main.go on server startup
-	// Reset Go server to 1 to make room for Python runners
-	autoMaxProcs := runtime.GOMAXPROCS(1)
 	if cfg.UseProcedureMode {
-		concurrencyPerCPU := 4
-		if s, ok := os.LookupEnv("COG_PROCEDURE_CONCURRENCY_PER_CPU"); ok {
-			if i, err := strconv.Atoi(s); err == nil {
-				concurrencyPerCPU = i
-			} else {
-				log.Errorw("failed to parse COG_PROCEDURE_CONCURRENCY_PER_CPU", "value", s)
-			}
+		// Allow the caller to specify the max number of runners to allow. By default,
+		// we will use the number of CPUs * 4. Note that NumCPU() is processor affinity aware
+		// and will adhere to container resource allocations
+		maxRunners := cfg.MaxRunners
+		if maxRunners == 0 {
+			maxRunners = runtime.NumCPU() * 4
 		}
-		// Set both max runners and max concurrency across all runners to CPU * n,
-		// regardless what max concurrency each runner has.
-		// In the worst case scenario where all runners are non-async,
-		// completion of any runner frees up concurrency.
-		// See healthCheck() for concurrency aggregation across runners.
-		h.maxRunners = autoMaxProcs * concurrencyPerCPU
 		h.runners = make([]*Runner, h.maxRunners)
 
 		_, err := os.Stat("/.dockerenv")
@@ -128,7 +118,9 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 func (h *Handler) ActiveRunners() []*Runner {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.runners
+	runners := make([]*Runner, len(h.runners))
+	copy(runners, h.runners)
+	return runners
 }
 
 func (h *Handler) ExitCode() int {

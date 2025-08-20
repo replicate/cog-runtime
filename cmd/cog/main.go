@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/peterbourgon/ff/v4"
@@ -92,12 +93,22 @@ func serverCommand() (*ff.Command, error) {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
+
 			serverCfg := server.Config{
 				UseProcedureMode:      cfg.UseProcedureMode,
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
 				UploadUrl:             cfg.UploadUrl,
 				WorkingDirectory:      cfg.WorkingDirectory,
+			}
+			// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
+			// statically create the runner list sized at 1.
+			if s, ok := os.LookupEnv("COG_MAX_RUNNERS"); ok && cfg.UseProcedureMode {
+				if i, err := strconv.Atoi(s); err == nil {
+					serverCfg.MaxRunners = i
+				} else {
+					log.Errorw("failed to parse COG_MAX_RUNNERS", "value", s)
+				}
 			}
 			ctx, cancel := context.WithCancel(ctx)
 			h, err := server.NewHandler(serverCfg, cancel)
