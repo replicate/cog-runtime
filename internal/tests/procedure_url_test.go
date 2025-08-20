@@ -3,6 +3,7 @@ package tests
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/fs"
@@ -41,9 +42,9 @@ func TestPrepareProcedureSourceURLLocal(t *testing.T) {
 	assert.NotEqual(t, fooDst, fooDst2)
 }
 
-// createMemTarFile creates a tarball in memory from the given directory and returns the []byte of the tarball
+// createMemTarGzFile creates a tarball in memory from the given directory and returns the []byte of the tarball
 // so that it can then be served from an http.FileServer for test fixture reasons.
-func createMemTarFile(t *testing.T, root string) []byte {
+func createMemTarGzFile(t *testing.T, root string) []byte {
 	t.Helper()
 
 	fi, err := os.Stat(root)
@@ -51,8 +52,8 @@ func createMemTarFile(t *testing.T, root string) []byte {
 	require.True(t, fi.IsDir())
 
 	var buf bytes.Buffer
-	tw := tar.NewWriter(&buf)
-	defer func() { require.NoError(t, tw.Close()) }()
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
 
 	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -96,14 +97,19 @@ func createMemTarFile(t *testing.T, root string) []byte {
 	})
 	require.NoError(t, err)
 
+	twCloseErr := tw.Close()
+	gzCloseErr := gz.Close()
+	require.NoError(t, twCloseErr)
+	require.NoError(t, gzCloseErr)
+
 	return buf.Bytes()
 }
 
 func TestPrepareProcedureSourceURLRemote(t *testing.T) {
 	t.Parallel()
 
-	fooTar := createMemTarFile(t, filepath.Join(proceduresPath, "foo"))
-	barTar := createMemTarFile(t, filepath.Join(proceduresPath, "bar"))
+	fooTar := createMemTarGzFile(t, filepath.Join(proceduresPath, "foo"))
+	barTar := createMemTarGzFile(t, filepath.Join(proceduresPath, "bar"))
 
 	testFS := fstest.MapFS{
 		"foo.tar.gz": {
