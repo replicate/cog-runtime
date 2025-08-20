@@ -80,6 +80,16 @@ class PredictionFailingPredictor(BasePredictor):
         raise Exception('prediction failed')
 
 
+class PredictionFailingPredictorWithTiming(BasePredictor):
+    def predict(self, i: int, s: str) -> str:
+        print('starting prediction')
+        time.sleep(0.1)
+        if i > 0:
+            time.sleep(0.6)  # Timing needed for test IPC sequence
+        print('prediction failed')
+        raise Exception('prediction failed')
+
+
 class PredictionCrashingPredictor(BasePredictor):
     def predict(self, i: int, s: str) -> str:
         print('starting prediction')
