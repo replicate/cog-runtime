@@ -49,9 +49,7 @@ func TestLogs(t *testing.T) {
 			"LOG_FILE": "stderr",
 		},
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, "STDOUT: starting setup\nSTDERR: starting setup\nSTDOUT: completed setup\nSTDERR: completed setup\n", hc.Setup.Logs)
 
 	prediction := server.PredictionRequest{Input: map[string]any{"s": "bar"}}

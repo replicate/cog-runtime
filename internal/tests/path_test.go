@@ -46,9 +46,7 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 		module:           "path",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": b64encode("bar")}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: prediction})
@@ -84,9 +82,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 	ts := testDataContentServer(t)
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": ts.URL + "/.python_version"}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: prediction})
@@ -122,9 +118,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"s": "https://replicate.com"}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: prediction})
@@ -156,9 +150,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 		module:           "path",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": b64encode("bar")}
 	req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: prediction})
@@ -209,9 +201,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": b64encode("bar")}
 	req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: prediction})
@@ -264,9 +254,7 @@ func TestPredictionPathUploadIterator(t *testing.T) {
 		module:           "path_out_iter",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := server.PredictionRequest{
 		Input:   map[string]any{"n": 3},
@@ -331,9 +319,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 		module:           "mime",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	testDataPrefix := contentServer.URL + "/mimetype/"
 
@@ -425,9 +411,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 		module:           "mimes",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	files := []struct {
 		fileName            string

@@ -101,9 +101,7 @@ func TestPredictionWebhookFilter(t *testing.T) {
 				module:           "iterator",
 				predictorClass:   "Predictor",
 			})
-			hc := waitForSetupComplete(t, runtimeServer)
-			assert.Equal(t, server.StatusReady.String(), hc.Status)
-			assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 			predictionId, err := util.PredictionId()
 			require.NoError(t, err)

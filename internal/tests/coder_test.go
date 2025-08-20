@@ -26,9 +26,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 		module:           "dataclass",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{
 		"account": map[string]any{
@@ -75,9 +73,7 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 		module:           "chat",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"msg": map[string]any{"role": "assistant", "content": "bar"}}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})

@@ -113,12 +113,13 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 }
 
 type cogRuntimeServerConfig struct {
-	procedureMode    bool
-	explicitShutdown bool
-	uploadURL        string
-	module           string
-	predictorClass   string
-	concurrencyMax   int
+	procedureMode     bool
+	explicitShutdown  bool
+	uploadURL         string
+	module            string
+	predictorClass    string
+	concurrencyMax    int
+	concurrencyPerCPU int
 
 	envSet   map[string]string
 	envUnset []string
@@ -141,6 +142,9 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	t.Helper()
 	cfg.validate(t)
 	tempDir := t.TempDir()
+	if cfg.procedureMode {
+		t.Logf("procedure mode")
+	}
 	t.Logf("Working directory: %s", tempDir)
 	// FIXME: This is for compatibility with the `cog_test` test harness while we migrate to in-process testing. This allows us
 	// to specify the python venvs and binary in the same way as for minimizing the blast radius of changes.
@@ -187,6 +191,10 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	}
 	concurrencyMax := max(cfg.concurrencyMax, 1)
 	t.Logf("concurrency max: %d", concurrencyMax)
+
+	if cfg.procedureMode && cfg.concurrencyPerCPU > 0 {
+		t.Logf("concurrency per CPU: %d", cfg.concurrencyPerCPU)
+	}
 
 	writeCogConfig(t, tempDir, cfg.predictorClass, concurrencyMax)
 	linkPythonModule(t, basePath, tempDir, cfg.module)
@@ -261,7 +269,7 @@ func healthCheck(t *testing.T, testServer *httptest.Server) server.HealthCheck {
 	return hc
 }
 
-func waitForSetupComplete(t *testing.T, testServer *httptest.Server) server.HealthCheck {
+func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedStatus server.Status, expectedSetupStatus server.SetupStatus) server.HealthCheck {
 	t.Helper()
 
 	timer := time.NewTicker(10 * time.Millisecond)
@@ -270,6 +278,8 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server) server.Heal
 	for range timer.C {
 		hc := healthCheck(t, testServer)
 		if hc.Status != server.StatusStarting.String() {
+			assert.Equal(t, expectedStatus.String(), hc.Status)
+			assert.Equal(t, expectedSetupStatus, hc.Setup.Status)
 			return hc
 		}
 	}

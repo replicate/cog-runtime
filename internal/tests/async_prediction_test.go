@@ -59,9 +59,7 @@ func TestAsyncPrediction(t *testing.T) {
 				predictorClass:   tc.predictorClass,
 				concurrencyMax:   2,
 			})
-			hc := waitForSetupComplete(t, runtimeServer)
-			assert.Equal(t, server.StatusReady.String(), hc.Status)
-			assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 			predictionId, err := util.PredictionId()
 			require.NoError(t, err)
@@ -93,7 +91,7 @@ func TestAsyncPrediction(t *testing.T) {
 			}
 
 			if tc.expectedHCStatus != "" {
-				hc = healthCheck(t, runtimeServer)
+				hc := healthCheck(t, runtimeServer)
 				assert.Equal(t, tc.expectedHCStatus, hc.Status)
 			}
 		})
@@ -117,9 +115,7 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 		predictorClass:   "Predictor",
 		concurrencyMax:   2,
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	predictionId, err := util.PredictionId()
 	require.NoError(t, err)
@@ -193,9 +189,7 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 		// FIXME: The doesn't really affect the values in the healthcheck, those are hard-coded to 1 for non-procedure mode.
 		concurrencyMax: 1,
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, 1, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 

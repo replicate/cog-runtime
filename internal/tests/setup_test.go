@@ -19,9 +19,7 @@ func TestSetupSucceeded(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "SetupSleepingPredictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, "starting setup\nsetup in progress 1/1\ncompleted setup\n", hc.Setup.Logs)
 
 	resp, err := http.DefaultClient.Get(runtimeServer.URL + "/openapi.json")
@@ -38,9 +36,7 @@ func TestSetupFailure(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "SetupFailingPredictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
-	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
 	// FIXME: stop using a global for determining "legacy"
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace
@@ -60,9 +56,7 @@ func TestSetupCrash(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "SetupCrashingPredictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
-	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
 	// FIXME: stop using a global for determining "legacy"
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace

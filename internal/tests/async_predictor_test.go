@@ -26,9 +26,7 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 		concurrencyMax:   2,
 	})
 	receiverServer := testHarnessReceiverServer(t)
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	barId, err := util.PredictionId()
 	require.NoError(t, err)
@@ -94,9 +92,7 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 		concurrencyMax:   2,
 	})
 	receiverServer := testHarnessReceiverServer(t)
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	barId, err := util.PredictionId()
 	require.NoError(t, err)

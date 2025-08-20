@@ -46,9 +46,7 @@ func TestIteratorTypes(t *testing.T) {
 			})
 			receiverServer := testHarnessReceiverServer(t)
 
-			hc := waitForSetupComplete(t, runtimeServer)
-			assert.Equal(t, server.StatusReady.String(), hc.Status)
-			assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 			input := map[string]any{"i": 2, "s": "bar"}
 			req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: input, Webhook: receiverServer.URL + "/webhook"})
@@ -91,9 +89,7 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	})
 	receiverServer := testHarnessReceiverServer(t)
 
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	barId, err := util.PredictionId()
 	require.NoError(t, err)

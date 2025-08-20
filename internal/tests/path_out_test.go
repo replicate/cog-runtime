@@ -76,9 +76,7 @@ func TestPathOut(t *testing.T) {
 				module:           testCase.predictor,
 				predictorClass:   "Predictor",
 			})
-			hc := waitForSetupComplete(t, runtimeServer)
-			assert.Equal(t, server.StatusReady.String(), hc.Status)
-			assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 			prediction := server.PredictionRequest{Input: map[string]any{"s": "foo"}}
 			req := httpPredictionRequest(t, runtimeServer, nil, prediction)

@@ -21,9 +21,7 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 		module:           "output",
 		predictorClass:   "Predictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"p": b64encode("bar")}
 	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
