@@ -375,41 +375,43 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 		},
 	}
 	for _, tc := range predictions {
-		prediction := server.PredictionRequest{
-			Input: map[string]any{"u": testDataPrefix + tc.fileName},
-			Id:    tc.predictionID,
-		}
-		t.Logf("prediction file: %s", tc.fileName)
-		req := httpPredictionRequestWithId(t, runtimeServer, receiverServer, prediction)
-		resp, err := http.DefaultClient.Do(req)
-		require.NoError(t, err)
-		defer resp.Body.Close()
-		assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		var predictionResponse server.PredictionResponse
-		err = json.Unmarshal(body, &predictionResponse)
-		require.NoError(t, err)
-
-		assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
-	}
-
-	// Validate the uploads
-	timer := time.After(10 * time.Second)
-	for count := 0; count < len(predictions); count++ {
-		select {
-		case upload := <-receiverServer.uploadReceiverChan:
-			expectedContentType := predictions[count].expectedContentType
-			if *legacyCog && predictions[count].legacyContentType != "" {
-				expectedContentType = predictions[count].legacyContentType
+		// Each of these are treated as subtests, they will be run serially
+		t.Run(tc.fileName, func(t *testing.T) {
+			prediction := server.PredictionRequest{
+				Input: map[string]any{"u": testDataPrefix + tc.fileName},
+				Id:    tc.predictionID,
 			}
-			assert.Equal(t, expectedContentType, upload.ContentType)
-			assert.Equal(t, "PUT", upload.Method)
-		case <-timer:
-			t.Fatalf("timeout waiting for uploads")
-		}
+			t.Logf("prediction file: %s", tc.fileName)
+			req := httpPredictionRequestWithId(t, runtimeServer, receiverServer, prediction)
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			var predictionResponse server.PredictionResponse
+			err = json.Unmarshal(body, &predictionResponse)
+			require.NoError(t, err)
+
+			assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+
+			// Validate the upload
+			select {
+			case upload := <-receiverServer.uploadReceiverChan:
+				expectedContentType := tc.expectedContentType
+				if *legacyCog && tc.legacyContentType != "" {
+					expectedContentType = tc.legacyContentType
+				}
+				assert.Equal(t, expectedContentType, upload.ContentType)
+				assert.Equal(t, "PUT", upload.Method)
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timeout waiting for upload")
+			}
+		})
 	}
+
+	// Ensure we didn't receive any superfluous uploads
 	assert.Len(t, receiverServer.uploadRequests, len(predictions))
 }
 
@@ -475,17 +477,18 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 
 	// Validate the uploads
-	timer := time.After(10 * time.Second)
-	for count := 0; count < len(files); count++ {
+	for _, file := range files {
 		select {
 		case upload := <-receiverServer.uploadReceiverChan:
-			expectedContentType := files[count].expectedContentType
-			if *legacyCog && files[count].legacyContentType != "" {
-				expectedContentType = files[count].legacyContentType
+			expectedContentType := file.expectedContentType
+			if *legacyCog && file.legacyContentType != "" {
+				expectedContentType = file.legacyContentType
 			}
 			assert.Equal(t, expectedContentType, upload.ContentType)
-		case <-timer:
-			t.Fatalf("timeout waiting for uploads")
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timeout waiting for upload")
 		}
 	}
+	// Ensure we didn't receive any superfluous uploads
+	assert.Len(t, receiverServer.uploadRequests, len(files))
 }
