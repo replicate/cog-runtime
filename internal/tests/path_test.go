@@ -49,7 +49,7 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: prediction})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -85,7 +85,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": ts.URL + "/.python_version"}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: prediction})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -121,7 +121,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"s": "https://replicate.com"}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: prediction})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: prediction})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -204,7 +204,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	prediction := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: prediction})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -260,7 +260,7 @@ func TestPredictionPathUploadIterator(t *testing.T) {
 		Input:   map[string]any{"n": 3},
 		Webhook: receiverServer.URL + "/webhook",
 	}
-	req := httpPredictionRequest(t, runtimeServer, receiverServer, prediction)
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -368,7 +368,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 				Id:    tc.predictionID,
 			}
 			t.Logf("prediction file: %s", tc.fileName)
-			req := httpPredictionRequestWithId(t, runtimeServer, receiverServer, prediction)
+			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -446,7 +446,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 		}},
 	}
 
-	req := httpPredictionRequest(t, runtimeServer, receiverServer, prediction)
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -460,7 +460,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 
-	// Validate the uploads
+	// Validate the uploadsgi
 	for _, file := range files {
 		select {
 		case upload := <-receiverServer.uploadReceiverChan:

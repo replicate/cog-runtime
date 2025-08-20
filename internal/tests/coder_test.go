@@ -36,7 +36,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 			"credentials": map[string]any{"password": "foo", "pubkey": b64encode("bar")},
 		},
 	}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -76,7 +76,7 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"msg": map[string]any{"role": "assistant", "content": "bar"}}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -89,22 +89,4 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 	expectedOutput := map[string]any{"role": "assistant", "content": "*bar*"}
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
-
-	// if *legacyCog {
-	// 	// Compat: legacy Cog does not support custom coder
-	// 	t.SkipNow()
-	// }
-	// ct := NewCogTest(t, "chat")
-	// assert.NoError(t, ct.Start())
-
-	// hc := ct.WaitForSetup()
-	// assert.Equal(t, server.StatusReady.String(), hc.Status)
-	// assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	// resp := ct.Prediction(map[string]any{"msg": map[string]any{"role": "assistant", "content": "bar"}})
-	// output := map[string]any{"role": "assistant", "content": "*bar*"}
-	// ct.AssertResponse(resp, server.PredictionSucceeded, output, "")
-
-	// ct.Shutdown()
-	// assert.NoError(t, ct.Cleanup())
 }

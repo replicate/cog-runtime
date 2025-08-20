@@ -79,7 +79,7 @@ func TestPathOut(t *testing.T) {
 			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 			prediction := server.PredictionRequest{Input: map[string]any{"s": "foo"}}
-			req := httpPredictionRequest(t, runtimeServer, nil, prediction)
+			req := httpPredictionRequest(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()

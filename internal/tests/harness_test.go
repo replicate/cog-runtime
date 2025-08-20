@@ -188,6 +188,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		EnvSet:                envSet,
 		EnvUnset:              cfg.envUnset,
 		PythonBinPath:         path.Join(pathEnv, "python3"),
+		ConcurrencyPerCPU:     cfg.concurrencyPerCPU,
 	}
 	concurrencyMax := max(cfg.concurrencyMax, 1)
 	t.Logf("concurrency max: %d", concurrencyMax)
@@ -196,8 +197,10 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		t.Logf("concurrency per CPU: %d", cfg.concurrencyPerCPU)
 	}
 
-	writeCogConfig(t, tempDir, cfg.predictorClass, concurrencyMax)
-	linkPythonModule(t, basePath, tempDir, cfg.module)
+	if !cfg.procedureMode {
+		writeCogConfig(t, tempDir, cfg.predictorClass, concurrencyMax)
+		linkPythonModule(t, basePath, tempDir, cfg.module)
+	}
 
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
@@ -286,19 +289,19 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedSta
 	return server.HealthCheck{}
 }
 
-func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, receiverServer *testHarnessReceiver, prediction server.PredictionRequest) *http.Request {
+func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
 	assert.Empty(t, prediction.Id)
-	return httpPredictionReq(t, http.MethodPost, runtimeServer, receiverServer, prediction)
+	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
-func httpPredictionRequestWithId(t *testing.T, runtimeServer *httptest.Server, receiverServer *testHarnessReceiver, prediction server.PredictionRequest) *http.Request {
+func httpPredictionRequestWithId(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
 	assert.NotEmpty(t, prediction.Id)
-	return httpPredictionReq(t, http.MethodPost, runtimeServer, receiverServer, prediction)
+	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
-func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Server, receiverServer *testHarnessReceiver, prediction server.PredictionRequest) *http.Request {
+func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
 	url := runtimeServer.URL + "/predictions"
 	body, err := json.Marshal(prediction)
@@ -306,7 +309,7 @@ func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Serv
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
-	if receiverServer != nil && prediction.Webhook != "" {
+	if prediction.Webhook != "" {
 		req.Header.Set("Prefer", "respond-async")
 	}
 	return req

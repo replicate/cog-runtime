@@ -32,13 +32,13 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 	require.NoError(t, err)
 	bazId, err := util.PredictionId()
 	require.NoError(t, err)
-	barReq := httpPredictionRequestWithId(t, runtimeServer, receiverServer, server.PredictionRequest{
+	barReq := httpPredictionRequestWithId(t, runtimeServer, server.PredictionRequest{
 		Input:               map[string]any{"i": 1, "s": "bar"},
 		Webhook:             receiverServer.URL + "/webhook",
 		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 		Id:                  barId,
 	})
-	bazReq := httpPredictionRequestWithId(t, runtimeServer, receiverServer, server.PredictionRequest{
+	bazReq := httpPredictionRequestWithId(t, runtimeServer, server.PredictionRequest{
 		Input:               map[string]any{"i": 2, "s": "baz"},
 		Webhook:             receiverServer.URL + "/webhook",
 		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
@@ -96,7 +96,7 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 
 	barId, err := util.PredictionId()
 	require.NoError(t, err)
-	barReq := httpPredictionRequestWithId(t, runtimeServer, receiverServer, server.PredictionRequest{
+	barReq := httpPredictionRequestWithId(t, runtimeServer, server.PredictionRequest{
 		Input:   map[string]any{"i": 60, "s": "bar"},
 		Webhook: receiverServer.URL + "/webhook",
 		WebhookEventsFilter: []server.WebhookEvent{

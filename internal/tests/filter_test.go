@@ -111,7 +111,7 @@ func TestPredictionWebhookFilter(t *testing.T) {
 				WebhookEventsFilter: tc.webhookEvents,
 				Id:                  predictionId,
 			}
-			req := httpPredictionRequestWithId(t, runtimeServer, receiverServer, prediction)
+			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()

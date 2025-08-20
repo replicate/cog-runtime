@@ -28,7 +28,7 @@ func TestPredictionSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -66,7 +66,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 		Id:    predictionId,
 		Input: input,
 	}
-	req := httpPredictionRequestWithId(t, runtimeServer, nil, predictionReq)
+	req := httpPredictionRequestWithId(t, runtimeServer, predictionReq)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestPredictionFailure(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestPredictionCrash(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ func TestPredictionConcurrency(t *testing.T) {
 			Webhook:             receiverServer.URL + "/webhook",
 			WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 		}
-		req := httpPredictionRequest(t, runtimeServer, receiverServer, predictionReq)
+		req := httpPredictionRequest(t, runtimeServer, predictionReq)
 		resp, err := http.DefaultClient.Do(req)
 		close(firstPredictionSent)
 		require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestPredictionConcurrency(t *testing.T) {
 	predictionReq := server.PredictionRequest{
 		Input: input,
 	}
-	req := httpPredictionRequest(t, runtimeServer, receiverServer, predictionReq)
+	req := httpPredictionRequest(t, runtimeServer, predictionReq)
 	t.Log("waiting for first prediction to be sent")
 	select {
 	case <-firstPredictionSent:

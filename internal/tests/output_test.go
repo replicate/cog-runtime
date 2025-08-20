@@ -24,7 +24,7 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, nil, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()

@@ -71,7 +71,7 @@ func TestAsyncPrediction(t *testing.T) {
 				},
 				Id: predictionId,
 			}
-			req := httpPredictionRequestWithId(t, runtimeServer, receiverServer, prediction)
+			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -129,7 +129,7 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 			server.WebhookCompleted,
 		},
 	}
-	req := httpPredictionRequestWithId(t, runtimeServer, receiverServer, prediction)
+	req := httpPredictionRequestWithId(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -200,7 +200,7 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 		Webhook: receiverServer.URL + "/webhook",
 		Id:      predictionId,
 	}
-	req := httpPredictionRequestWithId(t, runtimeServer, receiverServer, prediction)
+	req := httpPredictionRequestWithId(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()

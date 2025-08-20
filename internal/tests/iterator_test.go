@@ -49,7 +49,7 @@ func TestIteratorTypes(t *testing.T) {
 			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 			input := map[string]any{"i": 2, "s": "bar"}
-			req := httpPredictionRequest(t, runtimeServer, receiverServer, server.PredictionRequest{Input: input, Webhook: receiverServer.URL + "/webhook"})
+			req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input, Webhook: receiverServer.URL + "/webhook"})
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -107,8 +107,8 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 		Id:                  bazId,
 		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 	}
-	barReq := httpPredictionRequestWithId(t, runtimeServer, receiverServer, barPrediction)
-	bazReq := httpPredictionRequestWithId(t, runtimeServer, receiverServer, bazPrediction)
+	barReq := httpPredictionRequestWithId(t, runtimeServer, barPrediction)
+	bazReq := httpPredictionRequestWithId(t, runtimeServer, bazPrediction)
 	barResp, err := http.DefaultClient.Do(barReq)
 	require.NoError(t, err)
 	defer barResp.Body.Close()

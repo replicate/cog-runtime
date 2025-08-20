@@ -53,7 +53,7 @@ func TestLogs(t *testing.T) {
 	assert.Equal(t, "STDOUT: starting setup\nSTDERR: starting setup\nSTDOUT: completed setup\nSTDERR: completed setup\n", hc.Setup.Logs)
 
 	prediction := server.PredictionRequest{Input: map[string]any{"s": "bar"}}
-	req := httpPredictionRequest(t, runtimeServer, nil, prediction)
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
