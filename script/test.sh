@@ -4,12 +4,15 @@
 
 set -euo pipefail
 
+: "${GITHUB_ACTIONS:=}"
+
 base_dir="$(git rev-parse --show-toplevel)"
 
 cd "$base_dir"
 
 test_go() {
-    go test ./... "$@"
+    go install gotest.tools/gotestsum@latest
+    gotestsum --format testname ./... -- -timeout=30s
 }
 
 test_python() {
