@@ -11,8 +11,7 @@ base_dir="$(git rev-parse --show-toplevel)"
 cd "$base_dir"
 
 test_go() {
-    go install gotest.tools/gotestsum@latest
-    gotestsum --format testname ./... -- -timeout=30s
+    go run gotest.tools/gotestsum@latest --format testname ./... -- -timeout=30s
 }
 
 test_python() {
