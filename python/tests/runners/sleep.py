@@ -30,6 +30,7 @@ class Predictor(BasePredictor):
             print('prediction canceled')
             raise e
 
+
 class SetupSleepingPredictor(Predictor):
     def setup(self) -> None:
         print('starting setup')
@@ -39,6 +40,7 @@ class SetupSleepingPredictor(Predictor):
             print(f'setup in progress {x + 1}/{i}')
             time.sleep(0.1)
         print('completed setup')
+
 
 class SetupFailingPredictor(BasePredictor):
     def setup(self) -> None:
@@ -53,6 +55,7 @@ class SetupFailingPredictor(BasePredictor):
         print('starting prediction')
         return f'*{s}*'
 
+
 class SetupCrashingPredictor(BasePredictor):
     def setup(self) -> None:
         print('starting setup')
@@ -66,6 +69,7 @@ class SetupCrashingPredictor(BasePredictor):
         print('starting prediction')
         return f'*{s}*'
 
+
 class PredictionFailingPredictor(BasePredictor):
     def predict(self, i: int, s: str) -> str:
         print('starting prediction')
@@ -74,6 +78,7 @@ class PredictionFailingPredictor(BasePredictor):
         time.sleep(0.1)
         print('prediction failed')
         raise Exception('prediction failed')
+
 
 class PredictionCrashingPredictor(BasePredictor):
     def predict(self, i: int, s: str) -> str:
