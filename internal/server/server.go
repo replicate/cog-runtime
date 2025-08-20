@@ -44,13 +44,12 @@ type IPC struct {
 }
 
 type Handler struct {
-	cfg        Config
-	shutdown   context.CancelFunc
-	startedAt  time.Time
-	maxRunners int
-	setUID     bool
-	runners    []*Runner
-	mu         sync.Mutex
+	cfg       Config
+	shutdown  context.CancelFunc
+	startedAt time.Time
+	setUID    bool
+	runners   []*Runner
+	mu        sync.Mutex
 
 	uidCounter *uidCounter
 
@@ -65,17 +64,18 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		startedAt:  time.Now(),
 		uidCounter: &uidCounter{},
 		cwd:        cfg.WorkingDirectory,
-		maxRunners: cfg.MaxRunners,
 	}
 	if cfg.UseProcedureMode {
 		// Allow the caller to specify the max number of runners to allow. By default,
 		// we will use the number of CPUs * 4. Note that NumCPU() is processor affinity aware
 		// and will adhere to container resource allocations
+		// FIXME: this should not be here, it should be lifted to main.go and passed to NewHandler and `0`
+		// should be rejected as invalid
 		maxRunners := cfg.MaxRunners
 		if maxRunners == 0 {
 			maxRunners = runtime.NumCPU() * 4
 		}
-		h.runners = make([]*Runner, h.maxRunners)
+		h.runners = make([]*Runner, maxRunners)
 
 		_, err := os.Stat("/.dockerenv")
 		inDocker := err == nil
@@ -89,7 +89,7 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		if (inDocker || inK8S) && os.Getuid() == 0 {
 			h.setUID = true
 		}
-		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
+		log.Infow("running in procedure mode", "max_runners", maxRunners)
 	} else {
 		h.runners = make([]*Runner, 1)
 		runner, err := NewRunner(DefaultRunnerName, h.cwd, cfg)
@@ -167,7 +167,7 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 			},
 			Concurrency: Concurrency{
 				// Max runners as max concurrency
-				Max: h.maxRunners,
+				Max: len(h.runners),
 			},
 		}
 		h.mu.Lock()

@@ -5,14 +5,16 @@
 set -euo pipefail
 
 base_dir="$(git rev-parse --show-toplevel)"
+GCI_VERSION="v0.13.7"
 
 check_go() {
+    echo "Running in $base_dir, GCI_VERSION=$GCI_VERSION"
     cd "$base_dir"
     local="$(go list -m)"
     if [[ -z "${CI:-}" ]]; then
-        go run github.com/daixiang0/gci@latest write --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .
+        go run github.com/daixiang0/gci@$GCI_VERSION write --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .
     else
-        output="$(go run github.com/daixiang0/gci@latest diff --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .)"
+        output="$(go run github.com/daixiang0/gci@$GCI_VERSION diff --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .)"
         printf "%s" "$output"
         [ -z "$output" ] || exit 1
     fi
