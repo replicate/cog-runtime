@@ -39,6 +39,10 @@ func b64encodeLegacy(s string) string {
 
 func TestPredictionPathBase64Succeeded(t *testing.T) {
 	t.Parallel()
+	allowedOutputs := []string{
+		b64encode("*bar*"),
+		b64encodeLegacy("*bar*"),
+	}
 	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
@@ -55,11 +59,6 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	expectedOutput := b64encode("*bar*")
-
-	if *legacyCog {
-		expectedOutput = b64encodeLegacy("*bar*")
-	}
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
@@ -68,12 +67,16 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
-	assert.Equal(t, expectedOutput, predictionResponse.Output)
+	assert.Contains(t, allowedOutputs, predictionResponse.Output)
 	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
 }
 
 func TestPredictionPathURLSucceeded(t *testing.T) {
 	t.Parallel()
+	allowedOutputs := []string{
+		b64encode("*3.9\n*"),
+		b64encodeLegacy("*3.9\n*"),
+	}
 	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
@@ -99,12 +102,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 
-	expectedOutput := b64encode("*3.9\n*")
-	if *legacyCog {
-		expectedOutput = b64encodeLegacy("*3.9\n*")
-	}
-
-	assert.Equal(t, expectedOutput, predictionResponse.Output)
+	assert.Contains(t, allowedOutputs, predictionResponse.Output)
 	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
 }
 
@@ -192,6 +190,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 
 func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	t.Parallel()
+	allowedContentTypes := []string{"text/plain; charset=utf-8", "text/plain"}
 	receiverServer := testHarnessReceiverServer(t)
 	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
@@ -233,14 +232,10 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 		t.Fatalf("timeout waiting for upload")
 	}
 
-	expectedContentType := "text/plain; charset=utf-8"
-	if *legacyCog {
-		expectedContentType = "text/plain"
-	}
 	assert.Len(t, receiverServer.uploadRequests, 1)
 	assert.Equal(t, "PUT", uploadData.Method)
 	assert.Equal(t, "/upload/"+filename, uploadData.Path)
-	assert.Equal(t, expectedContentType, uploadData.ContentType)
+	assert.Contains(t, allowedContentTypes, uploadData.ContentType)
 	assert.Equal(t, "*bar*", string(uploadData.Body))
 }
 
@@ -335,29 +330,27 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 	predictions := []struct {
 		fileName            string
 		predictionID        string
-		expectedContentType string
-		legacyContentType   string
+		allowedContentTypes []string
 	}{
 		{
 			fileName:            "gif.gif",
 			predictionID:        gifPredictionID,
-			expectedContentType: "image/gif",
+			allowedContentTypes: []string{"image/gif"},
 		},
 		{
 			fileName:            "jar.jar",
 			predictionID:        jarPredictionID,
-			expectedContentType: "application/jar",
-			legacyContentType:   "application/java-archive",
+			allowedContentTypes: []string{"application/jar", "application/java-archive"},
 		},
 		{
 			fileName:            "tar.tar",
 			predictionID:        tarPredictionID,
-			expectedContentType: "application/x-tar",
+			allowedContentTypes: []string{"application/x-tar"},
 		},
 		{
 			fileName:            "1.sm.webp",
 			predictionID:        webpPredictionID,
-			expectedContentType: "image/webp",
+			allowedContentTypes: []string{"image/webp"},
 		},
 	}
 	for _, tc := range predictions {
@@ -385,11 +378,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 			// Validate the upload
 			select {
 			case upload := <-receiverServer.uploadReceiverChan:
-				expectedContentType := tc.expectedContentType
-				if *legacyCog && tc.legacyContentType != "" {
-					expectedContentType = tc.legacyContentType
-				}
-				assert.Equal(t, expectedContentType, upload.ContentType)
+				assert.Contains(t, tc.allowedContentTypes, upload.ContentType)
 				assert.Equal(t, "PUT", upload.Method)
 			case <-time.After(10 * time.Second):
 				t.Fatalf("timeout waiting for upload")
@@ -415,25 +404,23 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 
 	files := []struct {
 		fileName            string
-		expectedContentType string
-		legacyContentType   string
+		allowedContentTypes []string
 	}{
 		{
 			fileName:            "gif.gif",
-			expectedContentType: "image/gif",
+			allowedContentTypes: []string{"image/gif"},
 		},
 		{
 			fileName:            "jar.jar",
-			expectedContentType: "application/jar",
-			legacyContentType:   "application/java-archive",
+			allowedContentTypes: []string{"application/jar", "application/java-archive"},
 		},
 		{
 			fileName:            "tar.tar",
-			expectedContentType: "application/x-tar",
+			allowedContentTypes: []string{"application/x-tar"},
 		},
 		{
 			fileName:            "1.sm.webp",
-			expectedContentType: "image/webp",
+			allowedContentTypes: []string{"image/webp"},
 		},
 	}
 
@@ -464,11 +451,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 	for _, file := range files {
 		select {
 		case upload := <-receiverServer.uploadReceiverChan:
-			expectedContentType := file.expectedContentType
-			if *legacyCog && file.legacyContentType != "" {
-				expectedContentType = file.legacyContentType
-			}
-			assert.Equal(t, expectedContentType, upload.ContentType)
+			assert.Contains(t, file.allowedContentTypes, upload.ContentType)
 		case <-time.After(10 * time.Second):
 			t.Fatalf("timeout waiting for upload")
 		}

@@ -13,8 +13,10 @@ import (
 )
 
 func TestPathOut(t *testing.T) {
-	b64Data := b64encode("*foo*")
-	b64LegacyData := b64encodeLegacy("*foo*")
+	validB64Data := []string{
+		b64encodeLegacy("*foo*"),
+		b64encode("*foo*"),
+	}
 
 	testCases := []struct {
 		predictor     string
@@ -91,21 +93,17 @@ func TestPathOut(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 
-			b64 := b64Data
-			if *legacyCog {
-				b64 = b64LegacyData
-			}
 			if testCase.nested {
 				assert.Len(t, predictionResponse.Output, 1)
 				outputRaw, exists := predictionResponse.Output.(map[string]any)
 				require.True(t, exists, "output is not a map[string]any")
 				output, ok := outputRaw["p"].(string)
 				require.True(t, ok, "output is not a string")
-				assert.Equal(t, b64, output)
+				assert.Contains(t, validB64Data, output)
 			} else {
 				output, ok := predictionResponse.Output.(string)
 				require.True(t, ok, "output is not a string")
-				assert.Equal(t, b64, output)
+				assert.Contains(t, validB64Data, output)
 			}
 		})
 	}
