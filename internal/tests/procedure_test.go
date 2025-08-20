@@ -20,28 +20,6 @@ import (
 
 var errProcedureFailedToStart = errors.New("procedure failed to start")
 
-func procPredictionHTTP(ct *CogTest, url, token string, input map[string]any) *http.Response {
-	req := server.PredictionRequest{
-		Context: map[string]any{
-			"procedure_source_url": url,
-			"replicate_api_token":  token,
-		},
-		Input: input,
-	}
-	return ct.PredictionReq(http.MethodPost, "/procedures", req)
-}
-
-func procPrediction(ct *CogTest, url, token string, input map[string]any) server.PredictionResponse {
-	req := server.PredictionRequest{
-		Context: map[string]any{
-			"procedure_source_url": url,
-			"replicate_api_token":  token,
-		},
-		Input: input,
-	}
-	return ct.prediction(http.MethodPost, "/procedures", req)
-}
-
 // runProcedure runs a procedure and returns the prediction id and HTTP status code
 func runProcedure(t *testing.T, runtimeServer *httptest.Server, predictionRequest server.PredictionRequest) (string, int) {
 	t.Helper()
