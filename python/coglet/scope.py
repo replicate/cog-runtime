@@ -1,4 +1,5 @@
 import contextvars
+import sys
 import warnings
 from collections import defaultdict
 from typing import Any, Callable, Dict, Optional
@@ -40,6 +41,29 @@ def current_scope() -> Scope:
     pid = ctx_pid.get()
     assert pid is not None
     return Scope(pid)
+
+
+def flush_ctx_write_buf(pid: str, write_fn=None) -> None:
+    """Flush any remaining buffered output for a prediction ID"""
+    if pid in ctx_write_buf and ctx_write_buf[pid]:
+        remaining = ctx_write_buf[pid]
+        # If it doesn't end with newline, add one
+        if not remaining.endswith('\n'):
+            remaining += '\n'
+        if write_fn is None:
+            write_fn = sys.stdout.write
+        write_fn(remaining)
+        del ctx_write_buf[pid]
+
+
+def cleanup_prediction_context(pid: str) -> None:
+    """Clean up all context for a prediction, flushing any remaining output"""
+    # Flush any remaining buffered output first
+    flush_ctx_write_buf(pid)
+
+    # Clean up other prediction context
+    metrics.pop(pid, None)
+    contexts.pop(pid, None)
 
 
 def ctx_write(write_fn) -> Callable[[str], int]:

@@ -252,12 +252,7 @@ class FileRunner:
         finally:
             resp['completed_at'] = util.now_iso()
         self._respond(pid, epoch, resp)
-        if pid in scope.metrics:
-            scope.metrics.pop(pid)
-        if pid in scope.ctx_write_buf:
-            scope.ctx_write_buf.pop(pid)
-        if pid in scope.contexts:
-            scope.contexts.pop(pid)
+        scope.cleanup_prediction_context(pid)
         epoch += 1
 
     def _respond(
