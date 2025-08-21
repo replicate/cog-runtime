@@ -470,7 +470,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 		t.Fatalf("timeout waiting for webhook")
 	}
 
-	// Validate the uploadsgi
+	// Validate the uploads
 	for _, file := range files {
 		select {
 		case upload := <-receiverServer.uploadReceiverChan:

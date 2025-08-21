@@ -99,7 +99,7 @@ func TestAsyncPrediction(t *testing.T) {
 }
 func TestAsyncPredictionCanceled(t *testing.T) {
 	t.Parallel()
-	// FIXME: This is a case where `file_runner.py` has a sync/async mismatch. Even though execution context is yeilded back to the async runner,
+	// FIXME: This is a case where `file_runner.py` has a sync/async mismatch. Even though execution context is yielded back to the async runner,
 	// if we're in a blocking I/O (or many other cases) the async cancellation will never propagate to the predictor (and the predictor would need to
 	// explicitly handle the cancellation). The previous test crashed the predictor so that cancellation could work as there was nothing actually
 	// running or blocking the cancellation.The only way to fix this without drastically changing how we run python (e.g. keeping `file_runner.py` as

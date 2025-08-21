@@ -94,6 +94,10 @@ func (tr *testHarnessReceiver) uploadHandler(t *testing.T) http.HandlerFunc {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
 		body, err := io.ReadAll(r.Body)
+		// NOTE: Assertions here are to catch cases where the uploader does the wrong thing,
+		// as we may or may not be able to catch an error in the upload from functional-style
+		// testing, this can start going away once we migrate (where appropriate) to using the
+		// unit-tests.
 		assert.NoError(t, err)
 		assert.True(t, slices.Contains([]string{http.MethodPut, http.MethodPost}, r.Method))
 		message := uploadData{
