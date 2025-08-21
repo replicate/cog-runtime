@@ -47,12 +47,22 @@ def flush_ctx_write_buf(pid: str, write_fn=None) -> None:
     """Flush any remaining buffered output for a prediction ID"""
     if pid in ctx_write_buf and ctx_write_buf[pid]:
         remaining = ctx_write_buf[pid]
-        # If it doesn't end with newline, add one
-        if not remaining.endswith('\n'):
-            remaining += '\n'
         if write_fn is None:
             write_fn = sys.stdout.write
         write_fn(remaining)
+        del ctx_write_buf[pid]
+
+
+def flush_all_buffers(write_fn=None) -> None:
+    """Flush all remaining buffered output"""
+    if write_fn is None:
+        write_fn = sys.stdout.write
+
+    for pid in list(
+        ctx_write_buf.keys()
+    ):  # Copy keys to avoid modification during iteration
+        if ctx_write_buf[pid]:
+            write_fn(ctx_write_buf[pid])
         del ctx_write_buf[pid]
 
 
