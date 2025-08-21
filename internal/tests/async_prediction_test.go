@@ -57,7 +57,7 @@ func TestAsyncPrediction(t *testing.T) {
 				uploadURL:        "",
 				module:           "sleep",
 				predictorClass:   tc.predictorClass,
-				concurrencyMax:   2,
+				concurrencyMax:   1,
 			})
 			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 

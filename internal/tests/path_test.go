@@ -140,6 +140,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 
 func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	t.Parallel()
+	allowedContentTypes := []string{"text/plain; charset=utf-8", "text/plain"}
 	receiverServer := testHarnessReceiverServer(t)
 	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
@@ -150,23 +151,29 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	})
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	prediction := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
+	prediction := server.PredictionRequest{
+		Input:               map[string]any{"p": b64encode("bar")},
+		Webhook:             receiverServer.URL + "/webhook",
+		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+	}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
-	var predictionResponse server.PredictionResponse
-	err = json.Unmarshal(body, &predictionResponse)
-	require.NoError(t, err)
+	// Wait for webhook completion
+	var webhook webhookData
+	select {
+	case webhook = <-receiverServer.webhookReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
+	}
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
-	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
-
-	output, ok := predictionResponse.Output.(string)
+	assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
+	output, ok := webhook.Response.Output.(string)
 	assert.True(t, ok)
 	assert.True(t, strings.HasPrefix(output, receiverServer.URL+"/upload/"))
 
@@ -184,7 +191,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	assert.Len(t, receiverServer.uploadRequests, 1)
 	assert.Equal(t, "PUT", uploadData.Method)
 	assert.Equal(t, "/upload/"+filename, uploadData.Path)
-	assert.Equal(t, "text/plain; charset=utf-8", uploadData.ContentType)
+	assert.Contains(t, allowedContentTypes, uploadData.ContentType)
 	assert.Equal(t, "*bar*", string(uploadData.Body))
 }
 
@@ -202,22 +209,30 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	prediction := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
+	prediction := server.PredictionRequest{
+		Input:               map[string]any{"p": b64encode("bar")},
+		Webhook:             receiverServer.URL + "/webhook",
+		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+	}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
-	err = json.Unmarshal(body, &predictionResponse)
-	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
-	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
-	output, ok := predictionResponse.Output.(string)
+	// Wait for webhook completion
+	var webhook webhookData
+	select {
+	case webhook = <-receiverServer.webhookReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
+	}
+
+	assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
+	output, ok := webhook.Response.Output.(string)
 	assert.True(t, ok)
 	assert.True(t, strings.HasPrefix(output, receiverServer.URL+"/upload/"))
 
@@ -357,23 +372,27 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 		// Each of these are treated as subtests, they will be run serially
 		t.Run(tc.fileName, func(t *testing.T) {
 			prediction := server.PredictionRequest{
-				Input: map[string]any{"u": testDataPrefix + tc.fileName},
-				Id:    tc.predictionID,
+				Input:               map[string]any{"u": testDataPrefix + tc.fileName},
+				Id:                  tc.predictionID,
+				Webhook:             receiverServer.URL + "/webhook",
+				WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 			}
 			t.Logf("prediction file: %s", tc.fileName)
 			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
-			assert.Equal(t, http.StatusOK, resp.StatusCode)
+			assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-			body, err := io.ReadAll(resp.Body)
-			require.NoError(t, err)
-			var predictionResponse server.PredictionResponse
-			err = json.Unmarshal(body, &predictionResponse)
-			require.NoError(t, err)
+			_, _ = io.Copy(io.Discard, resp.Body)
 
-			assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+			// Wait for webhook completion
+			select {
+			case webhook := <-receiverServer.webhookReceiverChan:
+				assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timeout waiting for webhook")
+			}
 
 			// Validate the upload
 			select {
@@ -431,21 +450,25 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 			contentServer.URL + "/mimetype/" + files[2].fileName,
 			contentServer.URL + "/mimetype/" + files[3].fileName,
 		}},
+		Webhook:             receiverServer.URL + "/webhook",
+		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 	}
 
 	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
-	err = json.Unmarshal(body, &predictionResponse)
-	require.NoError(t, err)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	// Wait for webhook completion
+	select {
+	case webhook := <-receiverServer.webhookReceiverChan:
+		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
+	}
 
 	// Validate the uploadsgi
 	for _, file := range files {

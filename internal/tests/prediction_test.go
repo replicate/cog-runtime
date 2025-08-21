@@ -134,20 +134,20 @@ func TestPredictionCrash(t *testing.T) {
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
-	err = json.Unmarshal(body, &predictionResponse)
-	require.NoError(t, err)
+
 	hc := healthCheck(t, runtimeServer)
 	switch resp.StatusCode {
 	case http.StatusInternalServerError:
 		// This is "legacy" cog semantics
-
-		assert.Equal(t, "Internal Server Error", predictionResponse.Error)
+		assert.Equal(t, "Internal Server Error", string(body))
 		assert.Equal(t, "DEFUNCT", hc.Status)
 	case http.StatusOK:
+		require.NoError(t, err)
+		var predictionResponse server.PredictionResponse
+		err = json.Unmarshal(body, &predictionResponse)
+		require.NoError(t, err)
 		assert.Equal(t, server.PredictionFailed, predictionResponse.Status)
 		assert.Equal(t, nil, predictionResponse.Output)
 		assert.Contains(t, predictionResponse.Logs, "starting prediction")

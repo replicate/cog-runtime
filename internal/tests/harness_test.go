@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -8,11 +9,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
+	"os/exec"
 	"path"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -35,6 +41,8 @@ var (
 	basePath       string
 	legacyCog      *bool = new(bool)
 	proceduresPath string
+
+	portMatchRegex = regexp.MustCompile(`http://[^:]+:(\d+)`)
 )
 
 type webhookData struct {
@@ -215,21 +223,106 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
-	// NOTE(morgan): We now have the IPCUrl, so we can create the handler.
-	// FIXME: This should be done over unix sockets instead of HTTP, it resolves
-	// the chicken and egg problem of needing the IPCUrl to create the handler.
-	handler, err := server.NewHandler(serverCfg, cancel)
-	require.NoError(t, err)
-	mux := server.NewServeMux(handler, serverCfg.UseProcedureMode)
-	s.Config.Handler = mux
-
 	// FIXME: This is a hack to cover shutdown logic that is expected. This
 	// is more compatbility for the migration away from `cog_test`
 	go func() {
 		<-ctx.Done()
 		s.Close()
 	}()
+
+	// NOTE(morgan): We now have the IPCUrl, so we can create the handler.
+	// FIXME: This should be done over unix sockets instead of HTTP, it resolves
+	// the chicken and egg problem of needing the IPCUrl to create the handler.
+	if *legacyCog {
+		// Setup the legacy cog server wrapped in a http.ReverseProxy
+		// this is just python cog running, this also means that the returned
+		// handler is nil since it doesn't really exist as the "handler" object
+		// we wire into the serveMux, this means procedure mode doesn't work under
+		// legacy cog.
+		if cfg.procedureMode {
+			t.Fatalf("procedure mode is not supported under legacy cog")
+		}
+		environ := []string{
+			fmt.Sprintf("PATH=%s", envSet["PATH"]),
+		}
+		err, port := startLegacyCogServer(t, ctx, path.Join(pathEnv, "python3"), tempDir, environ, cfg.uploadURL)
+		require.NoError(t, err)
+		target, _ := url.Parse(fmt.Sprintf("http://localhost:%d", port))
+		handler := httputil.NewSingleHostReverseProxy(target)
+
+		s.Config.Handler = handler
+		return s, nil
+	}
+	// In non-Legacy cog mode we create the go-handler
+	handler, err := server.NewHandler(serverCfg, cancel)
+	require.NoError(t, err)
+	mux := server.NewServeMux(handler, serverCfg.UseProcedureMode)
+	s.Config.Handler = mux
+
 	return s, handler
+}
+
+func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, tempDir string, environ []string, uploadUrl string) (error, int) {
+	t.Helper()
+	args := []string{"-m", "cog.server.http"}
+	if uploadUrl != "" {
+		args = append(args, fmt.Sprintf("--upload-url=%s", uploadUrl))
+	}
+
+	cmd := exec.CommandContext(ctx, pythonPath, args...)
+	cmd.Dir = tempDir
+	cmd.Env = environ
+
+	for _, env := range environ {
+		if strings.HasPrefix(env, "PORT=") {
+			t.Fatalf("PORT environment variable may not be set when starting legacy cog server")
+		}
+	}
+	cmd.Env = append(cmd.Env, "PORT=0", "PYTHONUNBUFFERED=1", "COG_LOG_LEVEL=DEBUG")
+	stdErrLogs, err := cmd.StderrPipe()
+	require.NoError(t, err)
+	err = cmd.Start()
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		stdErrLogs.Close()
+		cmd.Process.Kill()
+	})
+
+	// We need to do some lifting here to get the port from the logs
+	portChan := make(chan int, 1)
+	go func() {
+		port := parseLegacyCogServerLogsForPort(t, stdErrLogs)
+		portChan <- port
+		// discard the rest of the logs
+		io.Copy(io.Discard, stdErrLogs)
+	}()
+
+	var port int
+	select {
+	case port = <-portChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout scanning port from legacy cog server logs")
+	}
+	return nil, port
+}
+
+func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) int {
+	t.Helper()
+	scanner := bufio.NewScanner(logs)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "Uvicorn running on") {
+			matches := portMatchRegex.FindStringSubmatch(line)
+			if len(matches) > 0 {
+				port, err := strconv.Atoi(matches[1])
+				t.Logf("cog server running on port: %d", port)
+				require.NoError(t, err)
+				return port
+			}
+		}
+	}
+	t.Fatalf("could not find port in logs")
+	return 0
 }
 
 type cogConfig struct {
@@ -313,6 +406,14 @@ func httpPredictionRequestWithId(t *testing.T, runtimeServer *httptest.Server, p
 
 func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
+	if prediction.CreatedAt != "" {
+		t.Logf("using existing created_at: %s", prediction.CreatedAt)
+		// verify that created_at is a valid time
+		_, err := time.Parse(time.RFC3339, prediction.CreatedAt)
+		require.NoError(t, err)
+	}
+	prediction.CreatedAt = time.Now().Format(time.RFC3339)
+
 	url := runtimeServer.URL + "/predictions"
 	body, err := json.Marshal(prediction)
 	require.NoError(t, err)

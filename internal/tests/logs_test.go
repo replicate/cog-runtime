@@ -18,6 +18,13 @@ import (
 func TestLogs(t *testing.T) {
 	// TODO: Assess if we need this test, we're testing replicate/go/logging not anything
 	// in cog-runtime
+	if *legacyCog {
+		// Testing the legacy cog server's logging doesn't really inform us about the intended
+		// behaviors. If we capture STDOUT and STDERR and validate they're avaialble that is more
+		// than sufficient.
+		t.Skip("log tests for legacy cog server do not provide useful signal that we're handling logging in coglet.")
+	}
+
 	originalStdout := os.Stdout
 	originalStderr := os.Stderr
 	stdout := new(bytes.Buffer)
