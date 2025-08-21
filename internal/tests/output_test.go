@@ -37,7 +37,6 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 	assert.Contains(t, predictionResponse.Logs, "reading input file\nwriting output file\n")
-	// FIXME: stop using a global for determining "legacy"
 	var b64 string
 	if *legacyCog {
 		// Compat: different MIME type detection logic

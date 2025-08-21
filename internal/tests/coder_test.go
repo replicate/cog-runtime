@@ -14,7 +14,6 @@ import (
 
 func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 	t.Parallel()
-	// FIXME: stop using a global for determining "legacy"
 	if *legacyCog {
 		t.Skip("legacy Cog does not support custom coder")
 	}
@@ -61,7 +60,6 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 
 func TestPredictionChatCoderSucceeded(t *testing.T) {
 	t.Parallel()
-	// FIXME: stop using a global for determining "legacy"
 	if *legacyCog {
 		t.Skip("legacy Cog does not support custom coder")
 	}

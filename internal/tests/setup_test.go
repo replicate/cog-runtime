@@ -37,7 +37,6 @@ func TestSetupFailure(t *testing.T) {
 		predictorClass:   "SetupFailingPredictor",
 	})
 	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
-	// FIXME: stop using a global for determining "legacy"
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace
 		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: setup failed\n")
@@ -57,7 +56,6 @@ func TestSetupCrash(t *testing.T) {
 		predictorClass:   "SetupCrashingPredictor",
 	})
 	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
-	// FIXME: stop using a global for determining "legacy"
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace
 		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: 1\n")
