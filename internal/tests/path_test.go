@@ -21,6 +21,7 @@ import (
 )
 
 func testDataContentServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	fsys := os.DirFS("testdata")
 	s := httptest.NewServer(http.FileServer(http.FS(fsys)))
 	t.Cleanup(s.Close)

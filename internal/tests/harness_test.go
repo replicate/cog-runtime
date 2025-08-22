@@ -69,7 +69,7 @@ type testHarnessReceiver struct {
 	uploadReceiverChan  chan uploadData
 }
 
-func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc {
+func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc { //nolint:thelper // this wont be called directly via test, it is called as a webhook receiver
 	return func(w http.ResponseWriter, r *http.Request) {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
@@ -89,7 +89,7 @@ func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc {
 	}
 }
 
-func (tr *testHarnessReceiver) uploadHandler(t *testing.T) http.HandlerFunc {
+func (tr *testHarnessReceiver) uploadHandler(t *testing.T) http.HandlerFunc { //nolint:thelper // this wont be called directly via test, it is called as a upload receiver
 	return func(w http.ResponseWriter, r *http.Request) {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
