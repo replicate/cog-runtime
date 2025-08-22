@@ -34,7 +34,7 @@ jobs:
       - uses: golangci/golangci-lint-action@v8.0.0
         name: Run golangci-lint
         with:
-          version: v2.3.1
+          version: v2.4.0
       - name: Check formatting
         run: ./script/check.sh go
 
