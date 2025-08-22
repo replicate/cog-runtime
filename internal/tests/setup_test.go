@@ -24,6 +24,7 @@ func TestSetupSucceeded(t *testing.T) {
 
 	resp, err := http.DefaultClient.Get(runtimeServer.URL + "/openapi.json")
 	require.NoError(t, err)
+	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 

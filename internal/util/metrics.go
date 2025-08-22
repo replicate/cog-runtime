@@ -41,4 +41,5 @@ func SendRunnerMetric(yaml CogYaml) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		log.Errorw("failed to send runner metrics", "error", err)
 	}
+	defer resp.Body.Close()
 }
