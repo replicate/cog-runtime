@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/assert"
@@ -427,4 +430,179 @@ func deepCopyMap(m map[string]any) map[string]any {
 		}
 	}
 	return result
+}
+
+func TestRunner_ForceKill(t *testing.T) {
+	t.Run("ForceKill with active process", func(t *testing.T) {
+		t.Parallel()
+
+		// Create a runner with a mock process
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345}, // fake PID
+			},
+			shutdownGracePeriod: 0,
+			stopped:             make(chan bool),
+		}
+
+		// Mock kill function to track calls
+		var killedPid int
+		var killedSignal syscall.Signal
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killedPid = pid
+			killedSignal = sig
+			return nil
+		}
+
+		// Call ForceKill
+		runner.ForceKill()
+
+		// Verify correct kill call
+		assert.Equal(t, -12345, killedPid, "Should kill process group (negative PID)")
+		assert.Equal(t, syscall.SIGKILL, killedSignal, "Should use SIGKILL")
+		assert.True(t, runner.killed, "Should mark runner as killed")
+	})
+
+	t.Run("ForceKill is idempotent", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			shutdownGracePeriod: 0,
+			stopped:             make(chan bool),
+		}
+
+		// Track number of kill calls
+		killCallCount := 0
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killCallCount++
+			return nil
+		}
+
+		// Call ForceKill multiple times
+		runner.ForceKill()
+		runner.ForceKill()
+		runner.ForceKill()
+
+		// Should only kill once
+		assert.Equal(t, 1, killCallCount, "Should only kill once despite multiple calls")
+		assert.True(t, runner.killed, "Should mark runner as killed")
+	})
+
+	t.Run("ForceKill with nil process", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &Runner{
+			cmd:                 exec.Cmd{Process: nil},
+			shutdownGracePeriod: 0,
+			stopped:             make(chan bool),
+		}
+
+		// Track kill calls
+		killCalled := false
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killCalled = true
+			return nil
+		}
+
+		// Should not panic and not call kill
+		require.NotPanics(t, func() {
+			runner.ForceKill()
+		})
+		assert.False(t, killCalled, "Should not call kill with nil process")
+		assert.False(t, runner.killed, "Should not mark as killed")
+	})
+
+	t.Run("ForceKill with already exited process", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process:      &os.Process{Pid: 12345},
+				ProcessState: &os.ProcessState{}, // Non-nil means exited
+			},
+			shutdownGracePeriod: 0,
+			stopped:             make(chan bool),
+		}
+
+		// Track kill calls
+		killCalled := false
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killCalled = true
+			return nil
+		}
+
+		runner.ForceKill()
+
+		assert.False(t, killCalled, "Should not kill already exited process")
+		assert.False(t, runner.killed, "Should not mark as killed")
+	})
+}
+
+func TestRunner_StopGracePeriod(t *testing.T) {
+	t.Run("Grace period timeout triggers ForceKill", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			shutdownGracePeriod: 10 * time.Millisecond, // Very short for testing
+			stopped:             make(chan bool),
+			workingDir:          t.TempDir(),
+		}
+
+		// Track kill calls
+		killCalled := false
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killCalled = true
+			return nil
+		}
+
+		// Start graceful shutdown
+		err := runner.Stop()
+		require.NoError(t, err)
+
+		// Wait for grace period to expire
+		time.Sleep(50 * time.Millisecond)
+
+		assert.True(t, killCalled, "Should call kill after grace period")
+		assert.True(t, runner.killed, "Should mark runner as killed")
+	})
+
+	t.Run("Graceful exit cancels ForceKill", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			shutdownGracePeriod: 100 * time.Millisecond, // Longer grace period
+			stopped:             make(chan bool),
+			workingDir:          t.TempDir(),
+		}
+
+		// Track kill calls
+		killCalled := false
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killCalled = true
+			return nil
+		}
+
+		// Start graceful shutdown
+		err := runner.Stop()
+		require.NoError(t, err)
+
+		// Simulate graceful exit before grace period
+		time.Sleep(10 * time.Millisecond)
+		close(runner.stopped)
+
+		// Wait past grace period
+		time.Sleep(150 * time.Millisecond)
+
+		assert.False(t, killCalled, "Should not call kill after graceful exit")
+		assert.False(t, runner.killed, "Should not mark as killed after graceful exit")
+	})
 }

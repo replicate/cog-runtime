@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -198,15 +199,16 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	}
 
 	serverCfg := server.Config{
-		UseProcedureMode:      cfg.procedureMode,
-		AwaitExplicitShutdown: cfg.explicitShutdown,
-		UploadURL:             cfg.uploadURL,
-		WorkingDirectory:      tempDir,
-		IPCUrl:                s.URL + "/_ipc",
-		EnvSet:                envSet,
-		EnvUnset:              cfg.envUnset,
-		PythonBinPath:         path.Join(pathEnv, "python3"),
-		MaxRunners:            cfg.maxRunners,
+		UseProcedureMode:          cfg.procedureMode,
+		AwaitExplicitShutdown:     cfg.explicitShutdown,
+		UploadURL:                 cfg.uploadURL,
+		WorkingDirectory:          tempDir,
+		IPCUrl:                    s.URL + "/_ipc",
+		EnvSet:                    envSet,
+		EnvUnset:                  cfg.envUnset,
+		PythonBinPath:             path.Join(pathEnv, "python3"),
+		MaxRunners:                cfg.maxRunners,
+		RunnerShutdownGracePeriod: 0, // Force immediate cleanup in tests
 	}
 	concurrencyMax := max(cfg.concurrencyMax, 1)
 	t.Logf("concurrency max: %d", concurrencyMax)
@@ -263,6 +265,13 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	mux := server.NewServeMux(handler, serverCfg.UseProcedureMode)
 	s.Config.Handler = mux
 
+	// Ensure cleanup of runners on test completion
+	t.Cleanup(func() {
+		if handler != nil {
+			handler.ForceKillAll()
+		}
+	})
+
 	return s, handler
 }
 
@@ -276,6 +285,7 @@ func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath, tempDir
 	cmd := exec.CommandContext(ctx, pythonPath, args...)
 	cmd.Dir = tempDir
 	cmd.Env = environ
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	for _, env := range environ {
 		if strings.HasPrefix(env, "PORT=") {
@@ -289,7 +299,11 @@ func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath, tempDir
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		stdErrLogs.Close()
-		cmd.Process.Kill()
+		process := cmd.Process
+		if process != nil {
+			pid := process.Pid
+			syscall.Kill(-pid, syscall.SIGKILL)
+		}
 	})
 
 	// We need to do some lifting here to get the port from the logs

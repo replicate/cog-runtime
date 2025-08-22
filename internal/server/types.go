@@ -1,5 +1,7 @@
 package server
 
+import "time"
+
 type Status int
 
 const (
@@ -50,6 +52,10 @@ type Config struct {
 	// implementations may support alternate venvs or alternate python versions per
 	// runner.
 	PythonBinPath string
+
+	// RunnerShutdownGracePeriod configures how long to wait before force-killing
+	// runners after Stop() is called. Set to 0 to disable grace period.
+	RunnerShutdownGracePeriod time.Duration
 }
 
 type PredictConfig struct {
