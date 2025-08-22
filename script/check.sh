@@ -8,7 +8,6 @@ GCI_VERSION="v0.13.7"
 base_dir="$(git rev-parse --show-toplevel)"
 
 check_go() {
-    go version
     cd "$base_dir"
     local="$(go list -m)"
     if [[ -z "${CI:-}" ]]; then
