@@ -266,7 +266,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	return s, handler
 }
 
-func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, tempDir string, environ []string, uploadUrl string) (int, error) { //nolint:revive // always send T first, allow context to follow T
+func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath, tempDir string, environ []string, uploadUrl string) (int, error) { //nolint:revive // always send T first, allow context to follow T
 	t.Helper()
 	args := []string{"-m", "cog.server.http"}
 	if uploadUrl != "" {
@@ -351,7 +351,7 @@ type cogConfig struct {
 // writeCogConfig creates a cog.yaml file that contains json-ified version of the config.
 // As JSON is a strict subset of YAML, this allows us to stdlib instead of needing external
 // yaml-specific dependencies for a very basic cog.yaml
-func writeCogConfig(t *testing.T, tempDir string, predictorClass string, concurrencyMax int) {
+func writeCogConfig(t *testing.T, tempDir, predictorClass string, concurrencyMax int) {
 	t.Helper()
 	conf := cogConfig{
 		Predict: "predict.py:" + predictorClass,
@@ -362,7 +362,7 @@ func writeCogConfig(t *testing.T, tempDir string, predictorClass string, concurr
 		}{Max: concurrencyMax}
 	}
 	cogConfigFilePath := path.Join(tempDir, "cog.yaml")
-	cogConfigFile, err := os.OpenFile(cogConfigFilePath, os.O_CREATE|os.O_WRONLY, 0644)
+	cogConfigFile, err := os.OpenFile(cogConfigFilePath, os.O_CREATE|os.O_WRONLY, 0o644)
 	require.NoError(t, err)
 	err = json.NewEncoder(cogConfigFile).Encode(conf)
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func writeCogConfig(t *testing.T, tempDir string, predictorClass string, concurr
 
 // linkPythonModule links the python module into the temp directory.
 // FIXME: this is a hack to provide compatibility with the `cog_test` test harness while we migrate to in-process testing.
-func linkPythonModule(t *testing.T, basePath string, tempDir string, module string) {
+func linkPythonModule(t *testing.T, basePath, tempDir, module string) {
 	t.Helper()
 	runnersPath := path.Join(basePath, "python", "tests", "runners")
 	err := os.Symlink(path.Join(runnersPath, fmt.Sprintf("%s.py", module)), path.Join(tempDir, "predict.py"))

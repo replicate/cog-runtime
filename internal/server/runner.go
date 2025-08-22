@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -22,9 +23,11 @@ import (
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-var LogRegex = regexp.MustCompile(`^\[pid=(?P<pid>[^]]+)] (?P<msg>.*)$`)
-var ResponseRegex = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
-var CancelFmt = "cancel-%s"
+var (
+	LogRegex      = regexp.MustCompile(`^\[pid=(?P<pid>[^]]+)] (?P<msg>.*)$`)
+	ResponseRegex = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
+	CancelFmt     = "cancel-%s"
+)
 
 type PendingPrediction struct {
 	request     PredictionRequest
@@ -90,8 +93,10 @@ type Runner struct {
 	stopped        chan bool
 }
 
-const DefaultRunnerID = 0
-const DefaultRunnerName = "default"
+const (
+	DefaultRunnerID   = 0
+	DefaultRunnerName = "default"
+)
 
 func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 	// Ensure we default to the default path based python3 binary
@@ -157,7 +162,7 @@ func (r *Runner) Start() error {
 	}
 	log.Infow("python runner started", "pid", r.cmd.Process.Pid)
 	close(cmdStart)
-	go r.config() //nolint:errcheck // FIXME: actually handler errors, but for now this is safe as the only caller has a timeout check, this should have an explicit deadline instead.
+	go r.config() //nolint:errcheck // FIXME: actually handle errors, but for now this is safe as the only caller has a timeout check, this should have an explicit deadline instead.
 	go r.wait()
 	return nil
 }
@@ -181,8 +186,8 @@ func (r *Runner) Stop() error {
 	}
 	// Otherwise signal Python process to stop
 	// FIXME: kill process after grace period
-	p := path.Join(r.workingDir, "stop")
-	return os.WriteFile(p, []byte{}, 0644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
+	p := filepath.Join(r.workingDir, "stop")
+	return os.WriteFile(p, []byte{}, 0o644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 }
 
 func (r *Runner) ExitCode() int {
@@ -273,7 +278,7 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	if err := os.WriteFile(reqPath, bs, 0644); err != nil { //nolint:gosec // TODO: evaluate if 0o644 is correct mode
+	if err := os.WriteFile(reqPath, bs, 0o644); err != nil { //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 		return nil, err
 	}
 	resp := PredictionResponse{
@@ -306,12 +311,11 @@ func (r *Runner) Cancel(pid string) error {
 	if r.asyncPredict {
 		// Async predict, use files to cancel
 		p := path.Join(r.workingDir, fmt.Sprintf(CancelFmt, pid))
-		return os.WriteFile(p, []byte{}, 0644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
+		return os.WriteFile(p, []byte{}, 0o644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 	}
 	// Blocking predict, use SIGUSR1 to cancel
 	// FIXME: ensure only one prediction in flight?
 	return syscall.Kill(r.cmd.Process.Pid, syscall.SIGUSR1)
-
 }
 
 ////////////////////

@@ -138,7 +138,6 @@ func TestPredictionWebhookFilter(t *testing.T) {
 					t.Fatalf("timeout waiting for webhook events")
 				}
 			}
-
 		})
 	}
 }

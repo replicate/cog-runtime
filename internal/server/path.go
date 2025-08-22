@@ -197,7 +197,7 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mt, b64), nil
 }
 
-func outputToUpload(uploadURL string, predictionID string) func(s string, paths *[]string) (string, error) {
+func outputToUpload(uploadURL, predictionID string) func(s string, paths *[]string) (string, error) {
 	return func(s string, paths *[]string) (string, error) {
 		u, err := url.Parse(s)
 		if err != nil {

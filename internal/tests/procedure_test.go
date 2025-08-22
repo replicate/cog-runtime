@@ -303,7 +303,6 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		<-startChan1
-
 	})
 
 	startChan2 := make(chan struct{})
@@ -433,7 +432,6 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		<-startChan1
-
 	})
 
 	startChan2 := make(chan struct{})

@@ -100,7 +100,8 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 		Webhook: receiverServer.URL + "/webhook",
 		WebhookEventsFilter: []server.WebhookEvent{
 			server.WebhookStart,
-			server.WebhookCompleted},
+			server.WebhookCompleted,
+		},
 		ID: barID,
 	})
 	barResp, err := http.DefaultClient.Do(barReq)

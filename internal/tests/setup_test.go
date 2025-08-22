@@ -44,7 +44,6 @@ func TestSetupFailure(t *testing.T) {
 	} else {
 		assert.Contains(t, hc.Setup.Logs, "starting setup\nsetup failed\nTraceback")
 	}
-
 }
 
 func TestSetupCrash(t *testing.T) {
@@ -63,5 +62,4 @@ func TestSetupCrash(t *testing.T) {
 	} else {
 		assert.Equal(t, "starting setup\nsetup crashed\n", hc.Setup.Logs)
 	}
-
 }

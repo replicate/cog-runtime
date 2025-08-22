@@ -91,5 +91,4 @@ func TestLogs(t *testing.T) {
 	assert.Contains(t, stderrLines, "STDERR: starting prediction")
 	assert.Contains(t, stderrLines, "[NOT_A_PID] STDERR not a prediction ID")
 	assert.Contains(t, stderrLines, "STDERR: completed prediction")
-
 }

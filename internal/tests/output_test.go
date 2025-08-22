@@ -49,5 +49,4 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 		"text": "*bar*",
 	}
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
-
 }

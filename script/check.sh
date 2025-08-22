@@ -2,24 +2,28 @@
 
 # Lint and format
 
-set -euo pipefail
+set -uo pipefail
 
-GCI_VERSION="v0.13.7"
 base_dir="$(git rev-parse --show-toplevel)"
 
 check_go() {
     cd "$base_dir"
     local="$(go list -m)"
     if [[ -z "${CI:-}" ]]; then
-        go run github.com/daixiang0/gci@$GCI_VERSION write --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .
+        go run golang.org/x/tools/cmd/goimports@latest -d -w -local "$local" .
+        go run mvdan.cc/gofumpt@latest -extra -l -w .
     else
-        output="$(go run github.com/daixiang0/gci@$GCI_VERSION diff --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .)"
-        printf "%s" "$output"
-        [ -z "$output" ] || exit 1
+        goimports="$(go run golang.org/x/tools/cmd/goimports@latest -d -local "$local" .)"
+        printf "%s" "$goimports"
+        gofumpt="$(go run mvdan.cc/gofumpt@latest -extra -d .)"
+        printf "%s" "$gofumpt"
+        [ -z "$goimports" ] || exit 1
+        [ -z "$gofumpt" ] || exit 1
     fi
 }
 
 check_python() {
+    set -e
     uv sync --all-extras
     if [[ -z "${CI:-}" ]]; then
         uv tool run ruff check --fix

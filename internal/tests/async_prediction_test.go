@@ -96,6 +96,7 @@ func TestAsyncPrediction(t *testing.T) {
 		})
 	}
 }
+
 func TestAsyncPredictionCanceled(t *testing.T) {
 	t.Parallel()
 	// FIXME: This is a case where `file_runner.py` has a sync/async mismatch. Even though execution context is yielded back to the async runner,
