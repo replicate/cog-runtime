@@ -508,13 +508,14 @@ func (r *Runner) updateSetupResult() {
 		r.setupResult.Status = SetupFailed
 		return
 	}
-	if r.setupResult.Status == SetupSucceeded {
+	switch r.setupResult.Status {
+	case SetupSucceeded:
 		log.Infow("setup succeeded")
 		r.status = StatusReady
-	} else if r.setupResult.Status == SetupFailed {
+	case SetupFailed:
 		log.Errorw("setup failed")
 		r.status = StatusSetupFailed
-	} else {
+	default:
 		log.Fatalw("invalid setup status", "status", r.setupResult.Status)
 	}
 }
@@ -589,15 +590,16 @@ func (r *Runner) handleResponses() error {
 		// }
 		pr.mu.Unlock()
 
-		if pr.response.Status == PredictionStarting {
+		switch {
+		case pr.response.Status == PredictionStarting:
 			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
 			// Compat: legacy Cog never sends "start" event
 			pr.response.Status = PredictionProcessing
 			pr.sendWebhook(WebhookStart)
-		} else if pr.response.Status == PredictionProcessing {
+		case pr.response.Status == PredictionProcessing:
 			log.Infow("prediction processing", "id", pr.request.Id, "status", pr.response.Status)
 			pr.sendWebhook(WebhookOutput)
-		} else if pr.response.Status.IsCompleted() {
+		case pr.response.Status.IsCompleted():
 			if pr.response.Status == PredictionSucceeded {
 				completedAt, err := util.ParseTime(pr.response.CompletedAt)
 				if err != nil {

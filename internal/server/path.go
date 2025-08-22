@@ -47,7 +47,8 @@ func processInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(stri
 		if !ok {
 			continue
 		}
-		if isUri(p) {
+		switch {
+		case isUri(p):
 			// field: Path or field: Optional[Path]
 			if s, ok := v.(string); ok {
 				o, err := fn(s, paths)
@@ -56,7 +57,7 @@ func processInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(stri
 				}
 				m[k] = o
 			}
-		} else if p.Value.Type.Is("array") && isUri(p.Value.Items) {
+		case p.Value.Type.Is("array") && isUri(p.Value.Items):
 			// field: list[Path]
 			if xs, ok := v.([]any); ok {
 				for i, x := range xs {
@@ -69,7 +70,7 @@ func processInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(stri
 					}
 				}
 			}
-		} else if p.Value.Type.Is("object") {
+		case p.Value.Type.Is("object"):
 			// field is Any with custom coder, e.g. dataclass, JSON, or Pydantic
 			// No known schema, try to handle all attributes
 			o, err := handlePath(v, paths, fn)
