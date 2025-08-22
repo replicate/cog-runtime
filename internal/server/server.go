@@ -473,7 +473,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 			// Async prediction, send webhook
 			go func() {
 				if err := SendWebhook(req.Webhook, &resp); err != nil {
-					log.Errorw("failed to send webhook", "url", "error", err)
+					log.Errorw("failed to send webhook", "url", req.Webhook, "error", err)
 				}
 			}()
 			return nil, nil

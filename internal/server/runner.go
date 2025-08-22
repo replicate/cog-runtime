@@ -61,7 +61,7 @@ func (pr *PendingPrediction) sendWebhook(event WebhookEvent) {
 	log := logger.Sugar()
 	log.Debugw("sending webhook", "url", pr.request.Webhook, "response", pr.response)
 	if err := SendWebhook(pr.request.Webhook, &pr.response); err != nil {
-		log.Errorw("failed to send webhook", "url", "error", err)
+		log.Errorw("failed to send webhook", "url", pr.request.Webhook, "error", err)
 	}
 }
 
