@@ -533,7 +533,11 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "missing procedure_source_url in context", http.StatusBadRequest)
 			return
 		}
-		procedureSourceUrl := val.(string)
+		procedureSourceUrl, ok := val.(string)
+		if !ok {
+			http.Error(w, "procedure_source_url is not a string", http.StatusBadRequest)
+			return
+		}
 
 		val, ok = req.Context["replicate_api_token"]
 		if !ok {
@@ -541,7 +545,11 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		token := val.(string)
+		token, ok := val.(string)
+		if !ok {
+			http.Error(w, "replicate_api_token is not a string", http.StatusBadRequest)
+			return
+		}
 		if procedureSourceUrl == "" || token == "" {
 			http.Error(w, "empty procedure_source_url or replicate_api_token", http.StatusBadRequest)
 			return
