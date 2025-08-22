@@ -143,7 +143,7 @@ func base64ToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
-	if err := os.Chmod(f.Name(), 0o666); err != nil {
+	if err := os.Chmod(f.Name(), 0o666); err != nil { //nolint:gosec // TODO: evaluate if 0o666 is correct mode
 		return "", err
 	}
 	return f.Name(), nil
@@ -171,7 +171,7 @@ func urlToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
-	if err := os.Chmod(f.Name(), 0o666); err != nil {
+	if err := os.Chmod(f.Name(), 0o666); err != nil { //nolint:gosec // TODO: evaluate if 0o666 is correct mode
 		return "", err
 	}
 	return f.Name(), nil
@@ -187,7 +187,7 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 	}
 	p := u.Path
 
-	bs, err := os.ReadFile(p)
+	bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
 	if err != nil {
 		return "", err
 	}
@@ -209,7 +209,7 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		}
 		p := u.Path
 
-		bs, err := os.ReadFile(p)
+		bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
 		if err != nil {
 			return "", err
 		}

@@ -36,7 +36,7 @@ func copyRecursive(srcRoot, dstRoot string) error {
 			}
 			return nil
 		}
-		bs, err := os.ReadFile(path)
+		bs, err := os.ReadFile(path) //nolint:gosec // expected dynamic path
 		if err != nil {
 			return err
 		}
@@ -82,7 +82,7 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 		// http://host/path/to/tarball
 		// Download to temporary file
 		// tar -xf cannot detect compression from stdin and the file should be small enough
-		resp, err := http.Get(srcURL)
+		resp, err := http.Get(srcURL) //nolint:gosec // expected dynamic URL
 		if err != nil {
 			return "", err
 		}
@@ -100,7 +100,7 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 		if err := os.MkdirAll(dstDir, 0o700); err != nil {
 			return "", err
 		}
-		cmd := exec.Command("tar", "-xf", tarball.Name(), "-C", dstDir)
+		cmd := exec.Command("tar", "-xf", tarball.Name(), "-C", dstDir) //nolint:gosec // expected subprocess launched with variable, TODO: consider using go stdlib encoding/tar package
 		if err := cmd.Run(); err != nil {
 			return "", err
 		}

@@ -38,7 +38,7 @@ type CogYaml struct {
 
 func ReadCogYaml(dir string) (*CogYaml, error) {
 	var cogYaml CogYaml
-	bs, err := os.ReadFile(filepath.Join(dir, "cog.yaml"))
+	bs, err := os.ReadFile(filepath.Join(dir, "cog.yaml")) //nolint:gosec // expected dynamic path
 	if err != nil {
 		return nil, err
 	}

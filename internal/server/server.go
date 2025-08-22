@@ -420,7 +420,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		// This eliminates the need for Python process to call setuid()
 		r.cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{
-				Uid: uint32(uid),
+				Uid: uint32(uid), //nolint:gosec // this is guarded in isolation .allocate, cannot exceed const MaxUID
 				Gid: uint32(NoGroupGID),
 			},
 		}

@@ -111,7 +111,7 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 		"--ipc-url", cfg.IPCUrl,
 		"--working-dir", workingDir,
 	}
-	cmd := exec.Command(pythonBinPath, args...)
+	cmd := exec.Command(pythonBinPath, args...) //nolint:gosec // expected subprocess launched with variable
 	cmd.Dir = cwd
 
 	cmd.Env = mergeEnv(os.Environ(), cfg.EnvSet, cfg.EnvUnset)
@@ -182,7 +182,7 @@ func (r *Runner) Stop() error {
 		// Otherwise signal Python process to stop
 		// FIXME: kill process after grace period
 		p := path.Join(r.workingDir, "stop")
-		return os.WriteFile(p, []byte{}, 0644)
+		return os.WriteFile(p, []byte{}, 0644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 	}
 }
 
@@ -274,7 +274,7 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	if err := os.WriteFile(reqPath, bs, 0644); err != nil {
+	if err := os.WriteFile(reqPath, bs, 0644); err != nil { //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 		return nil, err
 	}
 	resp := PredictionResponse{
@@ -307,7 +307,7 @@ func (r *Runner) Cancel(pid string) error {
 	if r.asyncPredict {
 		// Async predict, use files to cancel
 		p := path.Join(r.workingDir, fmt.Sprintf(CancelFmt, pid))
-		return os.WriteFile(p, []byte{}, 0644)
+		return os.WriteFile(p, []byte{}, 0644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 	} else {
 		// Blocking predict, use SIGUSR1 to cancel
 		// FIXME: ensure only one prediction in flight?
@@ -385,7 +385,7 @@ func (r *Runner) config() error {
 	}
 	log.Infow("configuring runner", "module", moduleName, "predictor", predictorName, "max_concurrency", r.maxConcurrency)
 	confFile := path.Join(r.workingDir, "config.json")
-	f, err := os.Create(confFile)
+	f, err := os.Create(confFile) //nolint:gosec // expected dynamic path
 	if err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)
 	}
@@ -479,7 +479,7 @@ func (r *Runner) updateSchema() {
 	log := logger.Sugar()
 	log.Infow("updating OpenAPI schema")
 	p := path.Join(r.workingDir, "openapi.json")
-	bs, err := os.ReadFile(p)
+	bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
 	if err != nil {
 		log.Errorw("failed to read openapi.json", "path", p, "error", err)
 		return
@@ -635,7 +635,7 @@ func (r *Runner) handleResponses() error {
 func (r *Runner) readJson(filename string, v any) error {
 	log := logger.Sugar()
 	p := path.Join(r.workingDir, filename)
-	bs, err := os.ReadFile(p)
+	bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
 	if err != nil {
 		log.Errorw("failed to read JSON file", "filename", filename, "error", err)
 		return err

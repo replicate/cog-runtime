@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
@@ -60,7 +61,7 @@ func schemaCommand() *ff.Command {
 				log.Errorw("failed to find python3", "error", err)
 				return err
 			}
-			return syscall.Exec(bin, []string{bin, "-m", "coglet.schema", m, c}, os.Environ())
+			return syscall.Exec(bin, []string{bin, "-m", "coglet.schema", m, c}, os.Environ()) //nolint:gosec // expected subprocess launched with variable
 		},
 	}
 }
@@ -128,8 +129,9 @@ func serverCommand() (*ff.Command, error) {
 			}
 			mux := server.NewServeMux(h, cfg.UseProcedureMode)
 			s := &http.Server{
-				Addr:    addr,
-				Handler: mux,
+				Addr:              addr,
+				Handler:           mux,
+				ReadHeaderTimeout: 5 * time.Second, // TODO: is 5s too long? likely
 			}
 			go func() {
 				<-ctx.Done()
@@ -199,7 +201,7 @@ func testCommand() *ff.Command {
 				log.Errorw("failed to find python3", "error", err)
 				return err
 			}
-			return syscall.Exec(bin, []string{bin, "-m", "coglet.test", m, c}, os.Environ())
+			return syscall.Exec(bin, []string{bin, "-m", "coglet.test", m, c}, os.Environ()) //nolint:gosec // expected subprocess launched with variable
 		},
 	}
 }
