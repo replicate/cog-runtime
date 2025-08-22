@@ -27,7 +27,7 @@ type ServerConfig struct {
 	AwaitExplicitShutdown     bool          `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadURL                 string        `ff:"long: upload-url, nodefault, usage: output file upload URL"`
 	WorkingDirectory          string        `ff:"long: working-directory, nodefault, usage: explicit working directory override"`
-	RunnerShutdownGracePeriod time.Duration `ff:"long: runner-shutdown-grace-period, default: 5s, usage: how long to wait before force-killing runners after Stop()"`
+	RunnerShutdownGracePeriod time.Duration `ff:"long: runner-shutdown-grace-period, default: 600s, usage: how long to wait before force-killing runners after Stop()"`
 }
 
 var logger = util.CreateLogger("cog")
