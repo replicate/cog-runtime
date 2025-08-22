@@ -1,5 +1,7 @@
 package server
 
+import "time"
+
 type Status int
 
 const (
@@ -39,7 +41,21 @@ type Config struct {
 	UseProcedureMode      bool
 	AwaitExplicitShutdown bool
 	IPCUrl                string
-	UploadUrl             string
+	UploadURL             string
+	WorkingDirectory      string
+	EnvSet                map[string]string
+	EnvUnset              []string
+
+	MaxRunners int
+
+	// PythonBinPath is the path to the python binary to use for all runners. Future
+	// implementations may support alternate venvs or alternate python versions per
+	// runner.
+	PythonBinPath string
+
+	// RunnerShutdownGracePeriod configures how long to wait before force-killing
+	// runners after Stop() is called. Set to 0 to disable grace period.
+	RunnerShutdownGracePeriod time.Duration
 }
 
 type PredictConfig struct {
@@ -91,7 +107,7 @@ type SetupResult struct {
 
 type PredictionRequest struct {
 	Input               any            `json:"input"`
-	Id                  string         `json:"id"`
+	ID                  string         `json:"id"`
 	CreatedAt           string         `json:"created_at"`
 	StartedAt           string         `json:"started_at"`
 	Webhook             string         `json:"webhook,omitempty"`
@@ -103,7 +119,7 @@ type PredictionRequest struct {
 type PredictionResponse struct {
 	Input       any              `json:"input"`
 	Output      any              `json:"output,omitempty"`
-	Id          string           `json:"id"`
+	ID          string           `json:"id"`
 	CreatedAt   string           `json:"created_at,omitempty"`
 	StartedAt   string           `json:"started_at,omitempty"`
 	CompletedAt string           `json:"completed_at,omitempty"`

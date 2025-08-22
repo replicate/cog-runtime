@@ -1,35 +1,52 @@
 package tests
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestPredictionDataclassCoderSucceeded(t *testing.T) {
+	t.Parallel()
 	if *legacyCog {
-		// Compat: legacy Cog does not support custom coder
-		t.SkipNow()
+		t.Skip("legacy Cog does not support custom coder")
 	}
-	ct := NewCogTest(t, "dataclass")
-	assert.NoError(t, ct.Start())
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "dataclass",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	resp := ct.Prediction(map[string]any{
+	input := map[string]any{
 		"account": map[string]any{
 			"id":          0,
 			"name":        "John",
 			"address":     map[string]any{"street": "Smith", "zip": 12345},
 			"credentials": map[string]any{"password": "foo", "pubkey": b64encode("bar")},
 		},
-	})
+	}
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
 
-	output := map[string]any{
+	expectedOutput := map[string]any{
 		"account": map[string]any{
 			"id":          100.0,
 			"name":        "JOHN",
@@ -37,28 +54,37 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 			"credentials": map[string]any{"password": "**********", "pubkey": b64encode("*bar*")},
 		},
 	}
-	ct.AssertResponse(resp, server.PredictionSucceeded, output, "")
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	assert.Equal(t, expectedOutput, predictionResponse.Output)
+	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 }
 
 func TestPredictionChatCoderSucceeded(t *testing.T) {
+	t.Parallel()
 	if *legacyCog {
-		// Compat: legacy Cog does not support custom coder
-		t.SkipNow()
+		t.Skip("legacy Cog does not support custom coder")
 	}
-	ct := NewCogTest(t, "chat")
-	assert.NoError(t, ct.Start())
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "chat",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	resp := ct.Prediction(map[string]any{"msg": map[string]any{"role": "assistant", "content": "bar"}})
-	output := map[string]any{"role": "assistant", "content": "*bar*"}
-	ct.AssertResponse(resp, server.PredictionSucceeded, output, "")
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	input := map[string]any{"msg": map[string]any{"role": "assistant", "content": "bar"}}
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
+	expectedOutput := map[string]any{"role": "assistant", "content": "*bar*"}
+	assert.Equal(t, expectedOutput, predictionResponse.Output)
+	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 }

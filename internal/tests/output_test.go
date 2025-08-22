@@ -1,23 +1,42 @@
 package tests
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestPredictionOutputSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "output")
-	assert.NoError(t, ct.Start())
+	t.Parallel()
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "output",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	input := map[string]any{"p": b64encode("bar")}
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
 
-	resp := ct.Prediction(map[string]any{"p": b64encode("bar")})
-	logs := "reading input file\nwriting output file\n"
+	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Contains(t, predictionResponse.Logs, "reading input file\nwriting output file\n")
 	var b64 string
 	if *legacyCog {
 		// Compat: different MIME type detection logic
@@ -25,12 +44,9 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 	} else {
 		b64 = b64encode("*bar*")
 	}
-	output := map[string]any{
+	expectedOutput := map[string]any{
 		"path": b64,
 		"text": "*bar*",
 	}
-	ct.AssertResponse(resp, server.PredictionSucceeded, output, logs)
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	assert.Equal(t, expectedOutput, predictionResponse.Output)
 }

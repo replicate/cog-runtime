@@ -99,12 +99,14 @@ func TestUID(t *testing.T) {
 		require.NoError(t, err, "Normal allocation should succeed")
 		assert.GreaterOrEqual(t, uid, BaseUID, "UID should be >= BaseUID")
 	})
-
 }
 
 func TestTempDirectoryCleanup(t *testing.T) {
 	t.Run("CleansUpTempDirectory", func(t *testing.T) {
-		runner := &Runner{}
+		workdir := t.TempDir()
+		runner := &Runner{
+			workingDir: workdir,
+		}
 
 		tmpDir, err := os.MkdirTemp("", "test-cog-runner-tmp-")
 		require.NoError(t, err, "Failed to create temp directory")
@@ -112,7 +114,7 @@ func TestTempDirectoryCleanup(t *testing.T) {
 		runner.SetTmpDir(tmpDir)
 
 		testFile := tmpDir + "/test-file.txt"
-		err = os.WriteFile(testFile, []byte("test content"), 0644)
+		err = os.WriteFile(testFile, []byte("test content"), 0o644)
 		require.NoError(t, err, "Failed to create test file")
 
 		_, err = os.Stat(tmpDir)
@@ -131,7 +133,10 @@ func TestTempDirectoryCleanup(t *testing.T) {
 	})
 
 	t.Run("HandlesEmptyTmpDir", func(t *testing.T) {
-		runner := &Runner{}
+		workdir := t.TempDir()
+		runner := &Runner{
+			workingDir: workdir,
+		}
 
 		err := runner.Stop()
 		assert.NoError(t, err, "Runner.Stop() should not error when tmpDir is empty")

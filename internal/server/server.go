@@ -14,7 +14,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,6 +28,9 @@ var logger = util.CreateLogger("cog-http-server")
 
 //go:embed openapi-procedure.json
 var procedureSchema string
+
+// errAsyncPrediction is a sentinel error used to indicate that a prediction is being served asynchronously, it is not surfaced outside of server
+var errAsyncPrediction = errors.New("async prediction")
 
 type IPCStatus string
 
@@ -45,15 +47,16 @@ type IPC struct {
 }
 
 type Handler struct {
-	cfg        Config
-	shutdown   context.CancelFunc
-	startedAt  time.Time
-	maxRunners int
-	setUID     bool
-	runners    []*Runner
-	mu         sync.Mutex
+	cfg       Config
+	shutdown  context.CancelFunc
+	startedAt time.Time
+	setUID    bool
+	runners   []*Runner
+	mu        sync.Mutex
 
 	uidCounter *uidCounter
+
+	cwd string
 }
 
 func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
@@ -63,26 +66,19 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		shutdown:   shutdown,
 		startedAt:  time.Now(),
 		uidCounter: &uidCounter{},
+		cwd:        cfg.WorkingDirectory,
 	}
-	// GOMAXPROCS is set by automaxprocs in main.go on server startup
-	// Reset Go server to 1 to make room for Python runners
-	autoMaxProcs := runtime.GOMAXPROCS(1)
 	if cfg.UseProcedureMode {
-		concurrencyPerCPU := 4
-		if s, ok := os.LookupEnv("COG_PROCEDURE_CONCURRENCY_PER_CPU"); ok {
-			if i, err := strconv.Atoi(s); err == nil {
-				concurrencyPerCPU = i
-			} else {
-				log.Errorw("failed to parse COG_PROCEDURE_CONCURRENCY_PER_CPU", "value", s)
-			}
+		// Allow the caller to specify the max number of runners to allow. By default,
+		// we will use the number of CPUs * 4. Note that NumCPU() is processor affinity aware
+		// and will adhere to container resource allocations
+		// FIXME: this should not be here, it should be lifted to main.go and passed to NewHandler and `0`
+		// should be rejected as invalid
+		maxRunners := cfg.MaxRunners
+		if maxRunners == 0 {
+			maxRunners = runtime.NumCPU() * 4
 		}
-		// Set both max runners and max concurrency across all runners to CPU * n,
-		// regardless what max concurrency each runner has.
-		// In the worst case scenario where all runners are non-async,
-		// completion of any runner frees up concurrency.
-		// See healthCheck() for concurrency aggregation across runners.
-		h.maxRunners = autoMaxProcs * concurrencyPerCPU
-		h.runners = make([]*Runner, h.maxRunners)
+		h.runners = make([]*Runner, maxRunners)
 
 		_, err := os.Stat("/.dockerenv")
 		inDocker := err == nil
@@ -96,22 +92,22 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		if (inDocker || inK8S) && os.Getuid() == 0 {
 			h.setUID = true
 		}
-		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
+		log.Infow("running in procedure mode", "max_runners", maxRunners)
 	} else {
 		h.runners = make([]*Runner, 1)
-		runner, err := NewRunner(DefaultRunnerName, cfg.IPCUrl, cfg.UploadUrl)
+		runner, err := NewRunner(DefaultRunnerName, h.cwd, cfg)
 		if err != nil {
 			return nil, err
 		}
-		h.runners[DefaultRunnerId] = runner
-		if err := h.runners[DefaultRunnerId].Start(); err != nil {
+		h.runners[DefaultRunnerID] = runner
+		if err := h.runners[DefaultRunnerID].Start(); err != nil {
 			return nil, err
 		}
 
 		if !cfg.AwaitExplicitShutdown {
 			go func() {
 				// Shut down as soon as runner exists
-				h.runners[DefaultRunnerId].WaitForStop()
+				h.runners[DefaultRunnerID].WaitForStop()
 				h.shutdown()
 			}()
 		}
@@ -119,17 +115,26 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 	return h, nil
 }
 
+// ActiveRunners returns a copy of the runners slice
+// This is used to understand the active runners for testing purposes
+// It is not safe to use this method in production code
+func (h *Handler) ActiveRunners() []*Runner {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	runners := make([]*Runner, len(h.runners))
+	copy(runners, h.runners)
+	return runners
+}
+
 func (h *Handler) ExitCode() int {
 	if h.cfg.UseProcedureMode {
 		// No point aggregating across runners
 		return 0
-	} else {
-		if h.runners[DefaultRunnerId] == nil {
-			return 0
-		}
-		return h.runners[DefaultRunnerId].ExitCode()
 	}
-
+	if h.runners[DefaultRunnerID] == nil {
+		return 0
+	}
+	return h.runners[DefaultRunnerID].ExitCode()
 }
 
 func (h *Handler) Root(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +146,10 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
-		json.NewEncoder(w).Encode(hc)
+		err := json.NewEncoder(w).Encode(hc)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}
 }
 
@@ -163,7 +171,7 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 			},
 			Concurrency: Concurrency{
 				// Max runners as max concurrency
-				Max: h.maxRunners,
+				Max: len(h.runners),
 			},
 		}
 		h.mu.Lock()
@@ -192,26 +200,26 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 		}
 	} else {
 		hc = HealthCheck{
-			Status:      h.runners[DefaultRunnerId].status.String(),
-			Setup:       &h.runners[DefaultRunnerId].setupResult,
-			Concurrency: h.runners[DefaultRunnerId].Concurrency(),
+			Status:      h.runners[DefaultRunnerID].status.String(),
+			Setup:       &h.runners[DefaultRunnerID].setupResult,
+			Concurrency: h.runners[DefaultRunnerID].Concurrency(),
 		}
 	}
 	return &hc, nil
 }
 
-func (h *Handler) OpenApi(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) OpenAPI(w http.ResponseWriter, r *http.Request) {
 	if h.cfg.UseProcedureMode {
 		w.WriteHeader(http.StatusOK)
 		writeBytes(w, []byte(procedureSchema))
 		return
 	}
 
-	if h.runners[DefaultRunnerId].schema == "" {
+	if h.runners[DefaultRunnerID].schema == "" {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	} else {
 		w.WriteHeader(http.StatusOK)
-		writeBytes(w, []byte(h.runners[DefaultRunnerId].schema))
+		writeBytes(w, []byte(h.runners[DefaultRunnerID].schema))
 	}
 }
 
@@ -221,6 +229,15 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
 		w.WriteHeader(http.StatusOK)
+	}
+}
+
+// ForceKillAll immediately force-kills all runners (for test cleanup)
+func (h *Handler) ForceKillAll() {
+	for _, runner := range h.runners {
+		if runner != nil {
+			runner.ForceKill()
+		}
 	}
 }
 
@@ -234,10 +251,10 @@ func (h *Handler) Stop() error {
 	}
 
 	// Stop all runners
-	var err error = nil
+	var err error
 	eg := errgroup.Group{}
 	for _, runner := range h.runners {
-		if runner == nil {
+		if runner == nil { //nolint:revive // nil check is intentional, we want to skip the nil slot
 			continue
 		}
 		if err = runner.Stop(); err != nil {
@@ -293,7 +310,7 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	} else if !(h.cfg.UseProcedureMode && ipc.Status == IPCStatusReady) {
+	} else if !h.cfg.UseProcedureMode || ipc.Status != IPCStatusReady {
 		// This happens for the first ready IPC after procedure setup succeeded and before the runner is registered
 		// Safe to ignore in that case
 		log.Warnw("runner not found for IPC", "pid", ipc.Pid, "name", ipc.Name)
@@ -383,7 +400,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	}
 
 	log.Infow("starting procedure runner", "src_url", srcURL, "src_dir", srcDir)
-	r, err := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, name, srcDir)
+	r, err := NewProcedureRunner(name, srcDir, h.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +427,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		// This eliminates the need for Python process to call setuid()
 		r.cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{
-				Uid: uint32(uid),
+				Uid: uint32(uid), //nolint:gosec // this is guarded in isolation .allocate, cannot exceed const MaxUID
 				Gid: uint32(NoGroupGID),
 			},
 		}
@@ -453,7 +470,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		// Translate setup failure to prediction failure
 		resp := PredictionResponse{
 			Input:       req.Input,
-			Id:          req.Id,
+			ID:          req.ID,
 			CreatedAt:   r.setupResult.StartedAt,
 			StartedAt:   r.setupResult.StartedAt,
 			CompletedAt: r.setupResult.CompletedAt,
@@ -465,15 +482,14 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 			c := make(chan PredictionResponse, 1)
 			c <- resp
 			return c, nil
-		} else {
-			// Async prediction, send webhook
-			go func() {
-				if err := SendWebhook(req.Webhook, &resp); err != nil {
-					log.Errorw("failed to send webhook", "url", "error", err)
-				}
-			}()
-			return nil, nil
 		}
+		// Async prediction, send webhook
+		go func() {
+			if err := SendWebhook(req.Webhook, &resp); err != nil {
+				log.Errorw("failed to send webhook", "url", req.Webhook, "error", err)
+			}
+		}()
+		return nil, errAsyncPrediction
 
 	}
 	h.runners[runnerIdx] = r
@@ -500,14 +516,14 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	if id != "" {
-		if req.Id != "" && req.Id != id {
+		if req.ID != "" && req.ID != id {
 			http.Error(w, "prediction ID mismatch", http.StatusBadRequest)
 			return
 		}
-		req.Id = id
+		req.ID = id
 	}
-	if req.Id == "" {
-		req.Id, err = util.PredictionId()
+	if req.ID == "" {
+		req.ID, err = util.PredictionID()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -529,7 +545,11 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "missing procedure_source_url in context", http.StatusBadRequest)
 			return
 		}
-		procedureSourceUrl := val.(string)
+		procedureSourceURL, ok := val.(string)
+		if !ok {
+			http.Error(w, "procedure_source_url is not a string", http.StatusBadRequest)
+			return
+		}
 
 		val, ok = req.Context["replicate_api_token"]
 		if !ok {
@@ -537,36 +557,45 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		token := val.(string)
-		if procedureSourceUrl == "" || token == "" {
+		token, ok := val.(string)
+		if !ok {
+			http.Error(w, "replicate_api_token is not a string", http.StatusBadRequest)
+			return
+		}
+		if procedureSourceURL == "" || token == "" {
 			http.Error(w, "empty procedure_source_url or replicate_api_token", http.StatusBadRequest)
 			return
 		}
-		c, err = h.predictWithRunner(procedureSourceUrl, req)
+		c, err = h.predictWithRunner(procedureSourceURL, req) //nolint:contextcheck // context passing not viable in current architecture
 	} else {
-		c, err = h.runners[DefaultRunnerId].Predict(req)
+		c, err = h.runners[DefaultRunnerID].Predict(req)
 	}
 
-	if errors.Is(err, ErrConflict) {
+	switch {
+	case errors.Is(err, errAsyncPrediction):
+		// Async prediction sentinel received this explicitly means
+		// we fall through and hit the `c == nil` if branch below
+		break
+	case errors.Is(err, ErrConflict):
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
-	} else if errors.Is(err, ErrDefunct) {
+	case errors.Is(err, ErrDefunct):
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
-	} else if errors.Is(err, ErrExists) {
+	case errors.Is(err, ErrExists):
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
-	} else if errors.Is(err, ErrSetupFailed) {
+	case errors.Is(err, ErrSetupFailed):
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	} else if err != nil {
+	case err != nil:
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	if c == nil {
 		w.WriteHeader(http.StatusAccepted)
-		resp := PredictionResponse{Id: req.Id, Status: "starting"}
+		resp := PredictionResponse{ID: req.ID, Status: "starting"}
 		writeResponse(w, resp)
 	} else {
 		resp := <-c
@@ -596,7 +625,7 @@ func SendWebhook(webhook string, pr *PredictionResponse) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal prediction response: %w", err)
 	}
-	req, err := http.NewRequest("POST", webhook, bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, webhook, bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
@@ -627,14 +656,14 @@ func (h *Handler) Cancel(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	// We don't know which runner has the prediction, so try all of them
 	for _, runner := range h.runners {
-		if err := runner.Cancel(id); err == nil {
+		var err error
+		if err = runner.Cancel(id); err == nil {
 			w.WriteHeader(http.StatusOK)
 			return
 		} else if errors.Is(err, ErrNotFound) {
 			continue
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	http.Error(w, "not found", http.StatusNotFound)
 }

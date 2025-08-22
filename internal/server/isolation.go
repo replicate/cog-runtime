@@ -33,6 +33,6 @@ func (u *uidCounter) allocate() (int, error) {
 			return int(u.uid), nil
 		}
 	}
-	// NoBodyUID is used here to ensure we do not accidently send back root's UID in a posix system
+	// NoBodyUID is used here to ensure we do not accidentally send back root's UID in a posix system
 	return NoBodyUID, errors.New("failed to find unused UID after max attempts")
 }

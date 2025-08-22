@@ -50,6 +50,7 @@ sleep 2  # wait for predictions to finish
 
 status1="$(jq --raw-output '.status' < "$resp1")"
 status2="$(jq --raw-output '.status' < "$resp2")"
+
 if [ "$status1" != "succeeded" ] || [ "$status2" != "succeeded" ]; then
     echo "Docker logs:"
     docker logs "$name"
@@ -68,3 +69,4 @@ else
     echo
     echo "PASSED"
 fi
+

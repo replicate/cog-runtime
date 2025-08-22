@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/peterbourgon/ff/v4"
 	"github.com/peterbourgon/ff/v4/ffhelp"
@@ -19,11 +21,13 @@ import (
 )
 
 type ServerConfig struct {
-	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
-	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
-	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
-	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
-	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
+	Host                      string        `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
+	Port                      int           `ff:"long: port, default: 5000, usage: HTTP server port"`
+	UseProcedureMode          bool          `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
+	AwaitExplicitShutdown     bool          `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
+	UploadURL                 string        `ff:"long: upload-url, nodefault, usage: output file upload URL"`
+	WorkingDirectory          string        `ff:"long: working-directory, nodefault, usage: explicit working directory override"`
+	RunnerShutdownGracePeriod time.Duration `ff:"long: runner-shutdown-grace-period, default: 600s, usage: how long to wait before force-killing runners after Stop()"`
 }
 
 var logger = util.CreateLogger("cog")
@@ -58,7 +62,7 @@ func schemaCommand() *ff.Command {
 				log.Errorw("failed to find python3", "error", err)
 				return err
 			}
-			return syscall.Exec(bin, []string{bin, "-m", "coglet.schema", m, c}, os.Environ())
+			return syscall.Exec(bin, []string{bin, "-m", "coglet.schema", m, c}, os.Environ()) //nolint:gosec // expected subprocess launched with variable
 		},
 	}
 }
@@ -86,24 +90,51 @@ func serverCommand() (*ff.Command, error) {
 			log.Infow("configuration",
 				"use-procedure-mode", cfg.UseProcedureMode,
 				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
-				"upload-url", cfg.UploadUrl,
+				"upload-url", cfg.UploadURL,
 			)
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
+
+			var err error
+			currentWorkingDirectory := cfg.WorkingDirectory
+			if currentWorkingDirectory == "" {
+				currentWorkingDirectory, err = os.Getwd()
+				if err != nil {
+					log.Errorw("failed to get current working directory", "error", err)
+					return err
+				}
+			}
+
 			serverCfg := server.Config{
-				UseProcedureMode:      cfg.UseProcedureMode,
-				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
-				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
-				UploadUrl:             cfg.UploadUrl,
+				UseProcedureMode:          cfg.UseProcedureMode,
+				AwaitExplicitShutdown:     cfg.AwaitExplicitShutdown,
+				IPCUrl:                    fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
+				UploadURL:                 cfg.UploadURL,
+				WorkingDirectory:          currentWorkingDirectory,
+				RunnerShutdownGracePeriod: cfg.RunnerShutdownGracePeriod,
+			}
+			// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
+			// statically create the runner list sized at 1.
+			if s, ok := os.LookupEnv("COG_MAX_RUNNERS"); ok && cfg.UseProcedureMode {
+				if i, err := strconv.Atoi(s); err == nil {
+					serverCfg.MaxRunners = i
+				} else {
+					log.Errorw("failed to parse COG_MAX_RUNNERS", "value", s)
+				}
 			}
 			ctx, cancel := context.WithCancel(ctx)
-			h, err := server.NewHandler(serverCfg, cancel)
+			h, err := server.NewHandler(serverCfg, cancel) //nolint:contextcheck // context passing not viable in current architecture
 			if err != nil {
 				log.Errorw("failed to create server handler", "error", err)
 				return err
 			}
-			s := server.NewServer(addr, h, cfg.UseProcedureMode)
+			mux := server.NewServeMux(h, cfg.UseProcedureMode)
+			s := &http.Server{
+				Addr:              addr,
+				Handler:           mux,
+				ReadHeaderTimeout: 5 * time.Second, // TODO: is 5s too long? likely
+			}
 			go func() {
 				<-ctx.Done()
 				if err := s.Shutdown(ctx); err != nil {
@@ -135,9 +166,8 @@ func serverCommand() (*ff.Command, error) {
 					log.Errorw("python runner exited with code", "code", exitCode)
 				}
 				return nil
-			} else {
-				return err
 			}
+			return err
 		},
 	}, nil
 }
@@ -172,7 +202,7 @@ func testCommand() *ff.Command {
 				log.Errorw("failed to find python3", "error", err)
 				return err
 			}
-			return syscall.Exec(bin, []string{bin, "-m", "coglet.test", m, c}, os.Environ())
+			return syscall.Exec(bin, []string{bin, "-m", "coglet.test", m, c}, os.Environ()) //nolint:gosec // expected subprocess launched with variable
 		},
 	}
 }

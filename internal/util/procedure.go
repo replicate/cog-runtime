@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive // FIXME: break up util package and move functions to where they're used
 
 import (
 	"crypto/sha256"
@@ -36,7 +36,7 @@ func copyRecursive(srcRoot, dstRoot string) error {
 			}
 			return nil
 		}
-		bs, err := os.ReadFile(path)
+		bs, err := os.ReadFile(path) //nolint:gosec // expected dynamic path
 		if err != nil {
 			return err
 		}
@@ -59,7 +59,8 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if u.Scheme == "file" {
+	switch u.Scheme {
+	case "file":
 		// file:///path/to/existing/dir
 		stat, err := os.Stat(u.Path)
 		if err != nil {
@@ -77,11 +78,11 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 			return "", err
 		}
 		return dstDir, nil
-	} else if u.Scheme == "http" || u.Scheme == "https" {
+	case "http", "https":
 		// http://host/path/to/tarball
 		// Download to temporary file
 		// tar -xf cannot detect compression from stdin and the file should be small enough
-		resp, err := http.Get(srcURL)
+		resp, err := http.Get(srcURL) //nolint:gosec // expected dynamic URL
 		if err != nil {
 			return "", err
 		}
@@ -93,13 +94,13 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 		if _, err := io.Copy(tarball, resp.Body); err != nil {
 			return "", err
 		}
-		defer os.Remove(tarball.Name())
+		defer os.Remove(tarball.Name()) //nolint:errcheck // cleanup, we should try and remove, best effort
 
 		// Extract tarball
 		if err := os.MkdirAll(dstDir, 0o700); err != nil {
 			return "", err
 		}
-		cmd := exec.Command("tar", "-xf", tarball.Name(), "-C", dstDir)
+		cmd := exec.Command("tar", "-xf", tarball.Name(), "-C", dstDir) //nolint:gosec // expected subprocess launched with variable, TODO: consider using go stdlib encoding/tar package
 		if err := cmd.Run(); err != nil {
 			return "", err
 		}

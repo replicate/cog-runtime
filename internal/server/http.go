@@ -20,12 +20,12 @@ var (
 
 var log = logging.New("server")
 
-func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Server {
+func NewServeMux(handler *Handler, useProcedureMode bool) *http.ServeMux {
 	log := log.Sugar()
 	serveMux := http.NewServeMux()
 	serveMux.HandleFunc("GET /{$}", handler.Root)
 	serveMux.HandleFunc("GET /health-check", handler.HealthCheck)
-	serveMux.HandleFunc("GET /openapi.json", handler.OpenApi)
+	serveMux.HandleFunc("GET /openapi.json", handler.OpenAPI)
 	serveMux.HandleFunc("POST /shutdown", handler.Shutdown)
 
 	if useProcedureMode {
@@ -77,8 +77,5 @@ func NewServer(addr string, handler *Handler, useProcedureMode bool) *http.Serve
 		})
 	}
 
-	return &http.Server{
-		Addr:    addr,
-		Handler: serveMux,
-	}
+	return serveMux
 }
