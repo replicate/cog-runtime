@@ -124,7 +124,7 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 	tr.webhookReceiverChan = make(chan webhookData, 10)
 	tr.uploadReceiverChan = make(chan uploadData, 10)
 	tr.Server = httptest.NewServer(mux)
-	t.Cleanup(tr.Server.Close)
+	t.Cleanup(tr.Close) // this is the same as tr.Server.Close()
 	return tr
 }
 
@@ -249,7 +249,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		environ := []string{
 			fmt.Sprintf("PATH=%s", envSet["PATH"]),
 		}
-		err, port := startLegacyCogServer(t, ctx, path.Join(pathEnv, "python3"), tempDir, environ, cfg.uploadURL)
+		port, err := startLegacyCogServer(t, ctx, path.Join(pathEnv, "python3"), tempDir, environ, cfg.uploadURL)
 		require.NoError(t, err)
 		target, _ := url.Parse(fmt.Sprintf("http://localhost:%d", port))
 		handler := httputil.NewSingleHostReverseProxy(target)
@@ -266,7 +266,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	return s, handler
 }
 
-func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, tempDir string, environ []string, uploadUrl string) (error, int) {
+func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, tempDir string, environ []string, uploadUrl string) (int, error) {
 	t.Helper()
 	args := []string{"-m", "cog.server.http"}
 	if uploadUrl != "" {
@@ -307,7 +307,7 @@ func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, 
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout scanning port from legacy cog server logs")
 	}
-	return nil, port
+	return port, nil
 }
 
 func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) int {

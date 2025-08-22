@@ -2,7 +2,6 @@ package util
 
 import (
 	"embed"
-	_ "embed"
 	"encoding/base32"
 	"fmt"
 	"net/http"

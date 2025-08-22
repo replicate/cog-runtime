@@ -228,10 +228,11 @@ func (r *Runner) SetTmpDir(tmpDir string) {
 
 func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error) {
 	log := logger.Sugar()
-	if r.status == StatusSetupFailed {
+	switch r.status {
+	case StatusSetupFailed:
 		log.Errorw("prediction rejected: setup failed")
 		return nil, ErrSetupFailed
-	} else if r.status == StatusDefunct {
+	case StatusDefunct:
 		log.Errorw("prediction rejected: server is defunct")
 		return nil, ErrDefunct
 	}

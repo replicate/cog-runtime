@@ -59,7 +59,8 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if u.Scheme == "file" {
+	switch u.Scheme {
+	case "file":
 		// file:///path/to/existing/dir
 		stat, err := os.Stat(u.Path)
 		if err != nil {
@@ -77,7 +78,7 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 			return "", err
 		}
 		return dstDir, nil
-	} else if u.Scheme == "http" || u.Scheme == "https" {
+	case "http", "https":
 		// http://host/path/to/tarball
 		// Download to temporary file
 		// tar -xf cannot detect compression from stdin and the file should be small enough

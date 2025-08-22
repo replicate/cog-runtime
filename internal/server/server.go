@@ -300,7 +300,7 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	} else if !(h.cfg.UseProcedureMode && ipc.Status == IPCStatusReady) {
+	} else if !h.cfg.UseProcedureMode || ipc.Status != IPCStatusReady {
 		// This happens for the first ready IPC after procedure setup succeeded and before the runner is registered
 		// Safe to ignore in that case
 		log.Warnw("runner not found for IPC", "pid", ipc.Pid, "name", ipc.Name)
