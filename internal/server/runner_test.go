@@ -276,7 +276,7 @@ func TestProcessInputPaths(t *testing.T) {
 
 	t.Run("NonUriField", func(t *testing.T) {
 		t.Parallel()
-		doc := createTestDocWithNonUriField(t)
+		doc := createTestDocWithNonURIField(t)
 		input := map[string]any{
 			"text": "data:text/plain;base64," + base64.StdEncoding.EncodeToString([]byte("content")),
 		}
@@ -380,7 +380,7 @@ func createTestDocWithObjects(t *testing.T) *openapi3.T {
 	}
 }
 
-func createTestDocWithNonUriField(t *testing.T) *openapi3.T {
+func createTestDocWithNonURIField(t *testing.T) *openapi3.T {
 	t.Helper()
 	return &openapi3.T{
 		Components: &openapi3.Components{

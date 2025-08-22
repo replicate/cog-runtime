@@ -39,7 +39,7 @@ const (
 // Test-Suite Wide variables.
 var (
 	basePath       string
-	legacyCog      *bool = new(bool)
+	legacyCog      = new(bool)
 	proceduresPath string
 
 	portMatchRegex = regexp.MustCompile(`http://[^:]+:(\d+)`)
@@ -200,7 +200,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	serverCfg := server.Config{
 		UseProcedureMode:      cfg.procedureMode,
 		AwaitExplicitShutdown: cfg.explicitShutdown,
-		UploadUrl:             cfg.uploadURL,
+		UploadURL:             cfg.uploadURL,
 		WorkingDirectory:      tempDir,
 		IPCUrl:                s.URL + "/_ipc",
 		EnvSet:                envSet,
@@ -266,7 +266,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	return s, handler
 }
 
-func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, tempDir string, environ []string, uploadUrl string) (int, error) {
+func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, tempDir string, environ []string, uploadUrl string) (int, error) { //nolint:revive // always send T first, allow context to follow T
 	t.Helper()
 	args := []string{"-m", "cog.server.http"}
 	if uploadUrl != "" {
@@ -379,8 +379,8 @@ func linkPythonModule(t *testing.T, basePath string, tempDir string, module stri
 
 func healthCheck(t *testing.T, testServer *httptest.Server) server.HealthCheck {
 	t.Helper()
-	url := testServer.URL + "/health-check"
-	resp, err := http.Get(url)
+	hcURL := testServer.URL + "/health-check"
+	resp, err := http.Get(hcURL)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -410,13 +410,13 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedSta
 
 func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
-	assert.Empty(t, prediction.Id)
+	assert.Empty(t, prediction.ID)
 	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
-func httpPredictionRequestWithId(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
+func httpPredictionRequestWithID(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
-	assert.NotEmpty(t, prediction.Id)
+	assert.NotEmpty(t, prediction.ID)
 	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
@@ -430,10 +430,10 @@ func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Serv
 	}
 	prediction.CreatedAt = time.Now().Format(time.RFC3339)
 
-	url := runtimeServer.URL + "/predictions"
+	serverURL := runtimeServer.URL + "/predictions"
 	body, err := json.Marshal(prediction)
 	require.NoError(t, err)
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
+	req, err := http.NewRequest(method, serverURL, bytes.NewBuffer(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	if prediction.Webhook != "" {

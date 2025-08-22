@@ -25,7 +25,7 @@ type ServerConfig struct {
 	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
 	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
-	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
+	UploadURL             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
 	WorkingDirectory      string `ff:"long: working-directory, nodefault, usage: explicit working directory override"`
 }
 
@@ -89,7 +89,7 @@ func serverCommand() (*ff.Command, error) {
 			log.Infow("configuration",
 				"use-procedure-mode", cfg.UseProcedureMode,
 				"await-explicit-shutdown", cfg.AwaitExplicitShutdown,
-				"upload-url", cfg.UploadUrl,
+				"upload-url", cfg.UploadURL,
 			)
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -109,7 +109,7 @@ func serverCommand() (*ff.Command, error) {
 				UseProcedureMode:      cfg.UseProcedureMode,
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
-				UploadUrl:             cfg.UploadUrl,
+				UploadURL:             cfg.UploadURL,
 				WorkingDirectory:      currentWorkingDirectory,
 			}
 			// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
@@ -164,9 +164,8 @@ func serverCommand() (*ff.Command, error) {
 					log.Errorw("python runner exited with code", "code", exitCode)
 				}
 				return nil
-			} else {
-				return err
 			}
+			return err
 		},
 	}, nil
 }

@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive // FIXME: break up util package and move functions to where they're used
 
 import (
 	"bytes"

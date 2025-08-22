@@ -60,13 +60,13 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	predictionId, err := util.PredictionId()
+	predictionID, err := util.PredictionID()
 	require.NoError(t, err)
 	predictionReq := server.PredictionRequest{
-		Id:    predictionId,
+		ID:    predictionID,
 		Input: input,
 	}
-	req := httpPredictionRequestWithId(t, runtimeServer, predictionReq)
+	req := httpPredictionRequestWithID(t, runtimeServer, predictionReq)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -80,7 +80,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 	assert.Equal(t, "*bar*", predictionResponse.Output)
-	assert.Equal(t, predictionId, predictionResponse.Id)
+	assert.Equal(t, predictionID, predictionResponse.ID)
 	assert.Contains(t, predictionResponse.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 
 }

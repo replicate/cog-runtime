@@ -335,13 +335,13 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 
 	testDataPrefix := contentServer.URL + "/mimetype/"
 
-	gifPredictionID, err := util.PredictionId()
+	gifPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	jarPredictionID, err := util.PredictionId()
+	jarPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	tarPredictionID, err := util.PredictionId()
+	tarPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	webpPredictionID, err := util.PredictionId()
+	webpPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
 
 	predictions := []struct {
@@ -375,12 +375,12 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 		t.Run(tc.fileName, func(t *testing.T) {
 			prediction := server.PredictionRequest{
 				Input:               map[string]any{"u": testDataPrefix + tc.fileName},
-				Id:                  tc.predictionID,
+				ID:                  tc.predictionID,
 				Webhook:             receiverServer.URL + "/webhook",
 				WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 			}
 			t.Logf("prediction file: %s", tc.fileName)
-			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+			req := httpPredictionRequestWithID(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()

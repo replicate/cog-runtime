@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive // FIXME: break up util package and move functions to where they're used
 
 import (
 	"embed"
@@ -59,7 +59,7 @@ func (y *CogYaml) PredictModuleAndPredictor() (string, string, error) {
 }
 
 // api.git: internal/logic/id.go
-func PredictionId() (string, error) {
+func PredictionID() (string, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
 		return "", err

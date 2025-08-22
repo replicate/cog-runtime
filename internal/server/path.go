@@ -20,7 +20,7 @@ import (
 
 var Base64Regex = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
 
-func isUri(s *openapi3.SchemaRef) bool {
+func isURI(s *openapi3.SchemaRef) bool {
 	return s.Value.Type.Is("string") && s.Value.Format == "uri"
 }
 
@@ -48,7 +48,7 @@ func processInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(stri
 			continue
 		}
 		switch {
-		case isUri(p):
+		case isURI(p):
 			// field: Path or field: Optional[Path]
 			if s, ok := v.(string); ok {
 				o, err := fn(s, paths)
@@ -57,7 +57,7 @@ func processInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(stri
 				}
 				m[k] = o
 			}
-		case p.Value.Type.Is("array") && isUri(p.Value.Items):
+		case p.Value.Type.Is("array") && isURI(p.Value.Items):
 			// field: list[Path]
 			if xs, ok := v.([]any); ok {
 				for i, x := range xs {
@@ -120,9 +120,8 @@ func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, e
 			}
 		}
 		return m, nil
-	} else {
-		return json, nil
 	}
+	return json, nil
 }
 
 func base64ToInput(s string, paths *[]string) (string, error) {
@@ -198,7 +197,7 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mt, b64), nil
 }
 
-func outputToUpload(uploadUrl string, predictionId string) func(s string, paths *[]string) (string, error) {
+func outputToUpload(uploadURL string, predictionID string) func(s string, paths *[]string) (string, error) {
 	return func(s string, paths *[]string) (string, error) {
 		u, err := url.Parse(s)
 		if err != nil {
@@ -215,7 +214,7 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		}
 		*paths = append(*paths, p)
 		filename := path.Base(p)
-		uUpload, err := url.JoinPath(uploadUrl, filename)
+		uUpload, err := url.JoinPath(uploadURL, filename)
 		if err != nil {
 			return "", err
 		}
@@ -223,7 +222,7 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		if err != nil {
 			return "", err
 		}
-		req.Header.Set("X-Prediction-ID", predictionId)
+		req.Header.Set("X-Prediction-ID", predictionID)
 		req.Header.Set("Content-Type", mimetype.Detect(bs).String())
 		resp, err := util.HTTPClientWithRetry().Do(req)
 		if err != nil {

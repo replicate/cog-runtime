@@ -85,12 +85,12 @@ type Runner struct {
 	asyncPredict   bool
 	maxConcurrency int
 	pending        map[string]*PendingPrediction
-	uploadUrl      string
+	uploadURL      string
 	mu             sync.Mutex
 	stopped        chan bool
 }
 
-const DefaultRunnerId = 0
+const DefaultRunnerID = 0
 const DefaultRunnerName = "default"
 
 func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
@@ -123,7 +123,7 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 		status:         StatusStarting,
 		maxConcurrency: 1,
 		pending:        make(map[string]*PendingPrediction),
-		uploadUrl:      cfg.UploadUrl,
+		uploadURL:      cfg.UploadURL,
 		stopped:        make(chan bool),
 	}, nil
 }
@@ -178,12 +178,11 @@ func (r *Runner) Stop() error {
 		// Python process already exited
 		// Shutdown HTTP server
 		return nil
-	} else {
-		// Otherwise signal Python process to stop
-		// FIXME: kill process after grace period
-		p := path.Join(r.workingDir, "stop")
-		return os.WriteFile(p, []byte{}, 0644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 	}
+	// Otherwise signal Python process to stop
+	// FIXME: kill process after grace period
+	p := path.Join(r.workingDir, "stop")
+	return os.WriteFile(p, []byte{}, 0644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
 }
 
 func (r *Runner) ExitCode() int {
@@ -242,14 +241,14 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 		log.Errorw("prediction rejected: Already running a prediction")
 		return nil, ErrConflict
 	}
-	if _, ok := r.pending[req.Id]; ok {
+	if _, ok := r.pending[req.ID]; ok {
 		r.mu.Unlock()
-		log.Errorw("prediction rejected: prediction exists", "id", req.Id)
+		log.Errorw("prediction rejected: prediction exists", "id", req.ID)
 		return nil, ErrExists
 	}
 	r.mu.Unlock()
 
-	log.Infow("received prediction request", "id", req.Id)
+	log.Infow("received prediction request", "id", req.ID)
 	if req.CreatedAt == "" {
 		req.CreatedAt = util.NowIso()
 	}
@@ -269,7 +268,7 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	}
 	req.Input = input
 
-	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.Id))
+	reqPath := path.Join(r.workingDir, fmt.Sprintf("request-%s.json", req.ID))
 	bs, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
@@ -279,7 +278,7 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	}
 	resp := PredictionResponse{
 		Input:     req.Input,
-		Id:        req.Id,
+		ID:        req.ID,
 		CreatedAt: req.CreatedAt,
 		StartedAt: req.StartedAt,
 	}
@@ -294,7 +293,7 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.pending[req.Id] = &pr
+	r.pending[req.ID] = &pr
 	return pr.c, nil
 }
 
@@ -308,11 +307,11 @@ func (r *Runner) Cancel(pid string) error {
 		// Async predict, use files to cancel
 		p := path.Join(r.workingDir, fmt.Sprintf(CancelFmt, pid))
 		return os.WriteFile(p, []byte{}, 0644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
-	} else {
-		// Blocking predict, use SIGUSR1 to cancel
-		// FIXME: ensure only one prediction in flight?
-		return syscall.Kill(r.cmd.Process.Pid, syscall.SIGUSR1)
 	}
+	// Blocking predict, use SIGUSR1 to cancel
+	// FIXME: ensure only one prediction in flight?
+	return syscall.Kill(r.cmd.Process.Pid, syscall.SIGUSR1)
+
 }
 
 ////////////////////
@@ -504,7 +503,7 @@ func (r *Runner) updateSetupResult() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.setupResult.Logs = logs
-	if err := r.readJson("setup_result.json", &r.setupResult); err != nil {
+	if err := r.readJSON("setup_result.json", &r.setupResult); err != nil {
 		log.Errorw("failed to read setup_result.json", "error", err)
 		r.setupResult.Status = SetupFailed
 		return
@@ -544,7 +543,7 @@ func (r *Runner) handleResponses() error {
 
 		pr.mu.Lock()
 		log.Infow("received prediction response", "id", pid)
-		if err := r.readJson(entry.Name(), &pr.response); err != nil {
+		if err := r.readJSON(entry.Name(), &pr.response); err != nil {
 			log.Errorw("failed to read prediction response", "error", err)
 			continue
 		}
@@ -556,9 +555,9 @@ func (r *Runner) handleResponses() error {
 		paths := make([]string, 0)
 		outputFn := outputToBase64
 		if pr.request.OutputFilePrefix != "" {
-			outputFn = outputToUpload(pr.request.OutputFilePrefix, pr.response.Id)
-		} else if r.uploadUrl != "" {
-			outputFn = outputToUpload(r.uploadUrl, pr.response.Id)
+			outputFn = outputToUpload(pr.request.OutputFilePrefix, pr.response.ID)
+		} else if r.uploadURL != "" {
+			outputFn = outputToUpload(r.uploadURL, pr.response.ID)
 		}
 		cachedOutputFn := func(s string, paths *[]string) (string, error) {
 			// Cache already handled output files to avoid duplicates or deleted files in Iterator[Path]
@@ -593,12 +592,12 @@ func (r *Runner) handleResponses() error {
 
 		switch {
 		case pr.response.Status == PredictionStarting:
-			log.Infow("prediction started", "id", pr.request.Id, "status", pr.response.Status)
+			log.Infow("prediction started", "id", pr.request.ID, "status", pr.response.Status)
 			// Compat: legacy Cog never sends "start" event
 			pr.response.Status = PredictionProcessing
 			pr.sendWebhook(WebhookStart)
 		case pr.response.Status == PredictionProcessing:
-			log.Infow("prediction processing", "id", pr.request.Id, "status", pr.response.Status)
+			log.Infow("prediction processing", "id", pr.request.ID, "status", pr.response.Status)
 			pr.sendWebhook(WebhookOutput)
 		case pr.response.Status.IsCompleted():
 			if pr.response.Status == PredictionSucceeded {
@@ -616,7 +615,7 @@ func (r *Runner) handleResponses() error {
 				}
 				pr.response.Metrics["predict_time"] = t
 			}
-			log.Infow("prediction completed", "id", pr.request.Id, "status", pr.response.Status)
+			log.Infow("prediction completed", "id", pr.request.ID, "status", pr.response.Status)
 			pr.sendWebhook(WebhookCompleted)
 			pr.sendResponse()
 			for _, p := range pr.inputPaths {
@@ -632,7 +631,7 @@ func (r *Runner) handleResponses() error {
 	return nil
 }
 
-func (r *Runner) readJson(filename string, v any) error {
+func (r *Runner) readJSON(filename string, v any) error {
 	log := logger.Sugar()
 	p := path.Join(r.workingDir, filename)
 	bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path

@@ -90,24 +90,24 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	barId, err := util.PredictionId()
+	barID, err := util.PredictionID()
 	require.NoError(t, err)
-	bazId, err := util.PredictionId()
+	bazID, err := util.PredictionID()
 	require.NoError(t, err)
 	barPrediction := server.PredictionRequest{
 		Input:               map[string]any{"i": 1, "s": "bar"},
 		Webhook:             receiverServer.URL + "/webhook",
-		Id:                  barId,
+		ID:                  barID,
 		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 	}
 	bazPrediction := server.PredictionRequest{
 		Input:               map[string]any{"i": 2, "s": "baz"},
 		Webhook:             receiverServer.URL + "/webhook",
-		Id:                  bazId,
+		ID:                  bazID,
 		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 	}
-	barReq := httpPredictionRequestWithId(t, runtimeServer, barPrediction)
-	bazReq := httpPredictionRequestWithId(t, runtimeServer, bazPrediction)
+	barReq := httpPredictionRequestWithID(t, runtimeServer, barPrediction)
+	bazReq := httpPredictionRequestWithID(t, runtimeServer, bazPrediction)
 	barResp, err := http.DefaultClient.Do(barReq)
 	require.NoError(t, err)
 	defer barResp.Body.Close()
@@ -120,10 +120,10 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	var bazR *server.PredictionResponse
 	for webhook := range receiverServer.webhookReceiverChan {
 		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
-		switch webhook.Response.Id {
-		case barPrediction.Id:
+		switch webhook.Response.ID {
+		case barPrediction.ID:
 			barR = &webhook.Response
-		case bazPrediction.Id:
+		case bazPrediction.ID:
 			bazR = &webhook.Response
 		}
 		if barR != nil && bazR != nil {

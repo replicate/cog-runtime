@@ -42,11 +42,11 @@ func runProcedure(t *testing.T, runtimeServer *httptest.Server, predictionReques
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.NotEmpty(t, predictionResponse.Id)
+	assert.NotEmpty(t, predictionResponse.ID)
 	defer resp.Body.Close()
 	require.NoError(t, err)
 
-	return predictionResponse.Id, resp.StatusCode
+	return predictionResponse.ID, resp.StatusCode
 }
 
 type procedureRun struct {
