@@ -1,0 +1,110 @@
+version: "2"
+
+formatters:
+  enable: 
+  - gofumpt
+  - goimports
+  exclusions:
+    generated: strict
+    warn-unused: true
+  settings:
+    gofumpt:
+      module-path: github.com/replicate/cog-runtime
+      extra-rules: true
+    goimports:
+      local-prefixes:
+      - github.com/replicate/cog-runtime
+linters:
+  enable:
+  - asasalint
+  - asciicheck
+  - bidichk
+  - bodyclose
+  - containedctx
+  - contextcheck
+  - copyloopvar
+  - dogsled
+  - errcheck
+  - errchkjson
+  - errname
+  - errorlint
+  - forbidigo
+  - forcetypeassert
+  - gocheckcompilerdirectives
+  - gocritic
+  - gosec
+  - govet
+  - ineffassign
+  - loggercheck
+  - misspell
+  - nilnil
+  - nolintlint
+  - predeclared
+  - revive
+  - rowserrcheck
+  - spancheck
+  - staticcheck
+  - tagalign
+  - testifylint
+  - thelper
+  - unconvert
+  - unused
+  - usestdlibvars
+  - wastedassign
+  exclusions:
+    rules:
+    - path: '(.+)_test\.go'
+      linters:
+      - dogsled
+      - errcheck
+      - forcetypeassert
+      - gosec
+    - path: 'cmd/(.+)/main\.go'
+      linters:
+      - forbidigo
+    - source: 'defer resp.Body.Close()'
+      linters:
+      - errcheck
+  settings:
+    errcheck:
+      disable-default-exclusions: false
+    misspell:
+      locale: US
+    nolintlint:
+      allow-unused: true
+      allow-no-explanation: []
+      require-explanation: true
+      require-specific: true
+    revive:
+      confidence: 0.8
+      severity: warning
+      rules:
+      - name: argument-limit
+      - name: atomic
+      - name: blank-imports
+      - name: bool-literal-in-expr
+      - name: context-as-argument
+      - name: context-keys-type
+      - name: defer
+      - name: dot-imports
+      - name: early-return
+      - name: empty-block
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: errorf
+      - name: import-shadowing
+      - name: indent-error-flow
+      - name: increment-decrement
+      - name: range
+      - name: receiver-naming
+      - name: redefines-builtin-id
+      - name: struct-tag
+      - name: superfluous-else
+      - name: time-equal
+      - name: time-naming
+      - name: unexported-return
+      - name: unreachable-code
+      - name: use-any
+      - name: var-declaration
+      - name: var-naming

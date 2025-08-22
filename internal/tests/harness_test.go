@@ -39,7 +39,7 @@ const (
 // Test-Suite Wide variables.
 var (
 	basePath       string
-	legacyCog      *bool = new(bool)
+	legacyCog      = new(bool)
 	proceduresPath string
 
 	portMatchRegex = regexp.MustCompile(`http://[^:]+:(\d+)`)
@@ -69,7 +69,7 @@ type testHarnessReceiver struct {
 	uploadReceiverChan  chan uploadData
 }
 
-func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc {
+func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc { //nolint:thelper // this wont be called directly via test, it is called as a webhook receiver
 	return func(w http.ResponseWriter, r *http.Request) {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
@@ -89,7 +89,7 @@ func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc {
 	}
 }
 
-func (tr *testHarnessReceiver) uploadHandler(t *testing.T) http.HandlerFunc {
+func (tr *testHarnessReceiver) uploadHandler(t *testing.T) http.HandlerFunc { //nolint:thelper // this wont be called directly via test, it is called as a upload receiver
 	return func(w http.ResponseWriter, r *http.Request) {
 		tr.mu.Lock()
 		defer tr.mu.Unlock()
@@ -124,7 +124,7 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 	tr.webhookReceiverChan = make(chan webhookData, 10)
 	tr.uploadReceiverChan = make(chan uploadData, 10)
 	tr.Server = httptest.NewServer(mux)
-	t.Cleanup(tr.Server.Close)
+	t.Cleanup(tr.Close) // this is the same as tr.Server.Close()
 	return tr
 }
 
@@ -200,7 +200,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	serverCfg := server.Config{
 		UseProcedureMode:      cfg.procedureMode,
 		AwaitExplicitShutdown: cfg.explicitShutdown,
-		UploadUrl:             cfg.uploadURL,
+		UploadURL:             cfg.uploadURL,
 		WorkingDirectory:      tempDir,
 		IPCUrl:                s.URL + "/_ipc",
 		EnvSet:                envSet,
@@ -249,7 +249,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		environ := []string{
 			fmt.Sprintf("PATH=%s", envSet["PATH"]),
 		}
-		err, port := startLegacyCogServer(t, ctx, path.Join(pathEnv, "python3"), tempDir, environ, cfg.uploadURL)
+		port, err := startLegacyCogServer(t, ctx, path.Join(pathEnv, "python3"), tempDir, environ, cfg.uploadURL)
 		require.NoError(t, err)
 		target, _ := url.Parse(fmt.Sprintf("http://localhost:%d", port))
 		handler := httputil.NewSingleHostReverseProxy(target)
@@ -266,7 +266,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	return s, handler
 }
 
-func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, tempDir string, environ []string, uploadUrl string) (error, int) {
+func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath, tempDir string, environ []string, uploadUrl string) (int, error) { //nolint:revive // always send T first, allow context to follow T
 	t.Helper()
 	args := []string{"-m", "cog.server.http"}
 	if uploadUrl != "" {
@@ -293,24 +293,34 @@ func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, 
 	})
 
 	// We need to do some lifting here to get the port from the logs
-	portChan := make(chan int, 1)
+	type portResult struct {
+		port int
+		err  error
+	}
+	portChan := make(chan portResult, 1)
 	go func() {
-		port := parseLegacyCogServerLogsForPort(t, stdErrLogs)
-		portChan <- port
+		port, err := parseLegacyCogServerLogsForPort(t, stdErrLogs)
+		if err != nil {
+			portChan <- portResult{port: -1, err: err}
+			return
+		}
+		portChan <- portResult{port: port, err: nil}
 		// discard the rest of the logs
 		io.Copy(io.Discard, stdErrLogs)
 	}()
 
 	var port int
 	select {
-	case port = <-portChan:
+	case result := <-portChan:
+		require.NoError(t, result.err, "failed to parse port from legacy cog server logs")
+		port = result.port
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout scanning port from legacy cog server logs")
 	}
-	return nil, port
+	return port, nil
 }
 
-func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) int {
+func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) (int, error) {
 	t.Helper()
 	scanner := bufio.NewScanner(logs)
 	for scanner.Scan() {
@@ -319,14 +329,16 @@ func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) int {
 			matches := portMatchRegex.FindStringSubmatch(line)
 			if len(matches) > 0 {
 				port, err := strconv.Atoi(matches[1])
+				if err != nil {
+					return 0, err
+				}
 				t.Logf("cog server running on port: %d", port)
-				require.NoError(t, err)
-				return port
+				return port, nil
 			}
 		}
 	}
 	t.Fatalf("could not find port in logs")
-	return 0
+	return 0, fmt.Errorf("could not find port in logs")
 }
 
 type cogConfig struct {
@@ -339,7 +351,7 @@ type cogConfig struct {
 // writeCogConfig creates a cog.yaml file that contains json-ified version of the config.
 // As JSON is a strict subset of YAML, this allows us to stdlib instead of needing external
 // yaml-specific dependencies for a very basic cog.yaml
-func writeCogConfig(t *testing.T, tempDir string, predictorClass string, concurrencyMax int) {
+func writeCogConfig(t *testing.T, tempDir, predictorClass string, concurrencyMax int) {
 	t.Helper()
 	conf := cogConfig{
 		Predict: "predict.py:" + predictorClass,
@@ -350,7 +362,7 @@ func writeCogConfig(t *testing.T, tempDir string, predictorClass string, concurr
 		}{Max: concurrencyMax}
 	}
 	cogConfigFilePath := path.Join(tempDir, "cog.yaml")
-	cogConfigFile, err := os.OpenFile(cogConfigFilePath, os.O_CREATE|os.O_WRONLY, 0644)
+	cogConfigFile, err := os.OpenFile(cogConfigFilePath, os.O_CREATE|os.O_WRONLY, 0o644)
 	require.NoError(t, err)
 	err = json.NewEncoder(cogConfigFile).Encode(conf)
 	require.NoError(t, err)
@@ -358,7 +370,7 @@ func writeCogConfig(t *testing.T, tempDir string, predictorClass string, concurr
 
 // linkPythonModule links the python module into the temp directory.
 // FIXME: this is a hack to provide compatibility with the `cog_test` test harness while we migrate to in-process testing.
-func linkPythonModule(t *testing.T, basePath string, tempDir string, module string) {
+func linkPythonModule(t *testing.T, basePath, tempDir, module string) {
 	t.Helper()
 	runnersPath := path.Join(basePath, "python", "tests", "runners")
 	err := os.Symlink(path.Join(runnersPath, fmt.Sprintf("%s.py", module)), path.Join(tempDir, "predict.py"))
@@ -367,8 +379,8 @@ func linkPythonModule(t *testing.T, basePath string, tempDir string, module stri
 
 func healthCheck(t *testing.T, testServer *httptest.Server) server.HealthCheck {
 	t.Helper()
-	url := testServer.URL + "/health-check"
-	resp, err := http.Get(url)
+	hcURL := testServer.URL + "/health-check"
+	resp, err := http.Get(hcURL)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -398,13 +410,13 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedSta
 
 func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
-	assert.Empty(t, prediction.Id)
+	assert.Empty(t, prediction.ID)
 	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
-func httpPredictionRequestWithId(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
+func httpPredictionRequestWithID(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
 	t.Helper()
-	assert.NotEmpty(t, prediction.Id)
+	assert.NotEmpty(t, prediction.ID)
 	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
@@ -418,10 +430,10 @@ func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Serv
 	}
 	prediction.CreatedAt = time.Now().Format(time.RFC3339)
 
-	url := runtimeServer.URL + "/predictions"
+	serverURL := runtimeServer.URL + "/predictions"
 	body, err := json.Marshal(prediction)
 	require.NoError(t, err)
-	req, err := http.NewRequest(method, url, bytes.NewBuffer(body))
+	req, err := http.NewRequest(method, serverURL, bytes.NewBuffer(body))
 	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/json")
 	if prediction.Webhook != "" {

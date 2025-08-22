@@ -2,7 +2,7 @@
 
 # Lint and format
 
-set -euo pipefail
+set -uo pipefail
 
 base_dir="$(git rev-parse --show-toplevel)"
 
@@ -11,14 +11,19 @@ check_go() {
     local="$(go list -m)"
     if [[ -z "${CI:-}" ]]; then
         go run golang.org/x/tools/cmd/goimports@latest -d -w -local "$local" .
+        go run mvdan.cc/gofumpt@latest -extra -l -w .
     else
-        output="$(go run golang.org/x/tools/cmd/goimports@latest -d -local "$local" .)"
-        printf "%s" "$output"
-        [ -z "$output" ] || exit 1
+        goimports="$(go run golang.org/x/tools/cmd/goimports@latest -d -local "$local" .)"
+        printf "%s" "$goimports"
+        gofumpt="$(go run mvdan.cc/gofumpt@latest -extra -d .)"
+        printf "%s" "$gofumpt"
+        [ -z "$goimports" ] || exit 1
+        [ -z "$gofumpt" ] || exit 1
     fi
 }
 
 check_python() {
+    set -e
     uv sync --all-extras
     if [[ -z "${CI:-}" ]]; then
         uv tool run ruff check --fix

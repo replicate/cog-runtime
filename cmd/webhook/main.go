@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 func main() {
@@ -28,5 +29,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 	fmt.Println("Listening on :5150")
-	http.ListenAndServe(":5150", nil)
+	if err := http.ListenAndServe(":5150", nil); err != nil { //nolint:gosec // test utility only
+		fmt.Printf("failed to start server: %v\n", err)
+		os.Exit(1)
+	}
 }

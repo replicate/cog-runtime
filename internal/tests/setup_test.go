@@ -24,6 +24,7 @@ func TestSetupSucceeded(t *testing.T) {
 
 	resp, err := http.DefaultClient.Get(runtimeServer.URL + "/openapi.json")
 	require.NoError(t, err)
+	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -43,7 +44,6 @@ func TestSetupFailure(t *testing.T) {
 	} else {
 		assert.Contains(t, hc.Setup.Logs, "starting setup\nsetup failed\nTraceback")
 	}
-
 }
 
 func TestSetupCrash(t *testing.T) {
@@ -62,5 +62,4 @@ func TestSetupCrash(t *testing.T) {
 	} else {
 		assert.Equal(t, "starting setup\nsetup crashed\n", hc.Setup.Logs)
 	}
-
 }

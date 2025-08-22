@@ -61,7 +61,7 @@ func TestAsyncPrediction(t *testing.T) {
 			})
 			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-			predictionId, err := util.PredictionId()
+			predictionID, err := util.PredictionID()
 			require.NoError(t, err)
 			prediction := server.PredictionRequest{
 				Input:   map[string]any{"i": 1, "s": "bar"},
@@ -69,9 +69,9 @@ func TestAsyncPrediction(t *testing.T) {
 				WebhookEventsFilter: []server.WebhookEvent{
 					server.WebhookCompleted,
 				},
-				Id: predictionId,
+				ID: predictionID,
 			}
-			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+			req := httpPredictionRequestWithID(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -96,6 +96,7 @@ func TestAsyncPrediction(t *testing.T) {
 		})
 	}
 }
+
 func TestAsyncPredictionCanceled(t *testing.T) {
 	t.Parallel()
 	// FIXME: This is a case where `file_runner.py` has a sync/async mismatch. Even though execution context is yielded back to the async runner,
@@ -116,19 +117,19 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 	})
 	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	predictionId, err := util.PredictionId()
+	predictionID, err := util.PredictionID()
 	require.NoError(t, err)
 	prediction := server.PredictionRequest{
 		Input:   map[string]any{"i": 60, "s": "bar"},
 		Webhook: receiverServer.URL + "/webhook",
-		Id:      predictionId,
+		ID:      predictionID,
 		WebhookEventsFilter: []server.WebhookEvent{
 			server.WebhookStart,
 			server.WebhookLogs,
 			server.WebhookCompleted,
 		},
 	}
-	req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+	req := httpPredictionRequestWithID(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -143,7 +144,7 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 		t.Fatalf("timeout waiting for initial webhook")
 	}
 
-	cancelReq, err := http.NewRequest(http.MethodPost, runtimeServer.URL+fmt.Sprintf("/predictions/%s/cancel", predictionId), nil)
+	cancelReq, err := http.NewRequest(http.MethodPost, runtimeServer.URL+fmt.Sprintf("/predictions/%s/cancel", predictionID), nil)
 	require.NoError(t, err)
 	cancelResp, err := http.DefaultClient.Do(cancelReq)
 	require.NoError(t, err)
@@ -167,7 +168,7 @@ waitLoop:
 	}
 
 	assert.Equal(t, server.PredictionCanceled, webhook.Response.Status)
-	assert.Equal(t, predictionId, webhook.Response.Id)
+	assert.Equal(t, predictionID, webhook.Response.ID)
 	// NOTE(morgan): The logs are not deterministic, so we can only assert that `prediction canceled` is in the logs.
 	// previously we asserted that the prediction was making progress. We are assured that we have a "starting" webhook, but
 	// internally this test not reacts faster than the runner does.
@@ -193,14 +194,14 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 	assert.Equal(t, 1, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
-	predictionId, err := util.PredictionId()
+	predictionID, err := util.PredictionID()
 	require.NoError(t, err)
 	prediction := server.PredictionRequest{
 		Input:   map[string]any{"i": 1, "s": "bar"},
 		Webhook: receiverServer.URL + "/webhook",
-		Id:      predictionId,
+		ID:      predictionID,
 	}
-	req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+	req := httpPredictionRequestWithID(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()

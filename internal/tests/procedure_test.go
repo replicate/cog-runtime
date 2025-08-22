@@ -42,11 +42,11 @@ func runProcedure(t *testing.T, runtimeServer *httptest.Server, predictionReques
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.NotEmpty(t, predictionResponse.Id)
+	assert.NotEmpty(t, predictionResponse.ID)
 	defer resp.Body.Close()
 	require.NoError(t, err)
 
-	return predictionResponse.Id, resp.StatusCode
+	return predictionResponse.ID, resp.StatusCode
 }
 
 type procedureRun struct {
@@ -173,7 +173,7 @@ func TestProcedureSlots(t *testing.T) {
 	assert.Equal(t, 2, hc.Concurrency.Current)
 
 	activeRunners = handler.ActiveRunners()
-	assert.Equal(t, 2, len(activeRunners))
+	assert.Len(t, activeRunners, 2)
 	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
 	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
 	assert.False(t, activeRunners[0].Idle())
@@ -303,7 +303,6 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		<-startChan1
-
 	})
 
 	startChan2 := make(chan struct{})
@@ -433,7 +432,6 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		<-startChan1
-
 	})
 
 	startChan2 := make(chan struct{})

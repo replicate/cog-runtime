@@ -21,6 +21,7 @@ import (
 )
 
 func testDataContentServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	fsys := os.DirFS("testdata")
 	s := httptest.NewServer(http.FileServer(http.FS(fsys)))
 	t.Cleanup(s.Close)
@@ -99,6 +100,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 
 	var predictionResponse server.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 
@@ -135,7 +137,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 	assert.Equal(t, "*https://replicate.com*", predictionResponse.Output)
-	assert.Equal(t, "", predictionResponse.Logs)
+	assert.Empty(t, predictionResponse.Logs)
 }
 
 func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
@@ -333,13 +335,13 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 
 	testDataPrefix := contentServer.URL + "/mimetype/"
 
-	gifPredictionID, err := util.PredictionId()
+	gifPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	jarPredictionID, err := util.PredictionId()
+	jarPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	tarPredictionID, err := util.PredictionId()
+	tarPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	webpPredictionID, err := util.PredictionId()
+	webpPredictionID, err := util.PredictionID()
 	require.NoError(t, err)
 
 	predictions := []struct {
@@ -373,12 +375,12 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 		t.Run(tc.fileName, func(t *testing.T) {
 			prediction := server.PredictionRequest{
 				Input:               map[string]any{"u": testDataPrefix + tc.fileName},
-				Id:                  tc.predictionID,
+				ID:                  tc.predictionID,
 				Webhook:             receiverServer.URL + "/webhook",
 				WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
 			}
 			t.Logf("prediction file: %s", tc.fileName)
-			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+			req := httpPredictionRequestWithID(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()

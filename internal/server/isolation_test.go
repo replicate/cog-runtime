@@ -99,7 +99,6 @@ func TestUID(t *testing.T) {
 		require.NoError(t, err, "Normal allocation should succeed")
 		assert.GreaterOrEqual(t, uid, BaseUID, "UID should be >= BaseUID")
 	})
-
 }
 
 func TestTempDirectoryCleanup(t *testing.T) {
@@ -115,7 +114,7 @@ func TestTempDirectoryCleanup(t *testing.T) {
 		runner.SetTmpDir(tmpDir)
 
 		testFile := tmpDir + "/test-file.txt"
-		err = os.WriteFile(testFile, []byte("test content"), 0644)
+		err = os.WriteFile(testFile, []byte("test content"), 0o644)
 		require.NoError(t, err, "Failed to create test file")
 
 		_, err = os.Stat(tmpDir)

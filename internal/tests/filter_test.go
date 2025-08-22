@@ -103,15 +103,15 @@ func TestPredictionWebhookFilter(t *testing.T) {
 			})
 			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-			predictionId, err := util.PredictionId()
+			predictionID, err := util.PredictionID()
 			require.NoError(t, err)
 			prediction := server.PredictionRequest{
 				Input:               map[string]any{"i": 2, "s": "bar"},
 				Webhook:             receiverServer.URL + "/webhook",
 				WebhookEventsFilter: tc.webhookEvents,
-				Id:                  predictionId,
+				ID:                  predictionID,
 			}
-			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+			req := httpPredictionRequestWithID(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -138,7 +138,6 @@ func TestPredictionWebhookFilter(t *testing.T) {
 					t.Fatalf("timeout waiting for webhook events")
 				}
 			}
-
 		})
 	}
 }

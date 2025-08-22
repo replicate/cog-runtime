@@ -1,4 +1,4 @@
-package util
+package util //nolint:revive // FIXME: break up util package and move functions to where they're used
 
 import (
 	"bytes"
@@ -41,4 +41,5 @@ func SendRunnerMetric(yaml CogYaml) {
 	if err != nil || resp.StatusCode != http.StatusOK {
 		log.Errorw("failed to send runner metrics", "error", err)
 	}
+	defer resp.Body.Close()
 }
