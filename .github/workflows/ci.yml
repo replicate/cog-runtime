@@ -26,8 +26,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.0'
+      - run: go version
       - uses: astral-sh/setup-uv@v6
-      - run: ./script/check.sh go
+      - uses: golangci/golangci-lint-action@v8.0.0
+        name: Run golangci-lint
+        with:
+          version: v2.3.1
+      - name: Check formatting
+        run: ./script/check.sh go
 
   test-go:
     name: Test Go
@@ -38,6 +47,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.0'
       - uses: astral-sh/setup-uv@v6
       - run: ./script/init.sh
       - run: ./script/test.sh go
@@ -51,6 +63,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '>=1.25.0'
+      - run: go version
       - uses: astral-sh/setup-uv@v6
       - run: ./script/init.sh
       - run: ./script/test.sh go
@@ -118,6 +134,7 @@ jobs:
   release:
     name: Release
     needs:
+
       - test-go
       - test-go-legacy-cog
       - test-python

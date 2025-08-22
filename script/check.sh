@@ -4,15 +4,17 @@
 
 set -euo pipefail
 
+GCI_VERSION="v0.13.7"
 base_dir="$(git rev-parse --show-toplevel)"
 
 check_go() {
+    go version
     cd "$base_dir"
     local="$(go list -m)"
     if [[ -z "${CI:-}" ]]; then
-        go run golang.org/x/tools/cmd/goimports@latest -d -w -local "$local" .
+        go run github.com/daixiang0/gci@$GCI_VERSION write --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .
     else
-        output="$(go run golang.org/x/tools/cmd/goimports@latest -d -local "$local" .)"
+        output="$(go run github.com/daixiang0/gci@$GCI_VERSION diff --skip-generated -s standard -s default -s "prefix(github.com/replicate/cog-runtime)" .)"
         printf "%s" "$output"
         [ -z "$output" ] || exit 1
     fi
