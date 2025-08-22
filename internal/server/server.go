@@ -600,7 +600,7 @@ func SendWebhook(webhook string, pr *PredictionResponse) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal prediction response: %w", err)
 	}
-	req, err := http.NewRequest("POST", webhook, bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, webhook, bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
