@@ -148,7 +148,10 @@ func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
-		json.NewEncoder(w).Encode(hc)
+		err := json.NewEncoder(w).Encode(hc)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}
 }
 

@@ -94,7 +94,7 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 		if _, err := io.Copy(tarball, resp.Body); err != nil {
 			return "", err
 		}
-		defer os.Remove(tarball.Name())
+		defer os.Remove(tarball.Name()) //nolint:errcheck // cleanup, we should try and remove, best effort
 
 		// Extract tarball
 		if err := os.MkdirAll(dstDir, 0o700); err != nil {

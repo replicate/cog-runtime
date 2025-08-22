@@ -157,7 +157,7 @@ func (r *Runner) Start() error {
 	}
 	log.Infow("python runner started", "pid", r.cmd.Process.Pid)
 	close(cmdStart)
-	go r.config()
+	go r.config() //nolint:errcheck // FIXME: actually handler errors, but for now this is safe as the only caller has a timeout check, this should have an explicit deadline instead.
 	go r.wait()
 	return nil
 }

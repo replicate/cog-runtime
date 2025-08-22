@@ -138,12 +138,14 @@ func base64ToInput(s string, paths *[]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // in error case, there isn't anything we can do.
 	if _, err := f.Write(bs); err != nil {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
-	os.Chmod(f.Name(), 0o666)
+	if err := os.Chmod(f.Name(), 0o666); err != nil {
+		return "", err
+	}
 	return f.Name(), nil
 }
 
@@ -159,7 +161,7 @@ func urlToInput(s string, paths *[]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // in error case, there isn't anything we can do.
 	resp, err := util.HTTPClientWithRetry().Get(s)
 	if err != nil {
 		return "", err
@@ -169,7 +171,9 @@ func urlToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	*paths = append(*paths, f.Name())
-	os.Chmod(f.Name(), 0o666)
+	if err := os.Chmod(f.Name(), 0o666); err != nil {
+		return "", err
+	}
 	return f.Name(), nil
 }
 
@@ -225,7 +229,7 @@ func outputToUpload(uploadUrl string, predictionId string) func(s string, paths 
 		if err != nil {
 			return "", err
 		}
-		resp.Body.Close()
+		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
 			return "", fmt.Errorf("failed to upload file: status %s", resp.Status)
 		}
