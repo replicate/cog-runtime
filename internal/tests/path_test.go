@@ -137,7 +137,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 	assert.Equal(t, "*https://replicate.com*", predictionResponse.Output)
-	assert.Equal(t, "", predictionResponse.Logs)
+	assert.Empty(t, predictionResponse.Logs)
 }
 
 func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {

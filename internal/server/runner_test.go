@@ -106,7 +106,7 @@ func TestProcessInputPaths(t *testing.T) {
 				result, err := processInputPaths(tc.input, doc, &paths, base64ToInput)
 
 				require.NoError(t, err)
-				assert.Equal(t, len(paths), tc.expectedPaths)
+				assert.Len(t, paths, tc.expectedPaths)
 
 				if tc.expectMutation {
 					assert.NotEqual(t, originalInput["image"], tc.input["image"], "Input should be mutated")
@@ -182,7 +182,7 @@ func TestProcessInputPaths(t *testing.T) {
 				result, err := processInputPaths(tc.input, doc, &paths, base64ToInput)
 
 				require.NoError(t, err)
-				assert.Equal(t, len(paths), tc.expectedPaths)
+				assert.Len(t, paths, tc.expectedPaths)
 
 				if tc.expectMutation {
 					assert.NotEqual(t, originalInput, tc.input, "Input should be mutated")
@@ -215,7 +215,7 @@ func TestProcessInputPaths(t *testing.T) {
 		result, err := processInputPaths(input, doc, &paths, base64ToInput)
 
 		require.NoError(t, err)
-		assert.Equal(t, 2, len(paths), "Should process nested objects")
+		assert.Len(t, paths, 2, "Should process nested objects")
 		assert.NotNil(t, result)
 
 		// Clean up temp files
@@ -257,7 +257,7 @@ func TestProcessInputPaths(t *testing.T) {
 		result, err := processInputPaths(input, doc, &paths, urlToInput)
 
 		require.NoError(t, err)
-		assert.Equal(t, 1, len(paths), "Should download URL to file")
+		assert.Len(t, paths, 1, "Should download URL to file")
 		assert.NotEqual(t, server.URL+"/test.txt", result.(map[string]any)["image"], "Should replace URL with file path")
 
 		// Verify file was created and has content

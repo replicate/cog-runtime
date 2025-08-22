@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -63,7 +62,7 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 		switch webhook.Response.Id {
 		case barId:
 			assert.Equal(t, "*bar*", webhook.Response.Output)
-			assert.True(t, strings.Contains(webhook.Response.Logs, "starting async prediction\nprediction in progress 1/1\ncompleted async prediction\n"))
+			assert.Contains(t, webhook.Response.Logs, "starting async prediction\nprediction in progress 1/1\ncompleted async prediction\n")
 			barRCompleted = true
 		case bazId:
 			assert.Equal(t, "*baz*", webhook.Response.Output)

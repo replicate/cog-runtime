@@ -44,8 +44,8 @@ func TestPredictionSucceeded(t *testing.T) {
 	assert.Equal(t, server.PredictionSucceeded, prediction.Status)
 	assert.Equal(t, "*bar*", prediction.Output)
 	assert.Contains(t, prediction.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
-	assert.Equal(t, 1.0, prediction.Metrics["i"])
-	assert.Equal(t, 3.0, prediction.Metrics["s_len"])
+	assert.Equal(t, 1.0, prediction.Metrics["i"])     //nolint:testifylint // verifying absolute equality
+	assert.Equal(t, 3.0, prediction.Metrics["s_len"]) //nolint:testifylint // verifying absolute equality
 }
 
 func TestPredictionWithIdSucceeded(t *testing.T) {
@@ -111,7 +111,7 @@ func TestPredictionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, server.PredictionFailed, predictionResponse.Status)
-	assert.Equal(t, nil, predictionResponse.Output)
+	assert.Nil(t, predictionResponse.Output)
 	assert.Contains(t, predictionResponse.Logs, "starting prediction\nprediction failed\n")
 	assert.Equal(t, "prediction failed", predictionResponse.Error)
 }
@@ -149,7 +149,7 @@ func TestPredictionCrash(t *testing.T) {
 		err = json.Unmarshal(body, &predictionResponse)
 		require.NoError(t, err)
 		assert.Equal(t, server.PredictionFailed, predictionResponse.Status)
-		assert.Equal(t, nil, predictionResponse.Output)
+		assert.Nil(t, predictionResponse.Output)
 		assert.Contains(t, predictionResponse.Logs, "starting prediction")
 		assert.Contains(t, predictionResponse.Logs, "SystemExit: 1\n")
 		assert.Equal(t, "prediction failed", predictionResponse.Error)

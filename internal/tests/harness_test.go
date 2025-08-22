@@ -293,24 +293,34 @@ func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath string, 
 	})
 
 	// We need to do some lifting here to get the port from the logs
-	portChan := make(chan int, 1)
+	type portResult struct {
+		port int
+		err  error
+	}
+	portChan := make(chan portResult, 1)
 	go func() {
-		port := parseLegacyCogServerLogsForPort(t, stdErrLogs)
-		portChan <- port
+		port, err := parseLegacyCogServerLogsForPort(t, stdErrLogs)
+		if err != nil {
+			portChan <- portResult{port: -1, err: err}
+			return
+		}
+		portChan <- portResult{port: port, err: nil}
 		// discard the rest of the logs
 		io.Copy(io.Discard, stdErrLogs)
 	}()
 
 	var port int
 	select {
-	case port = <-portChan:
+	case result := <-portChan:
+		require.NoError(t, result.err, "failed to parse port from legacy cog server logs")
+		port = result.port
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout scanning port from legacy cog server logs")
 	}
 	return port, nil
 }
 
-func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) int {
+func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) (int, error) {
 	t.Helper()
 	scanner := bufio.NewScanner(logs)
 	for scanner.Scan() {
@@ -319,14 +329,16 @@ func parseLegacyCogServerLogsForPort(t *testing.T, logs io.ReadCloser) int {
 			matches := portMatchRegex.FindStringSubmatch(line)
 			if len(matches) > 0 {
 				port, err := strconv.Atoi(matches[1])
+				if err != nil {
+					return 0, err
+				}
 				t.Logf("cog server running on port: %d", port)
-				require.NoError(t, err)
-				return port
+				return port, nil
 			}
 		}
 	}
 	t.Fatalf("could not find port in logs")
-	return 0
+	return 0, fmt.Errorf("could not find port in logs")
 }
 
 type cogConfig struct {

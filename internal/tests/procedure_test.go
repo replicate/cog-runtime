@@ -173,7 +173,7 @@ func TestProcedureSlots(t *testing.T) {
 	assert.Equal(t, 2, hc.Concurrency.Current)
 
 	activeRunners = handler.ActiveRunners()
-	assert.Equal(t, 2, len(activeRunners))
+	assert.Len(t, activeRunners, 2)
 	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
 	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
 	assert.False(t, activeRunners[0].Idle())
