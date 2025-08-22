@@ -684,9 +684,9 @@ func (r *Runner) log(line string, stderr bool) {
 	}
 	// Pipe Python stdout/stderr to the corresponding streams
 	if stderr {
-		fmt.Fprintln(os.Stderr, line)
+		fmt.Fprintln(os.Stderr, line) //nolint:forbidigo // expected see above comment
 	} else {
-		fmt.Println(line)
+		fmt.Println(line) //nolint:forbidigo // expected see above comment
 	}
 }
 
