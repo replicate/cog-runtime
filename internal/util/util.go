@@ -124,7 +124,7 @@ func CreateLogger(name string) *zap.Logger {
 	}
 	lvl, err := zapcore.ParseLevel(logLevel)
 	if err != nil {
-		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err)
+		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err) //nolint:forbidigo // if the logger cannot be initialized, we should still be able to report the error
 		lvl = zapcore.InfoLevel
 	}
 	return logging.New(name).WithOptions(zap.IncreaseLevel(lvl))
