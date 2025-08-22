@@ -29,6 +29,9 @@ var logger = util.CreateLogger("cog-http-server")
 //go:embed openapi-procedure.json
 var procedureSchema string
 
+// errAsyncPrediction is a sentinel error used to indicate that a prediction is being served asynchronously, it is not surfaced outside of server
+var errAsyncPrediction = errors.New("async prediction")
+
 type IPCStatus string
 
 const (
@@ -476,7 +479,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 					log.Errorw("failed to send webhook", "url", req.Webhook, "error", err)
 				}
 			}()
-			return nil, nil
+			return nil, errAsyncPrediction
 		}
 
 	}
@@ -560,6 +563,10 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case errors.Is(err, errAsyncPrediction):
+		// Async prediction sentinel received this explicitly means
+		// we fall through and hit the `c == nil` if branch below
+		break
 	case errors.Is(err, ErrConflict):
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
