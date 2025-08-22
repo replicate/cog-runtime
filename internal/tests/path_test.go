@@ -100,6 +100,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 
 	var predictionResponse server.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
 
 	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
 

@@ -258,11 +258,11 @@ func (r *Runner) Predict(req PredictionRequest) (chan PredictionResponse, error)
 	}
 
 	inputPaths := make([]string, 0)
-	input, err := handleInputPaths(req.Input, r.doc, &inputPaths, base64ToInput)
+	input, err := processInputPaths(req.Input, r.doc, &inputPaths, base64ToInput)
 	if err != nil {
 		return nil, err
 	}
-	input, err = handleInputPaths(req.Input, r.doc, &inputPaths, urlToInput)
+	input, err = processInputPaths(input, r.doc, &inputPaths, urlToInput)
 	if err != nil {
 		return nil, err
 	}

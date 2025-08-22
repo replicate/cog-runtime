@@ -24,7 +24,9 @@ func isUri(s *openapi3.SchemaRef) bool {
 	return s.Value.Type.Is("string") && s.Value.Format == "uri"
 }
 
-func handleInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
+// processInputPaths processes the input paths and discards the now unused paths from the input.
+// Note that we return the input, but the expectation is that input will be mutated in-place.
+func processInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
 	if doc == nil {
 		return input, nil
 	}
