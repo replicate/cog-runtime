@@ -25,7 +25,7 @@ type ServerConfig struct {
 	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
-	WorkingDirectory      string `ff:"long: working-directory, nodefault, usage: working directory"`
+	WorkingDirectory      string `ff:"long: working-directory, nodefault, usage: explicit working directory override"`
 }
 
 var logger = util.CreateLogger("cog")
@@ -94,12 +94,22 @@ func serverCommand() (*ff.Command, error) {
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
 
+			var err error
+			currentWorkingDirectory := cfg.WorkingDirectory
+			if currentWorkingDirectory == "" {
+				currentWorkingDirectory, err = os.Getwd()
+				if err != nil {
+					log.Errorw("failed to get current working directory", "error", err)
+					return err
+				}
+			}
+
 			serverCfg := server.Config{
 				UseProcedureMode:      cfg.UseProcedureMode,
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
 				UploadUrl:             cfg.UploadUrl,
-				WorkingDirectory:      cfg.WorkingDirectory,
+				WorkingDirectory:      currentWorkingDirectory,
 			}
 			// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
 			// statically create the runner list sized at 1.
