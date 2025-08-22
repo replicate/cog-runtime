@@ -46,6 +46,7 @@ class FileRunnerTest:
         predictor: str,
         env: Optional[Dict[str, str]] = None,
         max_concurrency: int = 1,
+        predictor_class: str = 'Predictor',
     ):
         # Runner
         runner_env = os.environ.copy()
@@ -69,7 +70,7 @@ class FileRunnerTest:
         with open(conf_file, 'w') as f:
             conf = {
                 'module_name': f'tests.runners.{predictor}',
-                'predictor_name': 'Predictor',
+                'predictor_name': predictor_class,
                 'max_concurrency': max_concurrency,
             }
             json.dump(conf, f)
@@ -145,9 +146,7 @@ def test_file_runner(tmp_path):
 
 
 def test_file_runner_setup_failed(tmp_path):
-    rt = FileRunnerTest(
-        tmp_path, 'sleep', env={'SETUP_SLEEP': '1', 'SETUP_FAILURE': '1'}
-    )
+    rt = FileRunnerTest(tmp_path, 'sleep', predictor_class='SetupFailingPredictor')
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)
@@ -162,7 +161,9 @@ def test_file_runner_setup_failed(tmp_path):
 
 
 def test_file_runner_predict_failed(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'sleep', env={'PREDICTION_FAILURE': '1'})
+    rt = FileRunnerTest(
+        tmp_path, 'sleep', predictor_class='PredictionFailingPredictorWithTiming'
+    )
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)

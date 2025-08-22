@@ -14,7 +14,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -45,15 +44,16 @@ type IPC struct {
 }
 
 type Handler struct {
-	cfg        Config
-	shutdown   context.CancelFunc
-	startedAt  time.Time
-	maxRunners int
-	setUID     bool
-	runners    []*Runner
-	mu         sync.Mutex
+	cfg       Config
+	shutdown  context.CancelFunc
+	startedAt time.Time
+	setUID    bool
+	runners   []*Runner
+	mu        sync.Mutex
 
 	uidCounter *uidCounter
+
+	cwd string
 }
 
 func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
@@ -63,26 +63,19 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		shutdown:   shutdown,
 		startedAt:  time.Now(),
 		uidCounter: &uidCounter{},
+		cwd:        cfg.WorkingDirectory,
 	}
-	// GOMAXPROCS is set by automaxprocs in main.go on server startup
-	// Reset Go server to 1 to make room for Python runners
-	autoMaxProcs := runtime.GOMAXPROCS(1)
 	if cfg.UseProcedureMode {
-		concurrencyPerCPU := 4
-		if s, ok := os.LookupEnv("COG_PROCEDURE_CONCURRENCY_PER_CPU"); ok {
-			if i, err := strconv.Atoi(s); err == nil {
-				concurrencyPerCPU = i
-			} else {
-				log.Errorw("failed to parse COG_PROCEDURE_CONCURRENCY_PER_CPU", "value", s)
-			}
+		// Allow the caller to specify the max number of runners to allow. By default,
+		// we will use the number of CPUs * 4. Note that NumCPU() is processor affinity aware
+		// and will adhere to container resource allocations
+		// FIXME: this should not be here, it should be lifted to main.go and passed to NewHandler and `0`
+		// should be rejected as invalid
+		maxRunners := cfg.MaxRunners
+		if maxRunners == 0 {
+			maxRunners = runtime.NumCPU() * 4
 		}
-		// Set both max runners and max concurrency across all runners to CPU * n,
-		// regardless what max concurrency each runner has.
-		// In the worst case scenario where all runners are non-async,
-		// completion of any runner frees up concurrency.
-		// See healthCheck() for concurrency aggregation across runners.
-		h.maxRunners = autoMaxProcs * concurrencyPerCPU
-		h.runners = make([]*Runner, h.maxRunners)
+		h.runners = make([]*Runner, maxRunners)
 
 		_, err := os.Stat("/.dockerenv")
 		inDocker := err == nil
@@ -96,10 +89,10 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		if (inDocker || inK8S) && os.Getuid() == 0 {
 			h.setUID = true
 		}
-		log.Infow("running in procedure mode", "max_runners", h.maxRunners)
+		log.Infow("running in procedure mode", "max_runners", maxRunners)
 	} else {
 		h.runners = make([]*Runner, 1)
-		runner, err := NewRunner(DefaultRunnerName, cfg.IPCUrl, cfg.UploadUrl)
+		runner, err := NewRunner(DefaultRunnerName, h.cwd, cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -117,6 +110,17 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		}
 	}
 	return h, nil
+}
+
+// ActiveRunners returns a copy of the runners slice
+// This is used to understand the active runners for testing purposes
+// It is not safe to use this method in production code
+func (h *Handler) ActiveRunners() []*Runner {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	runners := make([]*Runner, len(h.runners))
+	copy(runners, h.runners)
+	return runners
 }
 
 func (h *Handler) ExitCode() int {
@@ -163,7 +167,7 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 			},
 			Concurrency: Concurrency{
 				// Max runners as max concurrency
-				Max: h.maxRunners,
+				Max: len(h.runners),
 			},
 		}
 		h.mu.Lock()
@@ -383,7 +387,7 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 	}
 
 	log.Infow("starting procedure runner", "src_url", srcURL, "src_dir", srcDir)
-	r, err := NewProcedureRunner(h.cfg.IPCUrl, h.cfg.UploadUrl, name, srcDir)
+	r, err := NewProcedureRunner(name, srcDir, h.cfg)
 	if err != nil {
 		return nil, err
 	}

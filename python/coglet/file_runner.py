@@ -90,6 +90,10 @@ class FileRunner:
         setup_result['completed_at'] = util.now_iso()
         with open(setup_result_file, 'w') as f:
             json.dump(setup_result, f)
+
+        # Flush any buffered output from setup
+        scope.flush_all_buffers()
+
         if setup_result['status'] == 'failed':
             return 1
 
@@ -134,6 +138,8 @@ class FileRunner:
                         tasks.append(task)
                         self.logger.info('prediction canceled: id=%s', pid)
                 await asyncio.gather(*tasks)
+                # Flush any remaining buffered output before shutdown
+                scope.flush_all_buffers()
                 return 0
 
             for entry in os.listdir(self.working_dir):
@@ -252,12 +258,7 @@ class FileRunner:
         finally:
             resp['completed_at'] = util.now_iso()
         self._respond(pid, epoch, resp)
-        if pid in scope.metrics:
-            scope.metrics.pop(pid)
-        if pid in scope.ctx_write_buf:
-            scope.ctx_write_buf.pop(pid)
-        if pid in scope.contexts:
-            scope.contexts.pop(pid)
+        scope.cleanup_prediction_context(pid)
         epoch += 1
 
     def _respond(

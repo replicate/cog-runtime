@@ -1,289 +1,541 @@
 package tests
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
-func procPredictionHTTP(ct *CogTest, url, token string, input map[string]any) *http.Response {
-	req := server.PredictionRequest{
-		Context: map[string]any{
-			"procedure_source_url": url,
-			"replicate_api_token":  token,
-		},
-		Input: input,
+var errProcedureFailedToStart = errors.New("procedure failed to start")
+
+// runProcedure runs a procedure and returns the prediction id and HTTP status code
+func runProcedure(t *testing.T, runtimeServer *httptest.Server, predictionRequest server.PredictionRequest) (string, int) {
+	t.Helper()
+
+	// we only run procedures with webhooks/receivers for testing purposes. It eliminates complexity
+	// when we need to wait for the prediction to start avoiding random time.Sleep() calls.
+	assert.NotEmpty(t, predictionRequest.Webhook, "procedures must be run with webhook set")
+
+	req := httpPredictionRequest(t, runtimeServer, predictionRequest)
+	req.URL.Path = "/procedures"
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	var predictionResponse server.PredictionResponse
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	if resp.StatusCode != http.StatusAccepted {
+		return "", resp.StatusCode
 	}
-	return ct.PredictionReq(http.MethodPost, "/procedures", req)
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, predictionResponse.Id)
+	defer resp.Body.Close()
+	require.NoError(t, err)
+
+	return predictionResponse.Id, resp.StatusCode
 }
 
-func procPrediction(ct *CogTest, url, token string, input map[string]any) server.PredictionResponse {
-	req := server.PredictionRequest{
-		Context: map[string]any{
-			"procedure_source_url": url,
-			"replicate_api_token":  token,
-		},
-		Input: input,
-	}
-	return ct.prediction(http.MethodPost, "/procedures", req)
+type procedureRun struct {
+	URL            string
+	Input          map[string]any
+	ExpectedOutput string
+	ExpectedLogs   string
+	Token          string
+	Started        chan struct{}
 }
 
-func TestProcedure(t *testing.T) {
+func runAndValidateProcedure(t *testing.T, runtimeServer *httptest.Server, run procedureRun) error {
+	t.Helper()
+	receiverServer := testHarnessReceiverServer(t)
+	procPrediction := server.PredictionRequest{
+		Context: map[string]any{
+			"procedure_source_url": run.URL,
+			"replicate_api_token":  run.Token,
+		},
+		Input:   run.Input,
+		Webhook: receiverServer.URL + "/webhook",
+	}
+	_, statusCode := runProcedure(t, runtimeServer, procPrediction)
+	if statusCode != http.StatusAccepted {
+		return fmt.Errorf("%w: %d", errProcedureFailedToStart, statusCode)
+	}
+	assert.Equal(t, http.StatusAccepted, statusCode)
+	timeout := time.After(10 * time.Second)
+	for webhook := range receiverServer.webhookReceiverChan {
+		select {
+		case <-timeout:
+			t.Fatalf("timeout waiting for prediction to complete")
+		default:
+			switch webhook.Response.Status {
+			case server.PredictionStarting, server.PredictionProcessing:
+				safeCloseChannel(run.Started)
+			case server.PredictionSucceeded:
+				assert.Equal(t, run.ExpectedOutput, webhook.Response.Output)
+				assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+				assert.Contains(t, webhook.Response.Logs, run.ExpectedLogs)
+				return nil
+			default:
+				// continue the loop.
+			}
+		}
+	}
+	return nil
+}
+
+func TestProcedureSlots(t *testing.T) {
+	// FIXME: refactor this test. It is doing far too much, but is being left mostly
+	// as-is functionality wise for the test-harness refactoring. Some of the phases
+	// could be unit tests if respun with direct access to the handler.
+	t.Parallel()
 	if *legacyCog {
-		// Compat: procedure endpoint has diverged from legacy Cog
-		t.SkipNow()
+		t.Skipf("procedure endpoint has diverged from legacy Cog")
 	}
 
-	ct := NewCogProcedureTest(t)
-	// Force max runners and max concurrency to 2
-	ct.AppendEnvs("GOMAXPROCS=1")
-	ct.AppendEnvs("COG_PROCEDURE_CONCURRENCY_PER_CPU=2")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    true,
+		explicitShutdown: true,
+		uploadURL:        "",
+		maxRunners:       2,
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
-	assert.Equal(t, server.StatusReady.String(), ct.HealthCheck().Status)
+	wg := sync.WaitGroup{}
 
-	// Occupy slot 1
-	var wg1 sync.WaitGroup
-	wg1.Add(1)
+	// occupy slot 1
 	fooURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "foo")
-	go func() {
-		defer wg1.Done()
-		resp1 := procPrediction(ct, fooURL, "footok", map[string]any{"i": 3, "s": "foostr"})
-		assert.Equal(t, server.PredictionSucceeded, resp1.Status)
-		assert.Equal(t, "i=3, s=foostr, token=footok", resp1.Output)
-		assert.Contains(t, resp1.Logs, "predicting foo\n")
-	}()
+	fooPredictionStarted := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            fooURL,
+			Input:          map[string]any{"i": 3, "s": "foostr"},
+			ExpectedOutput: "i=3, s=foostr, token=footok",
+			ExpectedLogs:   "predicting foo",
+			Token:          "footok",
+			Started:        fooPredictionStarted,
+		})
+		require.NoError(t, err)
+	})
 
-	time.Sleep(200 * time.Millisecond) // Wait for runner startup
-	// Only 1 out of 2 runner slots occupied, ready for 1 more
-	hc = ct.HealthCheck()
+	// Wait for the prediction to start. We can safely block here because we'll timeout in the wg.Go
+	// within a short time if the prediction doesn't start.
+	<-fooPredictionStarted
+
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 1, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL}, ct.Runners())
 
-	// Occupy slot 2
-	var wg2 sync.WaitGroup
-	wg2.Add(1)
-	barURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "bar")
-	go func() {
-		defer wg2.Done()
-		resp2 := procPrediction(ct, barURL, "bartok", map[string]any{"i": 2, "s": "barstr"})
-		assert.Equal(t, server.PredictionSucceeded, resp2.Status)
-		assert.Equal(t, "i=2, s=barstr, token=bartok", resp2.Output)
-		assert.Contains(t, resp2.Logs, "predicting bar\n")
-	}()
+	activeRunners := handler.ActiveRunners()
+	assert.NotNil(t, activeRunners[0])
+	assert.Nil(t, activeRunners[1])
+	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
+	assert.False(t, activeRunners[0].Idle())
 
-	time.Sleep(200 * time.Millisecond) // Wait for runner startup
-	// 2 out of 2 runner slots occupied, cannot evict and busy
-	hc = ct.HealthCheck()
+	// occupy slot 2
+	barURL := fmt.Sprintf(procedureFilePathURITemplate, basePath, "bar")
+	barPredictionStarted := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            barURL,
+			Input:          map[string]any{"i": 2, "s": "barstr"},
+			ExpectedOutput: "i=2, s=barstr, token=bartok",
+			ExpectedLogs:   "predicting bar",
+			Token:          "bartok",
+			Started:        barPredictionStarted,
+		})
+		require.NoError(t, err)
+	})
+
+	// Wait for the prediction to start. We can safely block here because we'll timeout in the wg.Go
+	// within a short time if the prediction doesn't start.
+	<-barPredictionStarted
+
+	// Ensure both slots are occupied with active runners
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 2, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + barURL}, ct.Runners())
 
-	bazURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "baz")
-	badResp1 := procPredictionHTTP(ct, bazURL, "baztok", map[string]any{"i": 1, "s": "bazstr"})
-	assert.Equal(t, http.StatusConflict, badResp1.StatusCode)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + barURL}, ct.Runners())
+	activeRunners = handler.ActiveRunners()
+	assert.Equal(t, 2, len(activeRunners))
+	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
+	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
+	assert.False(t, activeRunners[0].Idle())
+	assert.False(t, activeRunners[1].Idle())
 
-	// Wait for 1 slot to free up
-	wg2.Wait()
-	hc = ct.HealthCheck()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	bazURL := fmt.Sprintf(procedureFilePathURITemplate, basePath, "baz")
+	// Eviction is not allowed if all slots are occupied
+	bazProcedureRun := procedureRun{
+		URL:            bazURL,
+		Input:          map[string]any{"i": 1, "s": "bazstr"},
+		ExpectedOutput: "i=1, s=bazstr, token=baztok",
+		ExpectedLogs:   "predicting baz",
+		Token:          "baztok",
+		Started:        make(chan struct{}),
+	}
+	err := runAndValidateProcedure(t, runtimeServer, bazProcedureRun)
+	require.ErrorIs(t, err, errProcedureFailedToStart)
+
+	// Wait for the predictions to finish
+	wg.Wait()
+
+	// Re-attempt the new procedure, now evicting a slot is possible
+	err = runAndValidateProcedure(t, runtimeServer, bazProcedureRun)
+	require.NoError(t, err)
+
+	activeRunners = handler.ActiveRunners()
+	assert.NotNil(t, activeRunners[0])
+	assert.NotNil(t, activeRunners[1])
+	// find the baz runner and ensure it is in the active runner list
+	foundBazRunner := false
+	for _, runner := range activeRunners {
+		// strip off the `NN:` prefix from the runner string/named, e.g. 00:file:///path/to/procedure -> file:///path/to/procedure
+		parts := strings.SplitN(runner.String(), ":", 2)
+		require.Len(t, parts, 2)
+		if parts[1] == bazURL {
+			foundBazRunner = true
+			break
+		}
+	}
+	assert.True(t, foundBazRunner)
+}
+
+func TestProcedureSlotBadProcedure(t *testing.T) {
+	t.Parallel()
+	if *legacyCog {
+		t.Skipf("procedure endpoint has diverged from legacy Cog")
+	}
+
+	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    true,
+		explicitShutdown: true,
+		uploadURL:        "",
+		maxRunners:       2,
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, 2, hc.Concurrency.Max)
-	assert.Equal(t, 1, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + barURL}, ct.Runners())
+	assert.Equal(t, 0, hc.Concurrency.Current)
 
-	badURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "bad")
-	badResp2 := procPrediction(ct, badURL, "badtok", map[string]any{"i": 1, "s": "badstr"})
-	assert.Equal(t, server.PredictionFailed, badResp2.Status)
-	assert.Contains(t, badResp2.Logs, "unsupported Cog type")
-	assert.Equal(t, "setup failed", badResp2.Error)
-	// A new procedure evicts an idle slot but vacates itself after setup failure
-	assert.Equal(t, []string{"00:" + fooURL}, ct.Runners())
+	// a bad procedure should fail to start and auto vacate the slot
+	badProcURL := fmt.Sprintf(procedureFilePathURITemplate, basePath, "bad")
+	receiverServer := testHarnessReceiverServer(t)
+	procPrediction := server.PredictionRequest{
+		Context: map[string]any{
+			"procedure_source_url": badProcURL,
+			"replicate_api_token":  "badtok",
+		},
+		Input:   map[string]any{"i": 3, "s": "foostr"},
+		Webhook: receiverServer.URL + "/webhook",
+	}
+	_, statusCode := runProcedure(t, runtimeServer, procPrediction)
+	assert.Equal(t, http.StatusAccepted, statusCode)
+	var webhook webhookData
+	select {
+	case webhook = <-receiverServer.webhookReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for prediction to complete")
+	}
+	assert.Equal(t, server.PredictionFailed, webhook.Response.Status)
+	assert.Contains(t, webhook.Response.Logs, "unsupported Cog type")
+	assert.Equal(t, "setup failed", webhook.Response.Error)
 
-	// Evict one of the 2 slots
-	var wg3 sync.WaitGroup
-	wg3.Add(1)
-	go func() {
-		defer wg3.Done()
-		resp2 := procPrediction(ct, bazURL, "baztok", map[string]any{"i": 2, "s": "bazstr"})
-		assert.Equal(t, server.PredictionSucceeded, resp2.Status)
-		assert.Equal(t, "i=2, s=bazstr, token=baztok", resp2.Output)
-		assert.Contains(t, resp2.Logs, "predicting baz\n")
-	}()
-
-	time.Sleep(200 * time.Millisecond) // Wait for runner startup
-	// 2 out of 2 runner slots occupied, cannot evict and busy
-	hc = ct.HealthCheck()
-	assert.Equal(t, server.StatusBusy.String(), hc.Status)
-	assert.Equal(t, 2, hc.Concurrency.Max)
-	assert.Equal(t, 2, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + bazURL}, ct.Runners())
-
-	wg1.Wait()
-	wg3.Wait()
-	hc = ct.HealthCheck()
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + bazURL}, ct.Runners())
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	// The bad procedure should have vacated the slot, so we should have zero runners, all slots == nil
+	activeRunners := handler.ActiveRunners()
+	assert.Nil(t, activeRunners[0])
+	assert.Nil(t, activeRunners[1])
 }
 
 func TestProcedureAsyncConcurrency(t *testing.T) {
+	// NOTE: concurrent is limited to the maximum number of runners regardless of per-runner concurrency. This
+	// is largely due to how everything in replicate is architected as we are not able to "Schedule" a particular
+	// prediction to a particular instance that has capacity and already has the runner active. This means that
+	// even though we have 4 slots, we can only run 4 total predictions at a time. When we improve routing we
+	// can improve this behavior. For now, this note serves as a reminder so that future contributions understand
+	// why we max out concurrency at 4 even though technically the slot*per-runner-async-concurrency is 8.
+	t.Parallel()
 	if *legacyCog {
-		// Compat: procedure endpoint has diverged from legacy Cog
-		t.SkipNow()
+		t.Skipf("procedure endpoint has diverged from legacy Cog")
 	}
 
-	ct := NewCogProcedureTest(t)
-	// Force max runners and max concurrency to 4
-	ct.AppendEnvs("GOMAXPROCS=1")
-	ct.AppendEnvs("COG_PROCEDURE_CONCURRENCY_PER_CPU=4")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    true,
+		explicitShutdown: true,
+		uploadURL:        "",
+		maxRunners:       4,
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
-	var wg sync.WaitGroup
+	fooURL := fmt.Sprintf(procedureFilePathURITemplate, basePath, "foo")
 
-	fooURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "foo")
-	predict := func(i int, s string) {
-		defer wg.Done()
-		resp := procPrediction(ct, fooURL, "footok", map[string]any{"i": i, "s": s})
-		assert.Equal(t, server.PredictionSucceeded, resp.Status)
-		assert.Equal(t, fmt.Sprintf("i=%d, s=%s, token=footok", i, s), resp.Output)
-		assert.Contains(t, resp.Logs, "predicting foo\n")
-	}
+	wg := sync.WaitGroup{}
+	startChan1 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            fooURL,
+			Input:          map[string]any{"i": 3, "s": "foostr"},
+			ExpectedOutput: "i=3, s=foostr, token=footok",
+			ExpectedLogs:   "predicting foo",
+			Token:          "footok",
+			Started:        startChan1,
+		})
+		assert.NoError(t, err)
+		<-startChan1
 
-	// foo has max concurrency of 2
-	wg.Add(2)
-	go predict(3, "foo")
-	go predict(3, "bar")
+	})
 
-	time.Sleep(200 * time.Millisecond) // Wait for runner startup
-	// Only 1 out of 4 runner slots occupied with 2 pending
-	hc = ct.HealthCheck()
+	startChan2 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            fooURL,
+			Input:          map[string]any{"i": 3, "s": "foostr"},
+			ExpectedOutput: "i=3, s=foostr, token=footok",
+			ExpectedLogs:   "predicting foo",
+			Token:          "footok",
+			Started:        startChan2,
+		})
+		assert.NoError(t, err)
+		<-startChan2
+	})
+
+	// wait for both predictions to start
+	<-startChan1
+	<-startChan2
+
+	// foo has max concurrency of 2, so we should have 2 running predictions
+	activeRunners := handler.ActiveRunners()
+	// The prediction slot cannot be nil, must be occupied  the equality assert will panic
+	require.NotNil(t, activeRunners[0])
+	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
+	assert.Nil(t, activeRunners[1])
+	assert.Nil(t, activeRunners[2])
+	assert.Nil(t, activeRunners[3])
+	assert.False(t, activeRunners[0].Idle())
+
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 2, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL}, ct.Runners())
 
-	wg.Add(2)
-	go predict(2, "foz")
-	go predict(2, "baz")
+	startChan3 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            fooURL,
+			Input:          map[string]any{"i": 3, "s": "foostr"},
+			ExpectedOutput: "i=3, s=foostr, token=footok",
+			ExpectedLogs:   "predicting foo",
+			Token:          "footok",
+			Started:        startChan3,
+		})
+		assert.NoError(t, err)
+	})
 
-	time.Sleep(200 * time.Millisecond) // Wait for runner startup
-	// 2 out of 4 runner slots occupied with 4 pending
-	// Max concurrency reached
-	hc = ct.HealthCheck()
+	startChan4 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            fooURL,
+			Input:          map[string]any{"i": 3, "s": "foostr"},
+			ExpectedOutput: "i=3, s=foostr, token=footok",
+			ExpectedLogs:   "predicting foo",
+			Token:          "footok",
+			Started:        startChan4,
+		})
+		assert.NoError(t, err)
+	})
+
+	<-startChan3
+	<-startChan4
+
+	activeRunners = handler.ActiveRunners()
+
+	// The prediction slot cannot be nil, must be occupied or the equality assert will panic
+	require.NotNil(t, activeRunners[0])
+	require.NotNil(t, activeRunners[1])
+	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
+	assert.Equal(t, "01:"+fooURL, activeRunners[1].String())
+
+	assert.Nil(t, activeRunners[2])
+	assert.Nil(t, activeRunners[3])
+	assert.False(t, activeRunners[0].Idle())
+	assert.False(t, activeRunners[1].Idle())
+
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 4, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + fooURL}, ct.Runners())
 
-	badResp := procPredictionHTTP(ct, fooURL, "badtok", map[string]any{"i": 1, "s": "badstr"})
-	assert.Equal(t, http.StatusConflict, badResp.StatusCode)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + fooURL}, ct.Runners())
-
+	// Wait for all predictions to finish
 	wg.Wait()
-	// 4 out of 4 runner slots occupied with 0 pending
-	hc = ct.HealthCheck()
+
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + fooURL, "01:" + fooURL}, ct.Runners())
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	activeRunners = handler.ActiveRunners()
+	require.NotNil(t, activeRunners[0])
+	require.NotNil(t, activeRunners[1])
+	require.Nil(t, activeRunners[2])
+	require.Nil(t, activeRunners[3])
+	assert.True(t, activeRunners[0].Idle())
+	assert.True(t, activeRunners[1].Idle())
 }
 
 func TestProcedureNonAsyncConcurrency(t *testing.T) {
+	t.Parallel()
 	if *legacyCog {
-		// Compat: procedure endpoint has diverged from legacy Cog
-		t.SkipNow()
+		t.Skipf("procedure endpoint has diverged from legacy Cog")
 	}
 
-	ct := NewCogProcedureTest(t)
-	// Force max runners and max concurrency to 4
-	ct.AppendEnvs("GOMAXPROCS=1")
-	ct.AppendEnvs("COG_PROCEDURE_CONCURRENCY_PER_CPU=4")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+		procedureMode:    true,
+		explicitShutdown: true,
+		uploadURL:        "",
+		maxRunners:       4,
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
-	var wg sync.WaitGroup
+	barURL := fmt.Sprintf(procedureFilePathURITemplate, basePath, "bar")
 
-	barURL := fmt.Sprintf("file://%s/python/tests/procedures/%s", basePath, "bar")
-	predict := func(i int, s string) {
-		defer wg.Done()
-		resp1 := procPrediction(ct, barURL, "bartok", map[string]any{"i": i, "s": s})
-		assert.Equal(t, server.PredictionSucceeded, resp1.Status)
-		assert.Equal(t, fmt.Sprintf("i=%d, s=%s, token=bartok", i, s), resp1.Output)
-		assert.Contains(t, resp1.Logs, "predicting bar\n")
-	}
+	wg := sync.WaitGroup{}
+	startChan1 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            barURL,
+			Input:          map[string]any{"i": 3, "s": "barstr"},
+			ExpectedOutput: "i=3, s=barstr, token=bartok",
+			ExpectedLogs:   "predicting bar",
+			Token:          "bartok",
+			Started:        startChan1,
+		})
+		assert.NoError(t, err)
+		<-startChan1
 
-	// bar has non-async predict
-	wg.Add(3)
-	go predict(3, "foo")
-	go predict(3, "bar")
-	go predict(3, "baz")
+	})
 
-	time.Sleep(200 * time.Millisecond) // Wait for runner startup
-	// 3 out of 4 runner slots occupied with 3 pending
-	hc = ct.HealthCheck()
+	startChan2 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            barURL,
+			Input:          map[string]any{"i": 3, "s": "barstr"},
+			ExpectedOutput: "i=3, s=barstr, token=bartok",
+			ExpectedLogs:   "predicting bar",
+			Token:          "bartok",
+			Started:        startChan2,
+		})
+		assert.NoError(t, err)
+		<-startChan2
+	})
+
+	// wait for both predictions to start
+	<-startChan1
+	<-startChan2
+
+	// foo has max concurrency of 2, so we should have 2 running predictions
+	activeRunners := handler.ActiveRunners()
+	// The prediction slot cannot be nil, must be occupied  the equality assert will panic
+	require.NotNil(t, activeRunners[0])
+	require.NotNil(t, activeRunners[1])
+	assert.Equal(t, "00:"+barURL, activeRunners[0].String())
+	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
+	assert.Nil(t, activeRunners[2])
+	assert.Nil(t, activeRunners[3])
+	assert.False(t, activeRunners[0].Idle())
+	assert.False(t, activeRunners[1].Idle())
+
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
-	assert.Equal(t, 3, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + barURL, "01:" + barURL, "02:" + barURL}, ct.Runners())
+	assert.Equal(t, 2, hc.Concurrency.Current)
 
-	wg.Add(1)
-	go predict(2, "foz")
+	startChan3 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            barURL,
+			Input:          map[string]any{"i": 3, "s": "barstr"},
+			ExpectedOutput: "i=3, s=barstr, token=bartok",
+			ExpectedLogs:   "predicting bar",
+			Token:          "bartok",
+			Started:        startChan3,
+		})
+		assert.NoError(t, err)
+	})
 
-	time.Sleep(200 * time.Millisecond) // Wait for runner startup
-	// 4 out of 4 runner slots occupied with 4 pending
-	// Max concurrency reached
-	hc = ct.HealthCheck()
+	startChan4 := make(chan struct{})
+	wg.Go(func() {
+		err := runAndValidateProcedure(t, runtimeServer, procedureRun{
+			URL:            barURL,
+			Input:          map[string]any{"i": 3, "s": "barstr"},
+			ExpectedOutput: "i=3, s=barstr, token=bartok",
+			ExpectedLogs:   "predicting bar",
+			Token:          "bartok",
+			Started:        startChan4,
+		})
+		assert.NoError(t, err)
+	})
+
+	<-startChan3
+	<-startChan4
+
+	activeRunners = handler.ActiveRunners()
+
+	// The prediction slot cannot be nil, must be occupied or the equality assert will panic
+	require.NotNil(t, activeRunners[0])
+	require.NotNil(t, activeRunners[1])
+	require.NotNil(t, activeRunners[2])
+	require.NotNil(t, activeRunners[3])
+	assert.Equal(t, "00:"+barURL, activeRunners[0].String())
+	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
+	assert.Equal(t, "02:"+barURL, activeRunners[2].String())
+	assert.Equal(t, "03:"+barURL, activeRunners[3].String())
+
+	assert.False(t, activeRunners[0].Idle())
+	assert.False(t, activeRunners[1].Idle())
+	assert.False(t, activeRunners[2].Idle())
+	assert.False(t, activeRunners[3].Idle())
+
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 4, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + barURL, "01:" + barURL, "02:" + barURL, "03:" + barURL}, ct.Runners())
 
-	badResp := procPredictionHTTP(ct, barURL, "badtok", map[string]any{"i": 1, "s": "badstr"})
-	assert.Equal(t, http.StatusConflict, badResp.StatusCode)
-	assert.Equal(t, []string{"00:" + barURL, "01:" + barURL, "02:" + barURL, "03:" + barURL}, ct.Runners())
-
+	// Wait for all predictions to finish
 	wg.Wait()
-	// 4 out of 4 runner slots occupied with 0 pending
-	hc = ct.HealthCheck()
+
+	hc = healthCheck(t, runtimeServer)
 	assert.Equal(t, server.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
-	assert.Equal(t, []string{"00:" + barURL, "01:" + barURL, "02:" + barURL, "03:" + barURL}, ct.Runners())
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	activeRunners = handler.ActiveRunners()
+	require.NotNil(t, activeRunners[0])
+	require.NotNil(t, activeRunners[1])
+	require.NotNil(t, activeRunners[2])
+	require.NotNil(t, activeRunners[3])
+	assert.True(t, activeRunners[0].Idle())
+	assert.True(t, activeRunners[1].Idle())
+	assert.True(t, activeRunners[2].Idle())
+	assert.True(t, activeRunners[3].Idle())
 }

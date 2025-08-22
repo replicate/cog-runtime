@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/peterbourgon/ff/v4"
@@ -24,6 +25,7 @@ type ServerConfig struct {
 	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
 	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
 	UploadUrl             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
+	WorkingDirectory      string `ff:"long: working-directory, nodefault, usage: explicit working directory override"`
 }
 
 var logger = util.CreateLogger("cog")
@@ -91,11 +93,32 @@ func serverCommand() (*ff.Command, error) {
 
 			addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 			log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
+
+			var err error
+			currentWorkingDirectory := cfg.WorkingDirectory
+			if currentWorkingDirectory == "" {
+				currentWorkingDirectory, err = os.Getwd()
+				if err != nil {
+					log.Errorw("failed to get current working directory", "error", err)
+					return err
+				}
+			}
+
 			serverCfg := server.Config{
 				UseProcedureMode:      cfg.UseProcedureMode,
 				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
 				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
 				UploadUrl:             cfg.UploadUrl,
+				WorkingDirectory:      currentWorkingDirectory,
+			}
+			// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
+			// statically create the runner list sized at 1.
+			if s, ok := os.LookupEnv("COG_MAX_RUNNERS"); ok && cfg.UseProcedureMode {
+				if i, err := strconv.Atoi(s); err == nil {
+					serverCfg.MaxRunners = i
+				} else {
+					log.Errorw("failed to parse COG_MAX_RUNNERS", "value", s)
+				}
 			}
 			ctx, cancel := context.WithCancel(ctx)
 			h, err := server.NewHandler(serverCfg, cancel)
@@ -103,7 +126,11 @@ func serverCommand() (*ff.Command, error) {
 				log.Errorw("failed to create server handler", "error", err)
 				return err
 			}
-			s := server.NewServer(addr, h, cfg.UseProcedureMode)
+			mux := server.NewServeMux(h, cfg.UseProcedureMode)
+			s := &http.Server{
+				Addr:    addr,
+				Handler: mux,
+			}
 			go func() {
 				<-ctx.Done()
 				if err := s.Shutdown(ctx); err != nil {

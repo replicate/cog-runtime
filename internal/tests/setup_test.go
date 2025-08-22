@@ -11,32 +11,32 @@ import (
 )
 
 func TestSetupSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.AppendEnvs("SETUP_SLEEP=1")
-	assert.NoError(t, ct.Start())
-	assert.Equal(t, server.StatusStarting.String(), ct.HealthCheck().Status)
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	t.Parallel()
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "SetupSleepingPredictor",
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 	assert.Equal(t, "starting setup\nsetup in progress 1/1\ncompleted setup\n", hc.Setup.Logs)
-	resp, err := http.DefaultClient.Get(ct.Url("/openapi.json"))
+
+	resp, err := http.DefaultClient.Get(runtimeServer.URL + "/openapi.json")
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
 }
 
 func TestSetupFailure(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.AppendArgs("--await-explicit-shutdown=true")
-	ct.AppendEnvs("SETUP_FAILURE=1")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
-	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
+	t.Parallel()
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "SetupFailingPredictor",
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace
 		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: setup failed\n")
@@ -44,27 +44,23 @@ func TestSetupFailure(t *testing.T) {
 		assert.Contains(t, hc.Setup.Logs, "starting setup\nsetup failed\nTraceback")
 	}
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
 }
 
 func TestSetupCrash(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.AppendArgs("--await-explicit-shutdown=true")
-	ct.AppendEnvs("SETUP_CRASH=1")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusSetupFailed.String(), hc.Status)
-	assert.Equal(t, server.SetupFailed, hc.Setup.Status)
+	t.Parallel()
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "SetupCrashingPredictor",
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace
-		// Compat: "SystemExit: 1" parsing error?
 		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: 1\n")
 	} else {
 		assert.Equal(t, "starting setup\nsetup crashed\n", hc.Setup.Logs)
 	}
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
 }

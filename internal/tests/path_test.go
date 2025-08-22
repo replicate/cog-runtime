@@ -2,14 +2,30 @@ package tests
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/util"
 )
+
+func testDataContentServer(t *testing.T) *httptest.Server {
+	fsys := os.DirFS("testdata")
+	s := httptest.NewServer(http.FileServer(http.FS(fsys)))
+	t.Cleanup(s.Close)
+	return s
+}
 
 func b64encode(s string) string {
 	b64 := base64.StdEncoding.EncodeToString([]byte(s))
@@ -22,234 +38,447 @@ func b64encodeLegacy(s string) string {
 }
 
 func TestPredictionPathBase64Succeeded(t *testing.T) {
-	ct := NewCogTest(t, "path")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	resp := ct.Prediction(map[string]any{"p": b64encode("bar")})
-	logs := "reading input file\nwriting output file\n"
-	if *legacyCog {
-		// Compat: different MIME type detection logic
-		ct.AssertResponse(resp, server.PredictionSucceeded, b64encodeLegacy("*bar*"), logs)
-	} else {
-		ct.AssertResponse(resp, server.PredictionSucceeded, b64encode("*bar*"), logs)
+	t.Parallel()
+	allowedOutputs := []string{
+		b64encode("*bar*"),
+		b64encodeLegacy("*bar*"),
 	}
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "path",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	prediction := map[string]any{"p": b64encode("bar")}
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
+
+	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Contains(t, allowedOutputs, predictionResponse.Output)
+	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
 }
 
 func TestPredictionPathURLSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "path")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	resp := ct.Prediction(map[string]any{"p": "https://raw.githubusercontent.com/replicate/cog-runtime/refs/heads/main/.python-version"})
-	logs := "reading input file\nwriting output file\n"
-	if *legacyCog {
-		// Compat: different MIME type detection logic
-		ct.AssertResponse(resp, server.PredictionSucceeded, b64encodeLegacy("*3.9\n*"), logs)
-	} else {
-		ct.AssertResponse(resp, server.PredictionSucceeded, b64encode("*3.9\n*"), logs)
+	t.Parallel()
+	allowedOutputs := []string{
+		b64encode("*3.9\n*"),
+		b64encodeLegacy("*3.9\n*"),
 	}
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "path",
+		predictorClass:   "Predictor",
+	})
+	ts := testDataContentServer(t)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	prediction := map[string]any{"p": ts.URL + "/.python_version"}
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+
+	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+
+	assert.Contains(t, allowedOutputs, predictionResponse.Output)
+	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
 }
 
 func TestPredictionNotPathSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "not_path")
-	assert.NoError(t, ct.Start())
+	t.Parallel()
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "not_path",
+		predictorClass:   "Predictor",
+	})
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	// s: str should not be handled
-	resp := ct.Prediction(map[string]any{"s": "https://replicate.com"})
-	ct.AssertResponse(resp, server.PredictionSucceeded, "*https://replicate.com*", "")
+	prediction := map[string]any{"s": "https://replicate.com"}
+	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
+
+	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, "*https://replicate.com*", predictionResponse.Output)
+	assert.Equal(t, "", predictionResponse.Logs)
 }
 
 func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "path")
-	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+	t.Parallel()
+	allowedContentTypes := []string{"text/plain; charset=utf-8", "text/plain"}
+	receiverServer := testHarnessReceiverServer(t)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        receiverServer.URL + "/upload/",
+		module:           "path",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	prediction := server.PredictionRequest{
+		Input:               map[string]any{"p": b64encode("bar")},
+		Webhook:             receiverServer.URL + "/webhook",
+		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+	}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
-	resp := ct.PredictionWithUpload(map[string]any{"p": b64encode("bar")})
-	logs := "reading input file\nwriting output file\n"
-	assert.Equal(t, server.PredictionSucceeded, resp.Status)
-	output := resp.Output.(string)
-	assert.True(t, strings.HasPrefix(output, ct.UploadUrl()))
-	assert.Equal(t, logs, resp.Logs)
-
-	ul := ct.GetUploads()
-	assert.Len(t, ul, 1)
-	body := string(ul[0].Body)
-	assert.Contains(t, body, "*bar*")
-	if *legacyCog {
-		// Compat: legacy Cog sends multipart with output_file_prefix but actual mime-type with --upload-url?
-		assert.True(t, strings.HasPrefix(ul[0].ContentType, "multipart/form-data"))
-	} else {
-		assert.Equal(t, "text/plain; charset=utf-8", ul[0].ContentType)
+	// Wait for webhook completion
+	var webhook webhookData
+	select {
+	case webhook = <-receiverServer.webhookReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
 	}
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
+	output, ok := webhook.Response.Output.(string)
+	assert.True(t, ok)
+	assert.True(t, strings.HasPrefix(output, receiverServer.URL+"/upload/"))
+
+	filename, ok := strings.CutPrefix(output, receiverServer.URL+"/upload/")
+	assert.True(t, ok)
+
+	// Ensure we have reeived the upload before continuing.
+	var uploadData uploadData
+	select {
+	case uploadData = <-receiverServer.uploadReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for upload")
+	}
+
+	assert.Len(t, receiverServer.uploadRequests, 1)
+	assert.Equal(t, "PUT", uploadData.Method)
+	assert.Equal(t, "/upload/"+filename, uploadData.Path)
+	assert.Contains(t, allowedContentTypes, uploadData.ContentType)
+	assert.Equal(t, "*bar*", string(uploadData.Body))
 }
 
 func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "path")
-	ct.StartWebhook()
-	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	t.Parallel()
+	allowedContentTypes := []string{"text/plain; charset=utf-8", "text/plain"}
+	receiverServer := testHarnessReceiverServer(t)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        receiverServer.URL + "/upload/",
+		module:           "path",
+		predictorClass:   "Predictor",
+	})
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	ct.AsyncPrediction(map[string]any{"p": b64encode("bar")})
-	wr := ct.WaitForWebhookCompletion()
-	ul := ct.GetUploads()
+	prediction := server.PredictionRequest{
+		Input:               map[string]any{"p": b64encode("bar")},
+		Webhook:             receiverServer.URL + "/webhook",
+		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+	}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-	assert.Len(t, ul, 1)
-	logs := "reading input file\nwriting output file\n"
-	filename, ok := strings.CutPrefix(ul[0].Path, "/upload/")
-	assert.True(t, ok)
-	url := fmt.Sprintf("%s%s", ct.UploadUrl(), filename)
-	ct.AssertResponses(wr, server.PredictionSucceeded, url, logs)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
-	body := string(ul[0].Body)
-	assert.Contains(t, body, "*bar*")
-	if *legacyCog {
-		// Compat: legacy Cog does not detect text encoding?
-		assert.Equal(t, "text/plain", ul[0].ContentType)
-	} else {
-		assert.Equal(t, "text/plain; charset=utf-8", ul[0].ContentType)
+	// Wait for webhook completion
+	var webhook webhookData
+	select {
+	case webhook = <-receiverServer.webhookReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
 	}
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
+	output, ok := webhook.Response.Output.(string)
+	assert.True(t, ok)
+	assert.True(t, strings.HasPrefix(output, receiverServer.URL+"/upload/"))
+
+	filename, ok := strings.CutPrefix(output, receiverServer.URL+"/upload/")
+	assert.True(t, ok)
+
+	// Ensure we have received the upload before continuing
+	var uploadData uploadData
+	select {
+	case uploadData = <-receiverServer.uploadReceiverChan:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for upload")
+	}
+
+	assert.Len(t, receiverServer.uploadRequests, 1)
+	assert.Equal(t, "PUT", uploadData.Method)
+	assert.Equal(t, "/upload/"+filename, uploadData.Path)
+	assert.Contains(t, allowedContentTypes, uploadData.ContentType)
+	assert.Equal(t, "*bar*", string(uploadData.Body))
 }
 
 func TestPredictionPathUploadIterator(t *testing.T) {
-	ct := NewCogTest(t, "path_out_iter")
-	ct.StartWebhook()
-	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	t.Parallel()
+	receiverServer := testHarnessReceiverServer(t)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        receiverServer.URL + "/upload/",
+		module:           "path_out_iter",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	prediction := server.PredictionRequest{
+		Input:   map[string]any{"n": 3},
+		Webhook: receiverServer.URL + "/webhook",
+	}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-	ct.AsyncPrediction(map[string]any{"n": 3})
-	wr := ct.WaitForWebhookCompletion()
-	ul := ct.GetUploads()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	require.NoError(t, err)
 
-	assert.Len(t, wr, 5)
-	assert.Equal(t, server.PredictionProcessing, wr[0].Status)
-	assert.Nil(t, wr[0].Output)
-	assert.Equal(t, server.PredictionProcessing, wr[1].Status)
-	assert.Len(t, wr[1].Output.([]any), 1)
-	assert.Equal(t, server.PredictionProcessing, wr[2].Status)
-	assert.Len(t, wr[2].Output.([]any), 2)
-	assert.Equal(t, server.PredictionProcessing, wr[3].Status)
-	assert.Len(t, wr[3].Output.([]any), 3)
-	assert.Equal(t, server.PredictionSucceeded, wr[4].Status)
-	assert.Len(t, wr[4].Output.([]any), 3)
+	// Process and validate the webhook data
+	timer := time.After(10 * time.Second)
+	for count := 0; count < 5; count++ {
+		select {
+		case webhook := <-receiverServer.webhookReceiverChan:
+			switch count {
+			case 0:
+				assert.Equal(t, server.PredictionProcessing, webhook.Response.Status)
+				assert.Nil(t, webhook.Response.Output)
+			case 1, 2, 3:
+				assert.Equal(t, server.PredictionProcessing, webhook.Response.Status)
+				output, ok := webhook.Response.Output.([]any)
+				require.True(t, ok)
+				assert.Len(t, output, count)
+			case 4:
+				assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+				output, ok := webhook.Response.Output.([]any)
+				require.True(t, ok)
+				assert.Len(t, output, 3)
+			}
+		case <-timer:
+			t.Fatalf("timeout waiting for webhooks")
+		}
+	}
+	assert.Len(t, receiverServer.webhookRequests, 5)
 
-	assert.Len(t, ul, 3)
-	assert.Equal(t, "out0", string(ul[0].Body))
-	assert.Equal(t, "out1", string(ul[1].Body))
-	assert.Equal(t, "out2", string(ul[2].Body))
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	// Process and validate the uploads
+	timer = time.After(10 * time.Second)
+	for count := 0; count < 3; count++ {
+		select {
+		case upload := <-receiverServer.uploadReceiverChan:
+			assert.Equal(t, "out"+strconv.Itoa(count), string(upload.Body))
+		case <-timer:
+			t.Fatalf("timeout waiting for uploads")
+		}
+	}
+	assert.Len(t, receiverServer.webhookRequests, 5)
 }
 
-const TestDataPrefix = "https://raw.githubusercontent.com/gabriel-vasile/mimetype/refs/heads/master/testdata/"
-
 func TestPredictionPathMimeTypes(t *testing.T) {
-	ct := NewCogTest(t, "mime")
-	ct.StartWebhook()
-	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	t.Parallel()
+	receiverServer := testHarnessReceiverServer(t)
+	contentServer := testDataContentServer(t)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        receiverServer.URL + "/upload/",
+		module:           "mime",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+	testDataPrefix := contentServer.URL + "/mimetype/"
 
-	ct.AsyncPredictionWithId("p1", map[string]any{"u": TestDataPrefix + "gif.gif"})
-	ct.WaitForWebhookCompletion()
+	gifPredictionID, err := util.PredictionId()
+	require.NoError(t, err)
+	jarPredictionID, err := util.PredictionId()
+	require.NoError(t, err)
+	tarPredictionID, err := util.PredictionId()
+	require.NoError(t, err)
+	webpPredictionID, err := util.PredictionId()
+	require.NoError(t, err)
 
-	ct.AsyncPredictionWithId("p2", map[string]any{"u": TestDataPrefix + "jar.jar"})
-	ct.WaitForWebhookCompletion()
-
-	ct.AsyncPredictionWithId("p3", map[string]any{"u": TestDataPrefix + "tar.tar"})
-	ct.WaitForWebhookCompletion()
-
-	ct.AsyncPredictionWithId("p4", map[string]any{"u": "https://www.gstatic.com/webp/gallery/1.sm.webp"})
-	ct.WaitForWebhookCompletion()
-
-	ul := ct.GetUploads()
-	assert.Len(t, ul, 4)
-
-	assert.Equal(t, "image/gif", ul[0].ContentType)
-	mimeJar := "application/jar"
-	if *legacyCog {
-		mimeJar = "application/java-archive"
+	predictions := []struct {
+		fileName            string
+		predictionID        string
+		allowedContentTypes []string
+	}{
+		{
+			fileName:            "gif.gif",
+			predictionID:        gifPredictionID,
+			allowedContentTypes: []string{"image/gif"},
+		},
+		{
+			fileName:            "jar.jar",
+			predictionID:        jarPredictionID,
+			allowedContentTypes: []string{"application/jar", "application/java-archive"},
+		},
+		{
+			fileName:            "tar.tar",
+			predictionID:        tarPredictionID,
+			allowedContentTypes: []string{"application/x-tar"},
+		},
+		{
+			fileName:            "1.sm.webp",
+			predictionID:        webpPredictionID,
+			allowedContentTypes: []string{"image/webp"},
+		},
 	}
-	assert.Equal(t, mimeJar, ul[1].ContentType)
-	assert.Equal(t, "application/x-tar", ul[2].ContentType)
-	assert.Equal(t, "image/webp", ul[3].ContentType)
+	for _, tc := range predictions {
+		// Each of these are treated as subtests, they will be run serially
+		t.Run(tc.fileName, func(t *testing.T) {
+			prediction := server.PredictionRequest{
+				Input:               map[string]any{"u": testDataPrefix + tc.fileName},
+				Id:                  tc.predictionID,
+				Webhook:             receiverServer.URL + "/webhook",
+				WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+			}
+			t.Logf("prediction file: %s", tc.fileName)
+			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+			_, _ = io.Copy(io.Discard, resp.Body)
+
+			// Wait for webhook completion
+			select {
+			case webhook := <-receiverServer.webhookReceiverChan:
+				assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timeout waiting for webhook")
+			}
+
+			// Validate the upload
+			select {
+			case upload := <-receiverServer.uploadReceiverChan:
+				assert.Contains(t, tc.allowedContentTypes, upload.ContentType)
+				assert.Equal(t, "PUT", upload.Method)
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timeout waiting for upload")
+			}
+		})
+	}
+
+	// Ensure we didn't receive any superfluous uploads
+	assert.Len(t, receiverServer.uploadRequests, len(predictions))
 }
 
 func TestPredictionPathMultiMimeTypes(t *testing.T) {
-	ct := NewCogTest(t, "mimes")
-	ct.StartWebhook()
-	ct.AppendArgs(fmt.Sprintf("--upload-url=http://localhost:%d/upload/", ct.webhookPort))
-	assert.NoError(t, ct.Start())
+	receiverServer := testHarnessReceiverServer(t)
+	contentServer := testDataContentServer(t)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        receiverServer.URL + "/upload/",
+		module:           "mimes",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	ct.AsyncPredictionWithId("p1", map[string]any{
-		"us": []string{
-			TestDataPrefix + "gif.gif",
-			TestDataPrefix + "jar.jar",
-			TestDataPrefix + "tar.tar",
-			"https://www.gstatic.com/webp/gallery/1.sm.webp",
-		}})
-	ct.WaitForWebhookCompletion()
-
-	ul := ct.GetUploads()
-	assert.Len(t, ul, 4)
-
-	assert.Equal(t, "image/gif", ul[0].ContentType)
-	mimeJar := "application/jar"
-	if *legacyCog {
-		mimeJar = "application/java-archive"
+	files := []struct {
+		fileName            string
+		allowedContentTypes []string
+	}{
+		{
+			fileName:            "gif.gif",
+			allowedContentTypes: []string{"image/gif"},
+		},
+		{
+			fileName:            "jar.jar",
+			allowedContentTypes: []string{"application/jar", "application/java-archive"},
+		},
+		{
+			fileName:            "tar.tar",
+			allowedContentTypes: []string{"application/x-tar"},
+		},
+		{
+			fileName:            "1.sm.webp",
+			allowedContentTypes: []string{"image/webp"},
+		},
 	}
-	assert.Equal(t, mimeJar, ul[1].ContentType)
-	assert.Equal(t, "application/x-tar", ul[2].ContentType)
-	assert.Equal(t, "image/webp", ul[3].ContentType)
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	prediction := server.PredictionRequest{
+		Input: map[string]any{"us": []string{
+			contentServer.URL + "/mimetype/" + files[0].fileName,
+			contentServer.URL + "/mimetype/" + files[1].fileName,
+			contentServer.URL + "/mimetype/" + files[2].fileName,
+			contentServer.URL + "/mimetype/" + files[3].fileName,
+		}},
+		Webhook:             receiverServer.URL + "/webhook",
+		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+	}
+
+	req := httpPredictionRequest(t, runtimeServer, prediction)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	// Wait for webhook completion
+	select {
+	case webhook := <-receiverServer.webhookReceiverChan:
+		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for webhook")
+	}
+
+	// Validate the uploads
+	for _, file := range files {
+		select {
+		case upload := <-receiverServer.uploadReceiverChan:
+			assert.Contains(t, file.allowedContentTypes, upload.ContentType)
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timeout waiting for upload")
+		}
+	}
+	// Ensure we didn't receive any superfluous uploads
+	assert.Len(t, receiverServer.uploadRequests, len(files))
 }

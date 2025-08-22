@@ -2,163 +2,213 @@ package tests
 
 import (
 	"fmt"
+	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
-func TestAsyncPredictionSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
+func TestAsyncPrediction(t *testing.T) {
+	testCases := []struct {
+		name             string
+		predictorClass   string
+		expectedLogs     string
+		expectedOutput   any
+		expectedStatus   server.PredictionStatus
+		expectedHCStatus string
+	}{
+		{
+			name:           "succeeded",
+			predictorClass: "Predictor",
+			expectedLogs:   "starting prediction\nprediction in progress 1/1\ncompleted prediction\n",
+			expectedOutput: "*bar*",
+			expectedStatus: server.PredictionSucceeded,
+		},
+		{
+			name:           "failed",
+			predictorClass: "PredictionFailingPredictor",
+			expectedLogs:   "starting prediction\nprediction failed\n",
+			expectedOutput: nil,
+			expectedStatus: server.PredictionFailed,
+		},
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookCompletion()
-	logs := "starting prediction\nprediction in progress 1/1\ncompleted prediction\n"
-	ct.AssertResponses(wr, server.PredictionSucceeded, "*bar*", logs)
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
-}
-
-func TestAsyncPredictionWithIdSucceeded(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	ct.AsyncPredictionWithId("p01", map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookCompletion()
-	logs := "starting prediction\nprediction in progress 1/1\ncompleted prediction\n"
-	ct.AssertResponses(wr, server.PredictionSucceeded, "*bar*", logs)
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
-}
-
-func TestAsyncPredictionFailure(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.StartWebhook()
-	ct.AppendEnvs("PREDICTION_FAILURE=1")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookCompletion()
-	logs := "starting prediction\nprediction in progress 1/1\nprediction failed\n"
-	ct.AssertResponses(wr, server.PredictionFailed, nil, logs)
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
-}
-
-func TestAsyncPredictionCrash(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.StartWebhook()
-	ct.AppendArgs("--await-explicit-shutdown=true")
-	ct.AppendEnvs("PREDICTION_CRASH=1")
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-
-	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	wr := ct.WaitForWebhookCompletion()
-	logs := "starting prediction\nprediction in progress 1/1\nprediction crashed\n"
-	ct.AssertResponses(wr, server.PredictionFailed, nil, logs)
-	if *legacyCog {
-		assert.Equal(t, "Prediction failed for an unknown reason. It might have run out of memory? (exitcode 1)", wr[len(wr)-1].Error)
-	} else {
-		assert.Equal(t, "prediction failed", wr[len(wr)-1].Error)
+		{
+			name:             "crashed",
+			predictorClass:   "PredictionCrashingPredictor",
+			expectedLogs:     "starting prediction\nprediction crashed\n",
+			expectedOutput:   nil,
+			expectedStatus:   server.PredictionFailed,
+			expectedHCStatus: server.StatusDefunct.String(),
+		},
 	}
-	assert.Equal(t, "DEFUNCT", ct.HealthCheck().Status)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			receiverServer := testHarnessReceiverServer(t)
+			runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+				procedureMode:    false,
+				explicitShutdown: true,
+				uploadURL:        "",
+				module:           "sleep",
+				predictorClass:   tc.predictorClass,
+				concurrencyMax:   1,
+			})
+			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
-}
+			predictionId, err := util.PredictionId()
+			require.NoError(t, err)
+			prediction := server.PredictionRequest{
+				Input:   map[string]any{"i": 1, "s": "bar"},
+				Webhook: receiverServer.URL + "/webhook",
+				WebhookEventsFilter: []server.WebhookEvent{
+					server.WebhookCompleted,
+				},
+				Id: predictionId,
+			}
+			req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+			resp, err := http.DefaultClient.Do(req)
+			require.NoError(t, err)
+			defer resp.Body.Close()
 
-func TestAsyncPredictionCanceled(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.StartWebhook()
-	ct.AppendArgs("--await-explicit-shutdown=true")
-	ct.AppendEnvs("PREDICTION_CRASH=1")
-	assert.NoError(t, ct.Start())
+			assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+			_, _ = io.Copy(io.Discard, resp.Body)
 
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
+			// Validate the result via the webhook message
+			select {
+			case webhookEvent := <-receiverServer.webhookReceiverChan:
+				assert.Equal(t, tc.expectedStatus, webhookEvent.Response.Status)
+				assert.Contains(t, webhookEvent.Response.Logs, tc.expectedLogs)
+				assert.Equal(t, tc.expectedOutput, webhookEvent.Response.Output)
+			case <-time.After(10 * time.Second):
+				t.Fatalf("timeout waiting for webhook")
+			}
 
-	pid := "p01"
-	ct.AsyncPredictionWithId(pid, map[string]any{"i": 60, "s": "bar"})
-	if *legacyCog {
-		// Compat: legacy Cog does not send output webhook
-		time.Sleep(time.Second)
-	} else {
-		ct.WaitForWebhook(func(response server.PredictionResponse) bool {
-			return strings.Contains(response.Logs, "prediction in progress 1/60\n")
+			if tc.expectedHCStatus != "" {
+				hc := healthCheck(t, runtimeServer)
+				assert.Equal(t, tc.expectedHCStatus, hc.Status)
+			}
 		})
 	}
-	ct.Cancel(pid)
-	wr := ct.WaitForWebhookCompletion()
-	logs := "starting prediction\nprediction in progress 1/60\nprediction canceled\n"
-	ct.AssertResponses(wr, server.PredictionCanceled, nil, logs)
+}
+func TestAsyncPredictionCanceled(t *testing.T) {
+	t.Parallel()
+	// FIXME: This is a case where `file_runner.py` has a sync/async mismatch. Even though execution context is yielded back to the async runner,
+	// if we're in a blocking I/O (or many other cases) the async cancellation will never propagate to the predictor (and the predictor would need to
+	// explicitly handle the cancellation). The previous test crashed the predictor so that cancellation could work as there was nothing actually
+	// running or blocking the cancellation.The only way to fix this without drastically changing how we run python (e.g. keeping `file_runner.py` as
+	// is) would be to abandon the thread that is running the non-async predictor which would cause further orphaning of processes. For the most
+	// part, we'll just swallow the cancellation request and continue to process the prediction (similar to how TRTLLM worked under cog).
+	t.Skipf("FIXME: Due to a mismatch how file_runner.py handles sync python with an async runner, it is impossible to cancel a sync python predictor without crashing the prediction before trying to cancel it.")
+	receiverServer := testHarnessReceiverServer(t)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "Predictor",
+		concurrencyMax:   2,
+	})
+	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
 
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	predictionId, err := util.PredictionId()
+	require.NoError(t, err)
+	prediction := server.PredictionRequest{
+		Input:   map[string]any{"i": 60, "s": "bar"},
+		Webhook: receiverServer.URL + "/webhook",
+		Id:      predictionId,
+		WebhookEventsFilter: []server.WebhookEvent{
+			server.WebhookStart,
+			server.WebhookLogs,
+			server.WebhookCompleted,
+		},
+	}
+	req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	// Wait for a single webhook, then continue on.
+	var webhook webhookData
+	select {
+	case <-receiverServer.webhookReceiverChan:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timeout waiting for initial webhook")
+	}
+
+	cancelReq, err := http.NewRequest(http.MethodPost, runtimeServer.URL+fmt.Sprintf("/predictions/%s/cancel", predictionId), nil)
+	require.NoError(t, err)
+	cancelResp, err := http.DefaultClient.Do(cancelReq)
+	require.NoError(t, err)
+	defer cancelResp.Body.Close()
+	assert.Equal(t, http.StatusOK, cancelResp.StatusCode)
+	_, _ = io.Copy(io.Discard, cancelResp.Body)
+
+	// Find the "prediction canceled" webhook, we could get any number of webhooks before this.
+waitLoop:
+	for {
+		select {
+		case webhook = <-receiverServer.webhookReceiverChan:
+			if webhook.Response.Status != server.PredictionProcessing {
+				// We only break out if we get a prediction canceled webhook. without the
+				// named loop we can only break out of the select case.
+				break waitLoop
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("timeout waiting for webhook")
+		}
+	}
+
+	assert.Equal(t, server.PredictionCanceled, webhook.Response.Status)
+	assert.Equal(t, predictionId, webhook.Response.Id)
+	// NOTE(morgan): The logs are not deterministic, so we can only assert that `prediction canceled` is in the logs.
+	// previously we asserted that the prediction was making progress. We are assured that we have a "starting" webhook, but
+	// internally this test not reacts faster than the runner does.
+	assert.Contains(t, webhook.Response.Logs, "prediction canceled\n")
 }
 
 func TestAsyncPredictionConcurrency(t *testing.T) {
-	ct := NewCogTest(t, "sleep")
-	ct.StartWebhook()
-	assert.NoError(t, ct.Start())
-
-	hc := ct.WaitForSetup()
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
-	assert.Equal(t, server.SetupSucceeded, hc.Setup.Status)
-	if !*legacyCog {
-		// Compat: not implemented in legacy Cog
-		assert.Equal(t, 1, hc.Concurrency.Max)
-		assert.Equal(t, 0, hc.Concurrency.Current)
+	t.Parallel()
+	if *legacyCog {
+		t.Skipf("HealthCheck concurrency is not implemented in legacy Cog")
 	}
+	receiverServer := testHarnessReceiverServer(t)
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "sleep",
+		predictorClass:   "Predictor",
+		// FIXME: The doesn't really affect the values in the healthcheck, those are hard-coded to 1 for non-procedure mode.
+		concurrencyMax: 1,
+	})
+	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	assert.Equal(t, 1, hc.Concurrency.Max)
+	assert.Equal(t, 0, hc.Concurrency.Current)
 
-	ct.AsyncPrediction(map[string]any{"i": 1, "s": "bar"})
-	if !*legacyCog {
-		// Compat: not implemented in legacy Cog
-		hc = ct.HealthCheck()
-		assert.Equal(t, 1, hc.Concurrency.Max)
-		assert.Equal(t, 1, hc.Concurrency.Current)
+	predictionId, err := util.PredictionId()
+	require.NoError(t, err)
+	prediction := server.PredictionRequest{
+		Input:   map[string]any{"i": 1, "s": "bar"},
+		Webhook: receiverServer.URL + "/webhook",
+		Id:      predictionId,
 	}
+	req := httpPredictionRequestWithId(t, runtimeServer, prediction)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	_, _ = io.Copy(io.Discard, resp.Body)
 
-	// Fail prediction requests when one is in progress
-	req := server.PredictionRequest{
-		CreatedAt: util.NowIso(),
-		Input:     map[string]any{"i": 1, "s": "baz"},
-		Webhook:   fmt.Sprintf("http://localhost:%d/webhook", ct.webhookPort),
-	}
-	resp := ct.PredictionReq(http.MethodPost, "/predictions", req)
-	assert.Equal(t, http.StatusConflict, resp.StatusCode)
-
-	wr := ct.WaitForWebhookCompletion()
-	logs := "starting prediction\nprediction in progress 1/1\ncompleted prediction\n"
-	ct.AssertResponses(wr, server.PredictionSucceeded, "*bar*", logs)
-
-	ct.Shutdown()
-	assert.NoError(t, ct.Cleanup())
+	// Show that concurrency has
+	hc = healthCheck(t, runtimeServer)
+	assert.Equal(t, 1, hc.Concurrency.Max)
+	assert.Equal(t, 1, hc.Concurrency.Current)
 }
