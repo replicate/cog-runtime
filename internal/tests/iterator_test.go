@@ -55,7 +55,6 @@ func TestIteratorTypes(t *testing.T) {
 			defer resp.Body.Close()
 			assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 			_, _ = io.Copy(io.Discard, resp.Body)
-			require.NoError(t, err)
 			var predictionResponse server.PredictionResponse
 			for webhook := range receiverServer.webhookReceiverChan {
 				if webhook.Response.Status == server.PredictionSucceeded {

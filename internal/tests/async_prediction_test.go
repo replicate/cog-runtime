@@ -79,8 +79,6 @@ func TestAsyncPrediction(t *testing.T) {
 			assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 			_, _ = io.Copy(io.Discard, resp.Body)
 
-			require.NoError(t, err)
-
 			// Validate the result via the webhook message
 			select {
 			case webhookEvent := <-receiverServer.webhookReceiverChan:
@@ -88,6 +86,7 @@ func TestAsyncPrediction(t *testing.T) {
 				assert.Contains(t, webhookEvent.Response.Logs, tc.expectedLogs)
 				assert.Equal(t, tc.expectedOutput, webhookEvent.Response.Output)
 			case <-time.After(10 * time.Second):
+				t.Fatalf("timeout waiting for webhook")
 			}
 
 			if tc.expectedHCStatus != "" {
@@ -135,7 +134,6 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 	_, _ = io.Copy(io.Discard, resp.Body)
-	require.NoError(t, err)
 
 	// Wait for a single webhook, then continue on.
 	var webhook webhookData
@@ -159,6 +157,8 @@ waitLoop:
 		select {
 		case webhook = <-receiverServer.webhookReceiverChan:
 			if webhook.Response.Status != server.PredictionProcessing {
+				// We only break out if we get a prediction canceled webhook. without the
+				// named loop we can only break out of the select case.
 				break waitLoop
 			}
 		case <-time.After(10 * time.Second):
@@ -206,7 +206,6 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 	_, _ = io.Copy(io.Discard, resp.Body)
-	require.NoError(t, err)
 
 	// Show that concurrency has
 	hc = healthCheck(t, runtimeServer)
