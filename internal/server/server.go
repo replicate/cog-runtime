@@ -232,6 +232,15 @@ func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ForceKillAll immediately force-kills all runners (for test cleanup)
+func (h *Handler) ForceKillAll() {
+	for _, runner := range h.runners {
+		if runner != nil {
+			runner.ForceKill()
+		}
+	}
+}
+
 func (h *Handler) Stop() error {
 	log := logger.Sugar()
 	// Procedure mode and no runner yet
@@ -557,7 +566,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "empty procedure_source_url or replicate_api_token", http.StatusBadRequest)
 			return
 		}
-		c, err = h.predictWithRunner(procedureSourceURL, req)
+		c, err = h.predictWithRunner(procedureSourceURL, req) //nolint:contextcheck // context passing not viable in current architecture
 	} else {
 		c, err = h.runners[DefaultRunnerID].Predict(req)
 	}

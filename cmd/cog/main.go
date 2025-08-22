@@ -21,12 +21,13 @@ import (
 )
 
 type ServerConfig struct {
-	Host                  string `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
-	Port                  int    `ff:"long: port, default: 5000, usage: HTTP server port"`
-	UseProcedureMode      bool   `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
-	AwaitExplicitShutdown bool   `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
-	UploadURL             string `ff:"long: upload-url, nodefault, usage: output file upload URL"`
-	WorkingDirectory      string `ff:"long: working-directory, nodefault, usage: explicit working directory override"`
+	Host                      string        `ff:"long: host, default: 0.0.0.0, usage: HTTP server host"`
+	Port                      int           `ff:"long: port, default: 5000, usage: HTTP server port"`
+	UseProcedureMode          bool          `ff:"long: use-procedure-mode, default: false, usage: use-procedure mode"`
+	AwaitExplicitShutdown     bool          `ff:"long: await-explicit-shutdown, default: false, usage: await explicit shutdown"`
+	UploadURL                 string        `ff:"long: upload-url, nodefault, usage: output file upload URL"`
+	WorkingDirectory          string        `ff:"long: working-directory, nodefault, usage: explicit working directory override"`
+	RunnerShutdownGracePeriod time.Duration `ff:"long: runner-shutdown-grace-period, default: 5s, usage: how long to wait before force-killing runners after Stop()"`
 }
 
 var logger = util.CreateLogger("cog")
@@ -106,11 +107,12 @@ func serverCommand() (*ff.Command, error) {
 			}
 
 			serverCfg := server.Config{
-				UseProcedureMode:      cfg.UseProcedureMode,
-				AwaitExplicitShutdown: cfg.AwaitExplicitShutdown,
-				IPCUrl:                fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
-				UploadURL:             cfg.UploadURL,
-				WorkingDirectory:      currentWorkingDirectory,
+				UseProcedureMode:          cfg.UseProcedureMode,
+				AwaitExplicitShutdown:     cfg.AwaitExplicitShutdown,
+				IPCUrl:                    fmt.Sprintf("http://localhost:%d/_ipc", cfg.Port),
+				UploadURL:                 cfg.UploadURL,
+				WorkingDirectory:          currentWorkingDirectory,
+				RunnerShutdownGracePeriod: cfg.RunnerShutdownGracePeriod,
 			}
 			// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
 			// statically create the runner list sized at 1.
@@ -122,7 +124,7 @@ func serverCommand() (*ff.Command, error) {
 				}
 			}
 			ctx, cancel := context.WithCancel(ctx)
-			h, err := server.NewHandler(serverCfg, cancel)
+			h, err := server.NewHandler(serverCfg, cancel) //nolint:contextcheck // context passing not viable in current architecture
 			if err != nil {
 				log.Errorw("failed to create server handler", "error", err)
 				return err

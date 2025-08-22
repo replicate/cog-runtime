@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -75,22 +76,28 @@ func (pr *PendingPrediction) sendResponse() {
 	pr.c <- pr.response
 }
 
+// killFunc is the function signature for killing processes
+type killFunc func(pid int, sig syscall.Signal) error
+
 type Runner struct {
-	name           string
-	workingDir     string
-	tmpDir         string // temp directory for process isolation
-	cmd            exec.Cmd
-	status         Status
-	schema         string
-	doc            *openapi3.T
-	setupResult    SetupResult
-	logs           []string
-	asyncPredict   bool
-	maxConcurrency int
-	pending        map[string]*PendingPrediction
-	uploadURL      string
-	mu             sync.Mutex
-	stopped        chan bool
+	name                string
+	workingDir          string
+	tmpDir              string // temp directory for process isolation
+	cmd                 exec.Cmd
+	status              Status
+	schema              string
+	doc                 *openapi3.T
+	setupResult         SetupResult
+	logs                []string
+	asyncPredict        bool
+	maxConcurrency      int
+	pending             map[string]*PendingPrediction
+	uploadURL           string
+	shutdownGracePeriod time.Duration
+	killed              bool     // tracks if we've killed this process instance
+	killFn              killFunc // injectable kill function for testing
+	mu                  sync.Mutex
+	stopped             chan bool
 }
 
 const (
@@ -116,20 +123,25 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 		"--ipc-url", cfg.IPCUrl,
 		"--working-dir", workingDir,
 	}
-	cmd := exec.Command(pythonBinPath, args...) //nolint:gosec // expected subprocess launched with variable
+	// Use CommandContext so we can cancel the process tree
+	ctx := context.Background()                             // We do not have a clear context through the whole stack yet, so mint a context here.
+	cmd := exec.CommandContext(ctx, pythonBinPath, args...) //nolint:gosec // expected subprocess launched with variable
 	cmd.Dir = cwd
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	cmd.Env = mergeEnv(os.Environ(), cfg.EnvSet, cfg.EnvUnset)
 
 	return &Runner{
-		name:           name,
-		workingDir:     workingDir,
-		cmd:            *cmd,
-		status:         StatusStarting,
-		maxConcurrency: 1,
-		pending:        make(map[string]*PendingPrediction),
-		uploadURL:      cfg.UploadURL,
-		stopped:        make(chan bool),
+		name:                name,
+		workingDir:          workingDir,
+		cmd:                 *cmd,
+		status:              StatusStarting,
+		maxConcurrency:      1,
+		pending:             make(map[string]*PendingPrediction),
+		uploadURL:           cfg.UploadURL,
+		shutdownGracePeriod: cfg.RunnerShutdownGracePeriod,
+		killFn:              nil, // nil means use real syscall.Kill
+		stopped:             make(chan bool),
 	}, nil
 }
 
@@ -167,6 +179,40 @@ func (r *Runner) Start() error {
 	return nil
 }
 
+// ForceKill immediately kills the runner process group
+func (r *Runner) ForceKill() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	log := logger.Sugar()
+
+	// Skip if already killed, no process, or process already exited
+	if r.killed || r.cmd.Process == nil || r.cmd.ProcessState != nil {
+		if r.cmd.ProcessState != nil {
+			log.Infow("process already exited, nothing to do")
+		}
+		return
+	}
+
+	log.Infow("force killing process group", "pid", r.cmd.Process.Pid)
+
+	// Use injected kill function for testing, or real syscall.Kill
+	killFn := r.killFn
+	if killFn == nil {
+		killFn = syscall.Kill
+	}
+
+	if err := killFn(-r.cmd.Process.Pid, syscall.SIGKILL); err != nil {
+		// ESRCH means process already dead - that's expected and fine
+		if !errors.Is(err, syscall.ESRCH) {
+			log.Errorw("failed to kill process group", "pid", r.cmd.Process.Pid, "error", err)
+		}
+	}
+
+	// Mark as killed to prevent PID reuse issues
+	r.killed = true
+}
+
 func (r *Runner) Stop() error {
 	log := logger.Sugar()
 	log.Infow("stop requested")
@@ -181,13 +227,34 @@ func (r *Runner) Stop() error {
 
 	if r.cmd.ProcessState != nil {
 		// Python process already exited
-		// Shutdown HTTP server
 		return nil
 	}
-	// Otherwise signal Python process to stop
-	// FIXME: kill process after grace period
+
+	// Signal graceful shutdown
 	p := filepath.Join(r.workingDir, "stop")
-	return os.WriteFile(p, []byte{}, 0o644) //nolint:gosec // TODO: evaluate if 0o644 is correct mode
+	if err := os.WriteFile(p, []byte{}, 0o644); err != nil { //nolint:gosec // TODO: evaluate if 0o644 is correct mode
+		log.Errorw("failed to write stop file", "error", err)
+	}
+
+	// Start grace period timer if configured
+	if r.shutdownGracePeriod > 0 {
+		go func() {
+			timer := time.NewTimer(r.shutdownGracePeriod)
+			defer timer.Stop()
+
+			select {
+			case <-timer.C:
+				// Grace period expired, force kill
+				log.Infow("grace period expired, force killing", "gracePeriod", r.shutdownGracePeriod)
+				r.ForceKill()
+			case <-r.stopped:
+				// Process exited gracefully, timer will be cleaned up by defer
+				return
+			}
+		}()
+	}
+
+	return nil
 }
 
 func (r *Runner) ExitCode() int {
