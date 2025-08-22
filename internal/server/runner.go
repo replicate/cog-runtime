@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -412,42 +411,28 @@ func (r *Runner) config() error {
 		}
 	}
 
-	// For testing only, set by CogTest, to avoid creating a one-off cog.yaml
-	moduleName := os.Getenv("TEST_COG_MODULE_NAME")
-	predictorName := os.Getenv("TEST_COG_PREDICTOR_NAME")
-	maxConcurrencyStr := os.Getenv("TEST_COG_MAX_CONCURRENCY")
-	if maxConcurrencyStr != "" {
-		maxConcurrency, err := strconv.Atoi(maxConcurrencyStr)
-		if err != nil {
-			log.Errorw("failed to parse max concurrency, defaulting to 1", "error", err)
-			maxConcurrency = 1
-		}
-		r.maxConcurrency = maxConcurrency
+	var moduleName, predictorName string
+	y, err := util.ReadCogYaml(r.SrcDir())
+	if err != nil {
+		log.Errorw("failed to read cog.yaml", "path", r.SrcDir(), "error", err)
+		panic(err)
+	}
+	m, c, err := y.PredictModuleAndPredictor()
+	if err != nil {
+		log.Errorw("failed to parse predict", "error", err)
+		panic(err)
+	}
+	moduleName = m
+	predictorName = c
+	// Default to 1 if not set in cog.yaml, regardless whether async predict or not
+	r.maxConcurrency = max(1, y.Concurrency.Max)
+
+	// Send metrics for normal single instance runner
+	// Do not send for multi-tenant procedure runners to reduce noise
+	if r.name == DefaultRunnerName {
+		go util.SendRunnerMetric(*y)
 	}
 
-	// Otherwise read from cog.yaml
-	if moduleName == "" || predictorName == "" {
-		y, err := util.ReadCogYaml(r.SrcDir())
-		if err != nil {
-			log.Errorw("failed to read cog.yaml", "path", r.SrcDir(), "error", err)
-			panic(err)
-		}
-		m, c, err := y.PredictModuleAndPredictor()
-		if err != nil {
-			log.Errorw("failed to parse predict", "error", err)
-			panic(err)
-		}
-		moduleName = m
-		predictorName = c
-		// Default to 1 if not set in cog.yaml, regardless whether async predict or not
-		r.maxConcurrency = max(1, y.Concurrency.Max)
-
-		// Send metrics for normal single instance runner
-		// Do not send for multi-tenant procedure runners to reduce noise
-		if r.name == DefaultRunnerName {
-			go util.SendRunnerMetric(*y)
-		}
-	}
 	conf := PredictConfig{
 		ModuleName:     moduleName,
 		PredictorName:  predictorName,
