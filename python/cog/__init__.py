@@ -13,8 +13,6 @@ from coglet.api import (
 )
 from coglet.scope import current_scope
 
-from .coder import dataclass_coder
-
 __version__ = coglet.__version__
 
 __all__ = [
@@ -29,6 +27,5 @@ __all__ = [
     'Path',
     'Secret',
     'current_scope',
-    'dataclass_coder',
     '__version__',
 ]

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from cog.coder import dataclass_coder
 from coglet import api
 from coglet.util import type_name
 
@@ -164,6 +165,7 @@ class FieldType:
         cog_t = PrimitiveType.from_type(elem_t)
         coder = None
         if cog_t is PrimitiveType.CUSTOM:
+            api.Coder.register(dataclass_coder.DataclassCoder)
             coder = api.Coder.lookup(elem_t)
             assert coder is not None, f'unsupported Cog type {type_name(elem_t)}'
 
