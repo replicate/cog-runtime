@@ -318,6 +318,7 @@ class Output:
             # Handle list of BaseModel objects
             if self.fields is not None:
                 result = []
+                # Transform each item's fields (simple approach, optimizable if needed)
                 for item in value:
                     for name, ft in self.fields.items():
                         f = ft.json_encode if json else ft.normalize
