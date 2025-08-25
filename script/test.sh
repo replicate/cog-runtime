@@ -11,7 +11,11 @@ base_dir="$(git rev-parse --show-toplevel)"
 cd "$base_dir"
 
 test_go() {
-    go run gotest.tools/gotestsum@latest --format testname ./... -- -timeout=30s "$@"
+    format="dots-v2"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        format="github-actions"
+    fi
+    go run gotest.tools/gotestsum@latest --format "$format" ./... -- -timeout=30s "$@"
 }
 
 test_python() {

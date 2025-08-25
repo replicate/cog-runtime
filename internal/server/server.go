@@ -100,7 +100,37 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 			return nil, err
 		}
 		h.runners[DefaultRunnerID] = runner
-		if err := h.runners[DefaultRunnerID].Start(); err != nil {
+		// Since we do not have a server context, this ia tempoarary TODO context for the runner
+		ctx := context.TODO() //nolint:contextcheck // context passing not viable in current architecture, this is a temporary context until we have a server root context
+		ctx, cancel := context.WithCancelCause(ctx)
+		defer cancel(nil)
+		if err := h.runners[DefaultRunnerID].Start(ctx); err != nil {
+			return nil, err
+		}
+		eg := errgroup.Group{}
+		deadlineCtx, deadlineCancel := context.WithTimeout(ctx, 10*time.Second)
+		defer deadlineCancel()
+		eg.Go(func() error {
+			err := h.runners[DefaultRunnerID].config(deadlineCtx)
+			if err != nil {
+				cancel(fmt.Errorf("failed to config runner: %w", err))
+				// Stop the runner to avoid it hanging around, r.wait() cannot be canceled via context yet
+				// NOTE(morgan): configuration failure means we do not want to give a graceperiod to the runner
+				h.runners[DefaultRunnerID].shutdownGracePeriod = 0
+				if err := h.runners[DefaultRunnerID].Stop(); err != nil {
+					log.Errorw("failed to stop runner", "error", err)
+				}
+			}
+			return err
+		})
+
+		// TODO: this should be tied to the runner's context, derived from the server context
+		// r.wait cannot use the egCtx because eg.Wait() will cancel it, so instead we need to leverage the r.config() to
+		// cancel the runner's wait context. r.wait also cannot be in the errorgroup, as it must continue to run until
+		// r.Stop() or r.ForceKill() is called.
+		go h.runners[DefaultRunnerID].wait()
+
+		if err := eg.Wait(); err != nil {
 			return nil, err
 		}
 
@@ -433,37 +463,95 @@ func (h *Handler) predictWithRunner(srcURL string, req PredictionRequest) (chan 
 		}
 	}
 
-	if err := r.Start(); err != nil {
+	setupComplete := make(chan struct{})
+	ctx := context.TODO() //nolint:contextcheck // context passing not viable in current architecture, this is a temporary context until we have a server root context
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	deadlineCtx, deadlineCancel := context.WithTimeout(ctx, 10*time.Second)
+	defer deadlineCancel()
+	if err := r.Start(ctx); err != nil {
 		return nil, err
 	}
 	start := time.Now()
-	// Wait for runner to become ready, this should not take long as procedures have no setup
-	for {
-		// We do not register non-ready runner yet for HTTP IPC due to potential race condition
-		// Instead we poll here for a ready file and status change
-		readyFile := path.Join(r.workingDir, "ready")
-		if _, err := os.Stat(readyFile); err == nil {
-			if err := r.HandleIPC(IPCStatusReady); err != nil {
-				log.Errorw("failed to handle IPC", "error", err)
-				return nil, fmt.Errorf("failed to handle IPC: %w", err)
+
+	// TODO: this should be tied to the runner's context, derived from the server context
+	// r.wait cannot use the egCtx because eg.Wait() will cancel it, so instead we need to leverage the r.config() to
+	// cancel the runner's wait context. r.wait also cannot be in the errorgroup, as it must continue to run until
+	// r.Stop() or r.ForceKill() is called.
+	go r.wait()
+
+	eg := errgroup.Group{}
+	eg.Go(func() error {
+		err := r.config(deadlineCtx)
+		if err != nil {
+			cancel(fmt.Errorf("failed to config runner: %w", err))
+			return err
+		}
+		return nil
+	})
+	eg.Go(func() error {
+		// This goroutine is tasked with handling a setup timeout and stopping the runner
+		// if "setupComplete" is closed, we know we didn't hit the timeout case.
+		//
+		// In theory this could be moved in the config .Go() run but for clarity we isolate since
+		// errors in .config() or below in the .Go() run below are both cases to .Stop() the runner.
+		select {
+		case <-setupComplete:
+			return nil
+		case <-deadlineCtx.Done():
+			log.Errorw("stopping procedure runner after timeout", "elapsed", time.Since(start))
+			// Stop the runner to avoid it hanging around, r.wait() cannot be canceled via context yet
+			// NOTE(morgan): failure here means we do not want to give a graceperiod to the runner
+			r.shutdownGracePeriod = 0
+			err := r.Stop()
+			if err != nil {
+				log.Errorw("failed to stop runner", "error", err)
 			}
-			if err := os.Remove(readyFile); err != nil && !os.IsNotExist(err) {
-				log.Errorw("failed to remove ready file", "error", err)
+			if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
+				return fmt.Errorf("%w: timeout waiting for runner to config", context.DeadlineExceeded)
+			}
+			return deadlineCtx.Err()
+		}
+	})
+	eg.Go(func() error {
+		// Wait for runner to become ready, this should not take long as procedures have no setup
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			// We do not register non-ready runner yet for HTTP IPC due to potential race condition
+			// Instead we poll here for a ready file and status change
+			readyFile := path.Join(r.workingDir, "ready")
+			if _, err := os.Stat(readyFile); err == nil {
+				if err := r.HandleIPC(IPCStatusReady); err != nil {
+					log.Errorw("failed to handle IPC", "error", err)
+					return fmt.Errorf("failed to handle IPC: %w", err)
+				}
+				if err := os.Remove(readyFile); err != nil && !os.IsNotExist(err) {
+					log.Errorw("failed to remove ready file", "error", err)
+				}
+			}
+			// No ready file if runner dies but status should be setup failed
+			if r.status != StatusStarting {
+				// This is the ONLY goroutine tasked with closing the setupComplete channel
+				close(setupComplete)
+				return nil
+			}
+			select {
+			case <-ticker.C:
+				continue
+			case <-deadlineCtx.Done():
+				if errors.Is(deadlineCtx.Err(), context.DeadlineExceeded) {
+					return fmt.Errorf("%w: timeout waiting for runner to config", context.DeadlineExceeded)
+				}
+				return deadlineCtx.Err()
 			}
 		}
-		// No ready file if runner dies but status should be setup failed
-		if r.status != StatusStarting {
-			break
-		}
-		if time.Since(start) > 10*time.Second {
-			log.Errorw("stopping procedure runner after time out", "elapsed", time.Since(start))
-			if err := r.Stop(); err != nil {
-				log.Errorw("failed to stop procedure runner", "error", err)
-			}
-			return nil, fmt.Errorf("procedure time out")
-		}
-		time.Sleep(10 * time.Millisecond)
+	})
+	// wait for the errorgroup to complete, we expect "setup completed" "setup failed" or "timeout"
+	if err := eg.Wait(); err != nil {
+		return nil, err
 	}
+
 	if r.status == StatusSetupFailed {
 		log.Errorw("procedure runner setup failed", "logs", r.setupResult.Logs)
 

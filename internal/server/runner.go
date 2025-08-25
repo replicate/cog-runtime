@@ -156,7 +156,7 @@ func (r *Runner) String() string {
 	return r.name
 }
 
-func (r *Runner) Start() error {
+func (r *Runner) Start(ctx context.Context) error {
 	log := logger.Sugar()
 	cmdStart := make(chan bool)
 	if err := r.setupLogging(cmdStart); err != nil {
@@ -173,8 +173,6 @@ func (r *Runner) Start() error {
 	}
 	log.Infow("python runner started", "pid", r.cmd.Process.Pid)
 	close(cmdStart)
-	go r.config() //nolint:errcheck // FIXME: actually handle errors, but for now this is safe as the only caller has a timeout check, this should have an explicit deadline instead.
-	go r.wait()
 	return nil
 }
 
@@ -251,6 +249,9 @@ func (r *Runner) Stop() error {
 				return
 			}
 		}()
+	} else {
+		// No grace period, force kill immediately
+		r.ForceKill()
 	}
 
 	return nil
@@ -387,27 +388,30 @@ func (r *Runner) Cancel(pid string) error {
 ////////////////////
 // Background tasks
 
-func (r *Runner) config() error {
+func (r *Runner) config(ctx context.Context) error {
 	log := logger.Sugar()
 
 	// Wait until user files become available and pass config to Python runner
 	waitFile := os.Getenv("COG_WAIT_FILE")
 	if waitFile != "" {
-		started := time.Now()
-		timeout := 60 * time.Second
-		found := false
-		for time.Since(started) < timeout {
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		for {
 			if _, err := os.Stat(waitFile); err == nil {
-				found = true
+				// wait file found, break out of loop
 				break
 			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		if !found {
-			elapsed := time.Since(started)
-			log.Errorw(
-				"wait file not found after timeout", "elapsed", elapsed, "wait_file", waitFile)
-			panic(fmt.Errorf("wait file not found after timeout %s: %s", elapsed, waitFile))
+			select {
+			case <-ticker.C:
+				continue
+			case <-ctx.Done():
+				// context canceled, introspect the error and return
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					log.Errorw("wait file not found after timeout", "wait_file", waitFile)
+					return fmt.Errorf("%w: wait file not found after timeout", context.DeadlineExceeded)
+				}
+				return ctx.Err()
+			}
 		}
 	}
 
@@ -415,12 +419,12 @@ func (r *Runner) config() error {
 	y, err := util.ReadCogYaml(r.SrcDir())
 	if err != nil {
 		log.Errorw("failed to read cog.yaml", "path", r.SrcDir(), "error", err)
-		panic(err)
+		return err
 	}
 	m, c, err := y.PredictModuleAndPredictor()
 	if err != nil {
 		log.Errorw("failed to parse predict", "error", err)
-		panic(err)
+		return err
 	}
 	moduleName = m
 	predictorName = c
