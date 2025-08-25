@@ -255,8 +255,23 @@ class Output:
             assert self.type is not None
             jt.update(self.type.json_type())
         elif self.kind is Kind.LIST:
-            assert self.type is not None
-            jt.update({'type': 'array', 'items': self.type.json_type()})
+            # Handle list of BaseModel objects
+            if self.fields is not None:
+                props = {}
+                for name, cog_t in self.fields.items():
+                    props[name] = cog_t.json_type()
+                    props[name]['title'] = name.replace('_', ' ').title()
+                items_schema = {
+                    'type': 'object',
+                    'properties': props,
+                    'required': list(self.fields.keys()),
+                    'title': 'Output',
+                }
+                jt.update({'type': 'array', 'items': items_schema})
+            # Handle list of primitive types  
+            else:
+                assert self.type is not None
+                jt.update({'type': 'array', 'items': self.type.json_type()})
         elif self.kind is Kind.ITERATOR:
             assert self.type is not None
             jt.update(
@@ -280,7 +295,7 @@ class Output:
             assert self.fields is not None
             props = {}
             for name, cog_t in self.fields.items():
-                props[name] = cog_t.primitive.json_type()
+                props[name] = cog_t.json_type()
                 props[name]['title'] = name.replace('_', ' ').title()
             jt.update(
                 {
@@ -299,9 +314,26 @@ class Output:
             )
             return f(value)
         elif self.kind is Kind.LIST:
-            assert self.type is not None
-            f = self.type.json_encode if json else self.type.normalize
-            return [f(x) for x in value]
+            # Handle list of BaseModel objects
+            if self.fields is not None:
+                result = []
+                for item in value:
+                    for name, ft in self.fields.items():
+                        f = ft.json_encode if json else ft.normalize
+                        assert hasattr(item, name), f'missing output field: {name} {item}'
+                        v = getattr(item, name)
+                        if v is None:
+                            assert ft.repetition is Repetition.OPTIONAL, (
+                                f'missing value for output field: {name}'
+                            )
+                        setattr(item, name, f(v))
+                    result.append(item)
+                return result
+            # Handle list of primitive types
+            else:
+                assert self.type is not None
+                f = self.type.json_encode if json else self.type.normalize
+                return [f(x) for x in value]
         elif self.kind is Kind.OBJECT:
             assert self.fields is not None
             for name, ft in self.fields.items():
@@ -336,6 +368,19 @@ class Output:
             for f in dataclasses.fields(o):
                 r[f.name] = getattr(o, f.name)
             return r
+        elif self.kind is Kind.LIST and self.fields is not None:
+            # Handle list[BaseModel] - convert each BaseModel to dict
+            result = []
+            for item in o:
+                tpe = type(item)
+                assert type_name(tpe) == 'Output' and any(
+                    c is api.BaseModel for c in inspect.getmro(tpe)
+                )
+                r = {}
+                for f in dataclasses.fields(item):
+                    r[f.name] = getattr(item, f.name)
+                result.append(r)
+            return result
         else:
             return o
 

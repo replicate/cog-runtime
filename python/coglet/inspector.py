@@ -183,6 +183,24 @@ def _output_adt(tpe: type) -> adt.Output:
             'Warning: use of Any as output type is error prone and highly-discouraged'
         )
         return adt.Output(kind=adt.Kind.SINGLE, type=_any_type)  # type: ignore
+    
+    # Check for list[BaseModel] case first
+    origin = typing.get_origin(tpe)
+    if origin in {list, typing.get_origin(typing.List)}:
+        t_args = typing.get_args(tpe)
+        if len(t_args) == 1:
+            elem_type = t_args[0]
+            if inspect.isclass(elem_type) and _check_parent(elem_type, api.BaseModel):
+                assert type_name(elem_type) == 'Output', (
+                    f'output type must be named Output: {type_name(elem_type)}'
+                )
+                fields = {}
+                for name, t in elem_type.__annotations__.items():
+                    ft = adt.FieldType.from_type(t)
+                    # Allow list fields within BaseModel objects
+                    fields[name] = ft
+                return adt.Output(kind=adt.Kind.LIST, fields=fields)
+    
     if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
         assert type_name(tpe) == 'Output', (
             f'output type must be named Output: {type_name(tpe)}'
@@ -190,13 +208,10 @@ def _output_adt(tpe: type) -> adt.Output:
         fields = {}
         for name, t in tpe.__annotations__.items():
             ft = adt.FieldType.from_type(t)
-            assert ft.repetition is not adt.Repetition.REPEATED, (
-                f'output field must not be list: {name}: {ft.python_type()}'
-            )
+            # Remove restriction on list fields within BaseModel objects
             fields[name] = ft
         return adt.Output(kind=adt.Kind.OBJECT, fields=fields)
 
-    origin = typing.get_origin(tpe)
     kind = None
     concat_iters = {api.ConcatenateIterator, api.AsyncConcatenateIterator}
     if origin in {typing.get_origin(Iterator), typing.get_origin(AsyncIterator)}:
