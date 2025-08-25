@@ -1,5 +1,4 @@
 from cog import BaseModel, BasePredictor
-from cog.coder import dataclass_coder
 
 
 class Output(BaseModel):
