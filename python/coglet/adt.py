@@ -295,6 +295,7 @@ class Output:
             assert self.fields is not None
             props = {}
             for name, cog_t in self.fields.items():
+                # Use cog_t.json_type() to properly handle list fields like list[int]
                 props[name] = cog_t.json_type()
                 props[name]['title'] = name.replace('_', ' ').title()
             jt.update(
