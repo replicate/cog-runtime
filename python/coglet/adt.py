@@ -268,7 +268,7 @@ class Output:
                     'title': 'Output',
                 }
                 jt.update({'type': 'array', 'items': items_schema})
-            # Handle list of primitive types  
+            # Handle list of primitive types
             else:
                 assert self.type is not None
                 jt.update({'type': 'array', 'items': self.type.json_type()})
@@ -320,7 +320,9 @@ class Output:
                 for item in value:
                     for name, ft in self.fields.items():
                         f = ft.json_encode if json else ft.normalize
-                        assert hasattr(item, name), f'missing output field: {name} {item}'
+                        assert hasattr(item, name), (
+                            f'missing output field: {name} {item}'
+                        )
                         v = getattr(item, name)
                         if v is None:
                             assert ft.repetition is Repetition.OPTIONAL, (

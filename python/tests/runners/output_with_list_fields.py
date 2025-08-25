@@ -8,4 +8,4 @@ class Output(BaseModel):
 
 class Predictor(BasePredictor):
     def predict(self) -> Output:
-        return Output(x=[1, 2, 3], y="hello")
+        return Output(x=[1, 2, 3], y='hello')

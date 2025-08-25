@@ -183,7 +183,7 @@ def _output_adt(tpe: type) -> adt.Output:
             'Warning: use of Any as output type is error prone and highly-discouraged'
         )
         return adt.Output(kind=adt.Kind.SINGLE, type=_any_type)  # type: ignore
-    
+
     # Check for list[BaseModel] case first
     origin = typing.get_origin(tpe)
     if origin in {list, typing.get_origin(typing.List)}:
@@ -200,7 +200,7 @@ def _output_adt(tpe: type) -> adt.Output:
                     # Allow list fields within BaseModel objects
                     fields[name] = ft
                 return adt.Output(kind=adt.Kind.LIST, fields=fields)
-    
+
     if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
         assert type_name(tpe) == 'Output', (
             f'output type must be named Output: {type_name(tpe)}'
