@@ -184,9 +184,6 @@ def _output_adt(tpe: type) -> adt.Output:
         )
         return adt.Output(kind=adt.Kind.SINGLE, type=_any_type)  # type: ignore
     if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
-        assert type_name(tpe) == 'Output', (
-            f'output type must be named Output: {type_name(tpe)}'
-        )
         fields = {}
         for name, t in tpe.__annotations__.items():
             ft = adt.FieldType.from_type(t)
