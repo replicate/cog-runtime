@@ -12,6 +12,7 @@ from coglet.api import (
     Secret,
 )
 from coglet.scope import current_scope
+
 from .coder import dataclass_coder
 
 __version__ = coglet.__version__
