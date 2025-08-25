@@ -605,4 +605,38 @@ func TestRunner_StopGracePeriod(t *testing.T) {
 		assert.False(t, killCalled, "Should not call kill after graceful exit")
 		assert.False(t, runner.killed, "Should not mark as killed after graceful exit")
 	})
+
+	t.Run("Zero grace period calls ForceKill immediately", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			shutdownGracePeriod: 0, // No grace period
+			stopped:             make(chan bool),
+			workingDir:          t.TempDir(),
+		}
+
+		// Track kill calls
+		killCalled := false
+		var killedPid int
+		var killedSignal syscall.Signal
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killCalled = true
+			killedPid = pid
+			killedSignal = sig
+			return nil
+		}
+
+		// Start shutdown with zero grace period
+		err := runner.Stop()
+		require.NoError(t, err)
+
+		// Should call kill immediately, no need to wait
+		assert.True(t, killCalled, "Should call kill immediately with zero grace period")
+		assert.Equal(t, -12345, killedPid, "Should kill process group")
+		assert.Equal(t, syscall.SIGKILL, killedSignal, "Should use SIGKILL")
+		assert.True(t, runner.killed, "Should mark runner as killed")
+	})
 }
