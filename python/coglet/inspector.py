@@ -193,22 +193,18 @@ def _output_adt(tpe: type) -> adt.Output:
     if origin in {list, typing.get_origin(typing.List)} and len(t_args) == 1:
         elem_type = t_args[0]
         if inspect.isclass(elem_type) and _check_parent(elem_type, api.BaseModel):
-            assert type_name(elem_type) == 'Output', (
-                f'output type must be named Output: {type_name(elem_type)}'
-            )
             fields = {}
-            for name, t in elem_type.__annotations__.items():
+            annotations = getattr(elem_type, '__annotations__', {})
+            for name, t in annotations.items():
                 ft = adt.FieldType.from_type(t)
                 fields[name] = ft
             return adt.Output(kind=adt.Kind.LIST, fields=fields)
 
     # Handle BaseModel directly
     if inspect.isclass(tpe) and _check_parent(tpe, api.BaseModel):
-        assert type_name(tpe) == 'Output', (
-            f'output type must be named Output: {type_name(tpe)}'
-        )
         fields = {}
-        for name, t in tpe.__annotations__.items():
+        annotations = getattr(tpe, '__annotations__', {})
+        for name, t in annotations.items():
             ft = adt.FieldType.from_type(t)
             fields[name] = ft
         return adt.Output(kind=adt.Kind.OBJECT, fields=fields)

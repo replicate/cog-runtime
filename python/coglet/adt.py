@@ -363,11 +363,9 @@ class Output:
                 return self.coder.encode(value)
         o = self._transform(value, json=True)
         if self.kind is Kind.OBJECT:
-            # Further expand Output into dict
+            # Further expand BaseModel into dict
             tpe = type(o)
-            assert type_name(tpe) == 'Output' and any(
-                c is api.BaseModel for c in inspect.getmro(tpe)
-            )
+            assert any(c is api.BaseModel for c in inspect.getmro(tpe))
             r = {}
             for f in dataclasses.fields(o):
                 r[f.name] = getattr(o, f.name)
@@ -377,9 +375,7 @@ class Output:
             result = []
             for item in o:
                 tpe = type(item)
-                assert type_name(tpe) == 'Output' and any(
-                    c is api.BaseModel for c in inspect.getmro(tpe)
-                )
+                assert any(c is api.BaseModel for c in inspect.getmro(tpe))
                 r = {}
                 for f in dataclasses.fields(item):
                     r[f.name] = getattr(item, f.name)
