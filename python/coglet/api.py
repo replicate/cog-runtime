@@ -1,4 +1,5 @@
 import pathlib
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Iterator, List, Optional, Type, TypeVar, Union
@@ -96,12 +97,39 @@ class Input:
     deprecated: Optional[bool] = None
 
 
-class BaseModel:
+# pyodide does not recognise `BaseModel` with the `__new__` keyword as a dataclass while regular python does.
+# to get around this, we hijack `__init__subclass` instead to make sure the subclass of a base model is recognised
+# as a dataclass. In addition to this, we provide this `BaseModel` only on pyodide instances, normal python still gets
+# the regular `BaseModel``.
+class _BaseModelPyodide:
+    def __init_subclass__(cls, **kwargs):
+        dc_keys = {
+            'init',
+            'repr',
+            'eq',
+            'order',
+            'unsafe_hash',
+            'frozen',
+            'match_args',
+            'kw_only',
+            'slots',
+            'weakref_slot',
+        }
+        dc_opts = {k: kwargs.pop(k) for k in list(kwargs) if k in dc_keys}
+        super().__init_subclass__(**kwargs)
+        if not dataclass.is_dataclass(cls):
+            dataclass(**dc_opts)(cls)
+
+
+class _BaseModelStd:
     def __new__(cls, *args, **kwargs):
         # This does not work with frozen=True
         # Also user might want to mutate the output class
         dcls = dataclass()(cls)
         return super().__new__(dcls)
+
+
+BaseModel = _BaseModelPyodide if 'pyodide' in sys.modules else _BaseModelStd
 
 
 ########################################
