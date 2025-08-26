@@ -1,7 +1,7 @@
 import pathlib
 import sys
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass
 from typing import Any, AsyncIterator, Iterator, List, Optional, Type, TypeVar, Union
 
 ########################################
@@ -117,7 +117,7 @@ class _BaseModelPyodide:
         }
         dc_opts = {k: kwargs.pop(k) for k in list(kwargs) if k in dc_keys}
         super().__init_subclass__(**kwargs)
-        if not dataclass.is_dataclass(cls):
+        if not is_dataclass(cls):
             dataclass(**dc_opts)(cls)
 
 
