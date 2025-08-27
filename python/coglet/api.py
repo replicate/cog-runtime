@@ -1,5 +1,4 @@
 import pathlib
-import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, is_dataclass
 from typing import Any, AsyncIterator, Iterator, List, Optional, Type, TypeVar, Union
@@ -97,39 +96,48 @@ class Input:
     deprecated: Optional[bool] = None
 
 
-# pyodide does not recognise `BaseModel` with the `__new__` keyword as a dataclass while regular python does.
-# to get around this, we hijack `__init__subclass` instead to make sure the subclass of a base model is recognised
-# as a dataclass. In addition to this, we provide this `BaseModel` only on pyodide instances, normal python still gets
-# the regular `BaseModel``.
-class _BaseModelPyodide:
-    def __init_subclass__(cls, **kwargs):
-        dc_keys = {
-            'init',
-            'repr',
-            'eq',
-            'order',
-            'unsafe_hash',
-            'frozen',
-            'match_args',
-            'kw_only',
-            'slots',
-            'weakref_slot',
-        }
-        dc_opts = {k: kwargs.pop(k) for k in list(kwargs) if k in dc_keys}
-        super().__init_subclass__(**kwargs)
-        if not is_dataclass(cls):
-            dataclass(**dc_opts)(cls)
+class BaseModel:
+    def __init_subclass__(
+        cls, *, auto_dataclass: bool = True, init: bool = True, **kwargs
+    ):
+        # BaseModel is parented to `object` so we have nothing to pass up to it, we pass the kwargs to dataclass() only.
+        super().__init_subclass__()
 
+        # For sanity, the primary base class must inherit from BaseModel
+        if not issubclass(cls.__bases__[0], BaseModel):
+            raise TypeError(
+                f'Primary base class of "{cls.__name__}" must inherit from BaseModel'
+            )
+        elif not auto_dataclass:
+            try:
+                if (
+                    cls.__bases__[0] != BaseModel
+                    and cls.__bases__[0].__auto_dataclass is True  # type: ignore[attr-defined]
+                ):
+                    raise ValueError(
+                        f'Primary base class of "{cls.__name__}" ("{cls.__bases__[0].__name__}") has auto_dataclass=True, but "{cls.__name__}" has auto_dataclass=False. This creates broken field inheritance.'
+                    )
+            except AttributeError:
+                raise RuntimeError(
+                    f'Primary base class of "{cls.__name__}" is a child of a child of `BaseModel`, but `auto_dataclass` tracking does not exist. This is likely a bug or other programming error.'
+                )
 
-class _BaseModelStd:
-    def __new__(cls, *args, **kwargs):
-        # This does not work with frozen=True
-        # Also user might want to mutate the output class
-        dcls = dataclass()(cls)
-        return super().__new__(dcls)
+        for base in cls.__bases__[1:]:
+            if is_dataclass(base):
+                raise TypeError(
+                    f'Cannot mixin dataclass "{base.__name__}" while inheriting from `BaseModel`'
+                )
 
+        # Once manual dataclass handling is enabled, we never apply the auto dataclass logic again,
+        # it becomes the responsibility of the user to ensure that all dataclass semantics are handled.
+        if not auto_dataclass:
+            cls.__auto_dataclass = False  # type: ignore[attr-defined]
+            return
 
-BaseModel = _BaseModelPyodide if 'pyodide' in sys.modules else _BaseModelStd
+        # all children should be dataclass'd, this is the only way to ensure that the dataclass inheritence
+        # is handled properly.
+        dataclass(init=init, **kwargs)(cls)
+        cls.__auto_dataclass = True  # type: ignore[attr-defined]
 
 
 ########################################
