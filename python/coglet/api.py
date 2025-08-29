@@ -1,7 +1,20 @@
 import pathlib
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, is_dataclass
-from typing import Any, AsyncIterator, Iterator, List, Optional, Type, TypeVar, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Type,
+    TypeVar,
+    Union,
+    overload,
+)
+
+from typing_extensions import ParamSpec
 
 ########################################
 # Custom encoding
@@ -83,8 +96,29 @@ class AsyncConcatenateIterator(AsyncIterator[_T_co]):
 ########################################
 
 
+class Representation:
+    """Base class for custom object representations, similar to Pydantic's approach."""
+
+    def __repr__(self) -> str:
+        """Generate a detailed string representation."""
+        return f'{self.__class__.__name__}({self.__repr_str__(", ")})'
+
+    def __repr_str__(self, join_str: str) -> str:
+        """Generate representation string for attributes."""
+        return join_str.join(
+            f'{k}={v!r}' if v is not None else k for k, v in self.__repr_args__()
+        )
+
+    def __repr_args__(self):
+        """Generate arguments for representation."""
+        # Override in subclasses
+        return []
+
+
 @dataclass(frozen=True)
-class Input:
+class FieldInfo(Representation):
+    """Internal dataclass to hold Input metadata."""
+
     default: Any = None
     description: Optional[str] = None
     ge: Optional[Union[int, float]] = None
@@ -94,6 +128,116 @@ class Input:
     regex: Optional[str] = None
     choices: Optional[List[Union[str, int]]] = None
     deprecated: Optional[bool] = None
+
+    def __repr_args__(self):
+        """Generate arguments for representation."""
+        args = []
+        if self.default is not None:
+            args.append(('default', self.default))
+        if self.description is not None:
+            args.append(('description', self.description))
+        if self.ge is not None:
+            args.append(('ge', self.ge))
+        if self.le is not None:
+            args.append(('le', self.le))
+        if self.min_length is not None:
+            args.append(('min_length', self.min_length))
+        if self.max_length is not None:
+            args.append(('max_length', self.max_length))
+        if self.regex is not None:
+            args.append(('regex', self.regex))
+        if self.choices is not None:
+            args.append(('choices', self.choices))
+        if self.deprecated is not None:
+            args.append(('deprecated', self.deprecated))
+        return args
+
+
+# Type variable for preserving input types
+_T = TypeVar('_T')
+
+
+@overload
+def Input() -> Any:
+    """Create an input field with no constraints."""
+    ...
+
+
+@overload
+def Input(
+    *,
+    description: Optional[str] = None,
+    ge: Optional[Union[int, float]] = None,
+    le: Optional[Union[int, float]] = None,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None,
+    regex: Optional[str] = None,
+    choices: Optional[List[Union[str, int]]] = None,
+    deprecated: Optional[bool] = None,
+) -> Any:
+    """Create an input field with keyword-only constraints."""
+    ...
+
+
+@overload
+def Input(
+    default: _T,
+    *,
+    description: Optional[str] = None,
+    ge: Optional[Union[int, float]] = None,
+    le: Optional[Union[int, float]] = None,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None,
+    regex: Optional[str] = None,
+    choices: Optional[List[Union[str, int]]] = None,
+    deprecated: Optional[bool] = None,
+) -> _T:
+    """Create an input field with default value and optional constraints."""
+    ...
+
+
+def Input(
+    default: Any = None,
+    *,
+    description: Optional[str] = None,
+    ge: Optional[Union[int, float]] = None,
+    le: Optional[Union[int, float]] = None,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None,
+    regex: Optional[str] = None,
+    choices: Optional[List[Union[str, int]]] = None,
+    deprecated: Optional[bool] = None,
+) -> Any:
+    """Create an input field specification.
+
+    For type checkers, this returns Any to allow usage on type-annotated fields.
+    At runtime, returns an FieldInfo instance with the field metadata.
+
+    Args:
+        default: Default value for the field
+        description: Human-readable description
+        ge: Minimum value (greater than or equal)
+        le: Maximum value (less than or equal)
+        min_length: Minimum length for strings/lists
+        max_length: Maximum length for strings/lists
+        regex: Regular expression pattern for strings
+        choices: List of allowed values
+        deprecated: Whether the field is deprecated
+
+    Returns:
+        FieldInfo instance containing the field metadata
+    """
+    return FieldInfo(
+        default=default,
+        description=description,
+        ge=ge,
+        le=le,
+        min_length=min_length,
+        max_length=max_length,
+        regex=regex,
+        choices=choices,
+        deprecated=deprecated,
+    )
 
 
 class BaseModel:
@@ -145,7 +289,11 @@ class BaseModel:
 ########################################
 
 
-class BasePredictor(ABC):
+P = ParamSpec('P')
+R = TypeVar('R')
+
+
+class BasePredictor(ABC, Generic[P, R]):
     def setup(
         self,
         weights: Optional[Union[Path, str]] = None,
@@ -153,8 +301,8 @@ class BasePredictor(ABC):
         return
 
     @abstractmethod
-    def predict(self, **kwargs: Any) -> Any:
-        return NotImplemented
+    def predict(self, *args: P.args, **kwargs: P.kwargs) -> R:
+        raise NotImplementedError('predict has not been implemented by parent class.')
 
 
 ########################################
