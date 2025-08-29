@@ -51,7 +51,7 @@ def _validate_predict(f: Callable, f_name: str, is_class_fn: bool) -> None:
     )
 
 
-def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
+def _validate_input(name: str, ft: adt.FieldType, cog_in: api.FieldInfo) -> None:
     cog_t = ft.primitive
     in_repr = f'{name}: {ft.python_type()}'
     defaults = []
@@ -122,7 +122,7 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.Input) -> None:
 
 
 def _input_adt(
-    order: int, name: str, tpe: type, cog_in: Optional[api.Input]
+    order: int, name: str, tpe: type, cog_in: Optional[api.FieldInfo]
 ) -> adt.Input:
     try:
         ft = adt.FieldType.from_type(tpe)
