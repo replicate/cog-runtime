@@ -37,12 +37,29 @@ check_python() {
         --exclude python/tests/bad_inputs \
         --exclude python/tests/bad_predictors \
         --exclude python/tests/runners \
-        --exclude python/tests/schemas
+        --exclude python/tests/schemas \
+        --exclude 'python/.*\.pyi'
+}
+
+check_stubs() {
+    echo "Regenerating stub files..."
+    cd "$base_dir"
+    # Remove existing stubs to avoid duplication
+    find python -name "*.pyi" -type f -delete
+    PYTHONPATH=python npx -y pyright --createstub coglet || echo "Warning: coglet stub creation may have failed"
+    PYTHONPATH=python npx -y pyright --createstub cog || echo "Warning: cog stub creation may have failed"
+    # Move stubs from typings/ to alongside source
+    if [[ -d "typings" ]]; then
+        cp -rv typings/* python/
+    fi
+    # Cleanup
+    rm -rf typings/
 }
 
 if [ $# -eq 0 ]; then
     check_go
     check_python
+    check_stubs
 else
     for c in "$@"; do
         case "$c" in
@@ -51,6 +68,9 @@ else
                 ;;
             python)
                 check_python
+                ;;
+            stubs)
+                check_stubs
                 ;;
             *)
                 echo "Unknown check $c"

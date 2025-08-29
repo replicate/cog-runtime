@@ -10,3 +10,4 @@
 /python/coglet/_version.py
 /uv.lock
 __pycache__
+/typings
