@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -40,7 +40,7 @@ jobs:
       # Minimum supported python here.
     - run: echo 'UV_PYTHON=3.9' | tee -a "${GITHUB_ENV}"
     - name: Setup uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@v3
     - run: ./script/init.sh
 
     - name: Setup Node.js for pyright
@@ -68,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -84,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -93,12 +93,12 @@ jobs:
       - run: ./script/test.sh go
 
   test-go-legacy-cog:
-    name: Test Go with legacy Cog
+    name: "SmokeTest: Test Go Test Harness with legacy Cog"
     runs-on: ubuntu-latest-4-cores
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -115,7 +115,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -126,7 +126,7 @@ jobs:
     name: Build & verify python package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: hynek/build-and-inspect-python-package@v2
@@ -144,7 +144,7 @@ jobs:
         python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
     steps:
       - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -160,7 +160,7 @@ jobs:
         python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
     steps:
       - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -180,7 +180,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
