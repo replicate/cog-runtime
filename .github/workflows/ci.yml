@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -68,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -84,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -98,7 +98,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -115,7 +115,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -126,7 +126,7 @@ jobs:
     name: Build & verify python package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: hynek/build-and-inspect-python-package@v2
@@ -144,7 +144,7 @@ jobs:
         python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
     steps:
       - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -160,7 +160,7 @@ jobs:
         python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
     steps:
       - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -180,7 +180,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
