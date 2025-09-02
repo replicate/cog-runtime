@@ -8,6 +8,10 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+*"
   pull_request:
 
+# Set default permissions to read-only for all jobs
+permissions:
+  contents: read
+
 # Ensure only one workflow instance runs at a time. For branches other than the
 # default branch, cancel the pending jobs in the group. For the default branch,
 # queue them up. This avoids cancelling jobs that are in the middle of deploying
