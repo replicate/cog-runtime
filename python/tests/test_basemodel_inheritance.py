@@ -208,8 +208,8 @@ def test_manual_dataclass_with_basemodel() -> None:
         z: int = 0  # Must have default since parent has default field
 
     assert is_dataclass(ChildOfManual)
-    child = ChildOfManual(x=1, y='test')  # z has default value of 0
-    child.z = 42  # Set z after instantiation
+    # mypy doesn't understand that BaseModel metaclass creates proper dataclass constructors
+    child = ChildOfManual(x=1, y='test', z=42)  # type: ignore[call-arg]
     assert child.z == 42
 
 
