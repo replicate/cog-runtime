@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -31,13 +31,44 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Check formatting
         run: ./script/check.sh go
+  check-stubs:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+      # Minimum supported python here.
+    - run: echo 'UV_PYTHON=3.9' | tee -a "${GITHUB_ENV}"
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v3
+    - run: ./script/init.sh
+
+    - name: Setup Node.js for pyright
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+
+    - name: Generate type stubs
+      run: script/check.sh stubs
+
+    - name: Check for stub changes
+      run: |
+        if ! git diff --exit-code python/; then
+          echo "ERROR: Type stub files are out of date!"
+          echo "Generated stubs differ from committed versions:"
+          git diff python/
+          echo ""
+          echo "Run 'script/check.sh stubs' locally and commit the updated .pyi files"
+          exit 1
+        fi
+        echo "All stub files are up to date"
   lint-go:
     name: Go Code Linting
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -53,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -62,12 +93,12 @@ jobs:
       - run: ./script/test.sh go
 
   test-go-legacy-cog:
-    name: Test Go with legacy Cog
+    name: "SmokeTest: Test Go Test Harness with legacy Cog"
     runs-on: ubuntu-latest-4-cores
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-go@v5
@@ -84,7 +115,7 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -95,7 +126,7 @@ jobs:
     name: Build & verify python package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: hynek/build-and-inspect-python-package@v2
@@ -113,7 +144,7 @@ jobs:
         python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
     steps:
       - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -129,7 +160,7 @@ jobs:
         python-version: ${{ fromJson(needs.build-python.outputs.python-versions) }}
     steps:
       - run: echo 'UV_PYTHON=${{ matrix.python-version }}' | tee -a "${GITHUB_ENV}"
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
@@ -149,7 +180,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
