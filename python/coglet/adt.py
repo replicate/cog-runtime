@@ -1,5 +1,4 @@
 import dataclasses
-import inspect
 import os
 import sys
 import typing
@@ -331,9 +330,7 @@ class Output:
         if self.kind is Kind.OBJECT:
             # Further expand Output into dict
             tpe = type(o)
-            assert type_name(tpe) == 'Output' and any(
-                c is api.BaseModel for c in inspect.getmro(tpe)
-            )
+            assert dataclasses.is_dataclass(tpe), f'{tpe} is not a dataclass'
             r = {}
             for f in dataclasses.fields(o):
                 r[f.name] = getattr(o, f.name)

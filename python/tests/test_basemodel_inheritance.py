@@ -5,7 +5,7 @@ import pytest
 from cog import BaseModel
 
 
-def test_simple_basemodel_inheritance():
+def test_simple_basemodel_inheritance() -> None:
     """Test that simple BaseModel subclasses become dataclasses automatically."""
 
     class SimpleOutput(BaseModel):
@@ -24,11 +24,11 @@ def test_simple_basemodel_inheritance():
     assert output == SimpleOutput(x=1, y='test')
 
 
-def test_auto_dataclass_false_disables_auto():
+def test_auto_dataclass_false_disables_auto() -> None:
     """Test auto_dataclass=False disables automatic dataclass application."""
 
     class ManualControl(BaseModel, auto_dataclass=False):
-        def __init__(self, value):
+        def __init__(self, value: str) -> None:
             self.value = value
 
     assert not is_dataclass(ManualControl)
@@ -40,7 +40,7 @@ def test_auto_dataclass_false_disables_auto():
     assert obj.value == 'test'
 
 
-def test_custom_init_with_default_init_true():
+def test_custom_init_with_default_init_true() -> None:
     """Test that custom __init__ works with init=True (default behavior)."""
 
     class CustomInitOutput(BaseModel):  # init=True by default
@@ -48,7 +48,7 @@ def test_custom_init_with_default_init_true():
         y: str
         computed: int
 
-        def __init__(self, x: int, y: str):
+        def __init__(self, x: int, y: str) -> None:
             self.x = x
             self.y = y
             self.computed = x * len(y)  # Custom logic
@@ -69,14 +69,14 @@ def test_custom_init_with_default_init_true():
         CustomInitOutput(x=1, y='test', computed=42)
 
 
-def test_init_false_custom_init():
+def test_init_false_custom_init() -> None:
     """Test init=False allows custom __init__ while keeping dataclass features."""
 
     class CustomInitOutput(BaseModel, init=False):
         x: int
         y: str
 
-        def __init__(self, combined_value: str):
+        def __init__(self, combined_value: str) -> None:
             parts = combined_value.split(',')
             self.x = int(parts[0])
             self.y = parts[1]
@@ -92,7 +92,7 @@ def test_init_false_custom_init():
     assert hasattr(output, '__dataclass_fields__')
 
 
-def test_inheritance_chain_all_auto():
+def test_inheritance_chain_all_auto() -> None:
     """Test that inheritance chains work when all use auto dataclass."""
 
     class BaseOutput(BaseModel):
@@ -116,22 +116,22 @@ def test_inheritance_chain_all_auto():
     assert grandchild.z == 3.14
 
 
-def test_disabled_inheritance_propagation():
+def test_disabled_inheritance_propagation() -> None:
     """Test that auto_dataclass=False propagates to children."""
 
     class DisabledParent(BaseModel, auto_dataclass=False):
-        def __init__(self, value):
+        def __init__(self, value: str) -> None:
             self.value = value
 
     # Child should also be disabled
     class DisabledChild(DisabledParent, auto_dataclass=False):
-        def __init__(self, value, extra):
+        def __init__(self, value: str, extra: str) -> None:
             super().__init__(value)
             self.extra = extra
 
     # Grandchild should also remain disabled
     class DisabledGrandchild(DisabledChild, auto_dataclass=False):
-        def __init__(self, value, extra, more):
+        def __init__(self, value: str, extra: str, more: str) -> None:
             super().__init__(value, extra)
             self.more = more
 
@@ -140,12 +140,12 @@ def test_disabled_inheritance_propagation():
     assert not is_dataclass(DisabledGrandchild)
 
     # All should have the auto_dataclass flag set to False
-    assert DisabledParent._BaseModel__auto_dataclass is False
-    assert DisabledChild._BaseModel__auto_dataclass is False
-    assert DisabledGrandchild._BaseModel__auto_dataclass is False
+    assert DisabledParent._BaseModel__auto_dataclass is False  # type: ignore[attr-defined]
+    assert DisabledChild._BaseModel__auto_dataclass is False  # type: ignore[attr-defined]
+    assert DisabledGrandchild._BaseModel__auto_dataclass is False  # type: ignore[attr-defined]
 
 
-def test_dangerous_disable_after_auto_parent():
+def test_dangerous_disable_after_auto_parent() -> None:
     """Test that disabling auto_dataclass after parent was auto-dataclassed raises error."""
 
     class AutoParent(BaseModel):
@@ -153,7 +153,7 @@ def test_dangerous_disable_after_auto_parent():
         y: str
 
     assert is_dataclass(AutoParent)
-    assert AutoParent._BaseModel__auto_dataclass is True
+    assert AutoParent._BaseModel__auto_dataclass is True  # type: ignore[attr-defined]
 
     # This should raise an error - dangerous inheritance pattern
     with pytest.raises(
@@ -161,34 +161,34 @@ def test_dangerous_disable_after_auto_parent():
     ):
 
         class DangerousChild(AutoParent, auto_dataclass=False):
-            def __init__(self, custom_value):
+            def __init__(self, custom_value: str) -> None:
                 self.custom_value = custom_value
 
 
-def test_safe_disabled_inheritance():
+def test_safe_disabled_inheritance() -> None:
     """Test that disabled inheritance works when parent was also disabled."""
 
     class DisabledBase(BaseModel, auto_dataclass=False):
-        def __init__(self, x):
+        def __init__(self, x: int) -> None:
             self.x = x
 
     # Child of disabled parent can also be disabled - this is safe
     class DisabledChild(DisabledBase, auto_dataclass=False):
-        def __init__(self, x, y):
+        def __init__(self, x: int, y: str) -> None:
             super().__init__(x)
             self.y = y
 
     assert not is_dataclass(DisabledBase)
     assert not is_dataclass(DisabledChild)
-    assert DisabledBase._BaseModel__auto_dataclass is False
-    assert DisabledChild._BaseModel__auto_dataclass is False
+    assert DisabledBase._BaseModel__auto_dataclass is False  # type: ignore[attr-defined]
+    assert DisabledChild._BaseModel__auto_dataclass is False  # type: ignore[attr-defined]
 
     child = DisabledChild(1, 'test')
     assert child.x == 1
     assert child.y == 'test'
 
 
-def test_manual_dataclass_with_basemodel():
+def test_manual_dataclass_with_basemodel() -> None:
     """Test that manually applied @dataclass works with BaseModel."""
 
     @dataclass
@@ -208,11 +208,12 @@ def test_manual_dataclass_with_basemodel():
         z: int = 0  # Must have default since parent has default field
 
     assert is_dataclass(ChildOfManual)
-    child = ChildOfManual(x=1, y='test', z=42)
+    # mypy doesn't understand that BaseModel metaclass creates proper dataclass constructors
+    child = ChildOfManual(x=1, y='test', z=42)  # type: ignore[call-arg]
     assert child.z == 42
 
 
-def test_dataclass_kwargs_passthrough():
+def test_dataclass_kwargs_passthrough() -> None:
     """Test that kwargs are passed to dataclass decorator."""
 
     class FrozenOutput(BaseModel, frozen=True):
@@ -228,7 +229,7 @@ def test_dataclass_kwargs_passthrough():
         output.x = 2
 
 
-def test_complex_inheritance_scenarios():
+def test_complex_inheritance_scenarios() -> None:
     """Test complex real-world inheritance patterns."""
 
     # Auto base
@@ -239,7 +240,7 @@ def test_complex_inheritance_scenarios():
     class ProcessResult(BaseResult, init=False):
         process_id: int
 
-        def __init__(self, success: bool, process_id: int):
+        def __init__(self, success: bool, process_id: int) -> None:
             self.success = success
             self.process_id = process_id * 10  # Custom logic
 
@@ -247,7 +248,7 @@ def test_complex_inheritance_scenarios():
     class DetailedResult(ProcessResult):
         details: str
 
-        def __init__(self, success: bool, process_id: int, details: str):
+        def __init__(self, success: bool, process_id: int, details: str) -> None:
             super().__init__(success, process_id)
             self.details = details.upper()  # Custom logic
 
@@ -262,23 +263,23 @@ def test_complex_inheritance_scenarios():
     assert result.details == 'INFO'  # uppercased from DetailedResult
 
 
-def test_complex_disabled_inheritance():
+def test_complex_disabled_inheritance() -> None:
     """Test complex inheritance with disabled auto_dataclass from the start."""
 
     # Start with disabled base
     class DisabledBase(BaseModel, auto_dataclass=False):
-        def __init__(self, success):
+        def __init__(self, success: bool) -> None:
             self.success = success
 
     # Child with disabled can add custom logic
     class DisabledChild(DisabledBase, auto_dataclass=False):
-        def __init__(self, success, process_id):
+        def __init__(self, success: bool, process_id: int) -> None:
             super().__init__(success)
             self.process_id = process_id * 10
 
     # Grandchild still disabled
     class DisabledGrandchild(DisabledChild, auto_dataclass=False):
-        def __init__(self, success, process_id, extra):
+        def __init__(self, success: bool, process_id: int, extra: str) -> None:
             super().__init__(success, process_id)
             self.extra = extra
 
@@ -292,7 +293,7 @@ def test_complex_disabled_inheritance():
     assert result.extra == 'bonus'
 
 
-def test_no_fields_class():
+def test_no_fields_class() -> None:
     """Test BaseModel subclass with no fields."""
 
     class EmptyOutput(BaseModel):
@@ -305,7 +306,7 @@ def test_no_fields_class():
     assert isinstance(output, EmptyOutput)
 
 
-def test_invalid_primary_base():
+def test_invalid_primary_base() -> None:
     """Test that primary base must inherit from BaseModel."""
 
     class RegularClass:
@@ -319,7 +320,7 @@ def test_invalid_primary_base():
             x: int
 
 
-def test_dataclass_mixin_prevention():
+def test_dataclass_mixin_prevention() -> None:
     """Test that dataclass mixins are prevented."""
 
     @dataclass
@@ -334,18 +335,18 @@ def test_dataclass_mixin_prevention():
             x: int
 
 
-def test_auto_dataclass_tracking():
+def test_auto_dataclass_tracking() -> None:
     """Test that __auto_dataclass attribute is set correctly."""
 
     class AutoOutput(BaseModel):
         x: int
 
     class DisabledOutput(BaseModel, auto_dataclass=False):
-        def __init__(self, value):
+        def __init__(self, value: str) -> None:
             self.value = value
 
     assert is_dataclass(AutoOutput)
-    assert AutoOutput._BaseModel__auto_dataclass is True
+    assert AutoOutput._BaseModel__auto_dataclass is True  # type: ignore[attr-defined]
 
     assert not is_dataclass(DisabledOutput)
-    assert DisabledOutput._BaseModel__auto_dataclass is False
+    assert DisabledOutput._BaseModel__auto_dataclass is False  # type: ignore[attr-defined]
