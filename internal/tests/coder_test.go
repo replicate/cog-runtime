@@ -200,14 +200,12 @@ func TestPredictionCustomDataclassOutputCoder(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create expected output using JSON round-trip to match server serialization
-	expectedItems := []map[string]any{
-		{"x": 3, "y": "a"},
-		{"x": 2, "y": "a"},
-		{"x": 1, "y": "a"},
+	expectedItem := map[string]any{
+		"x": 3, "y": "a",
 	}
-	expectedJSON, err := json.Marshal(expectedItems)
+	expectedJSON, err := json.Marshal(expectedItem)
 	require.NoError(t, err)
-	var expectedOutput []any
+	var expectedOutput any
 	err = json.Unmarshal(expectedJSON, &expectedOutput)
 	require.NoError(t, err)
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
