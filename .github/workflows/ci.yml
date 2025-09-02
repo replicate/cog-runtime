@@ -40,7 +40,7 @@ jobs:
       # Minimum supported python here.
     - run: echo 'UV_PYTHON=3.9' | tee -a "${GITHUB_ENV}"
     - name: Setup uv
-      uses: astral-sh/setup-uv@v3
+      uses: astral-sh/setup-uv@v6
     - run: ./script/init.sh
 
     - name: Setup Node.js for pyright
