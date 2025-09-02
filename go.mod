@@ -7,7 +7,7 @@ require (
 	github.com/getkin/kin-openapi v0.132.0
 	github.com/peterbourgon/ff/v4 v4.0.0-alpha.4
 	github.com/replicate/go v0.0.0-20241101110715-45e9ae8c2040
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/sync v0.16.0
