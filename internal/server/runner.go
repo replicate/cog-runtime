@@ -78,6 +78,9 @@ func (pr *PendingPrediction) sendResponse() {
 // killFunc is the function signature for killing processes
 type killFunc func(pid int, sig syscall.Signal) error
 
+// verifyProcessGroupTerminatedFunc is the function signature for verifying process group termination
+type verifyProcessGroupTerminatedFunc func(pid int) bool
+
 // verifyProcessGroupTerminated checks if all processes in the group have been terminated
 // Returns true if all processes are gone, false if any are still running
 func verifyProcessGroupTerminated(pid int) bool {
@@ -116,9 +119,12 @@ type Runner struct {
 	pending             map[string]*PendingPrediction
 	uploadURL           string
 	shutdownGracePeriod time.Duration
-	killed              bool     // tracks if we've killed this process instance
-	cleanupInProgress   bool     // tracks if process cleanup is still in progress
-	killFn              killFunc // injectable kill function for testing
+	cleanupTimeout      time.Duration   // timeout for process cleanup verification
+	killed              bool            // tracks if we've killed this process instance
+	cleanupSlot         chan struct{}   // buffered size 1, holds cleanup token (len()=1 means no cleanup, len()=0 means cleanup in progress)
+	forceShutdown       chan<- struct{} // signals that cleanup failed and forced shutdown is needed
+	killFn              killFunc        // injectable kill function for testing
+	verifyFn            verifyProcessGroupTerminatedFunc // injectable verification function for testing
 	mu                  sync.Mutex
 	stopped             chan bool
 }
@@ -154,7 +160,7 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 
 	cmd.Env = mergeEnv(os.Environ(), cfg.EnvSet, cfg.EnvUnset)
 
-	return &Runner{
+	r := &Runner{
 		name:                name,
 		workingDir:          workingDir,
 		cmd:                 *cmd,
@@ -163,9 +169,18 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 		pending:             make(map[string]*PendingPrediction),
 		uploadURL:           cfg.UploadURL,
 		shutdownGracePeriod: cfg.RunnerShutdownGracePeriod,
+		cleanupTimeout:      cfg.CleanupTimeout,
 		killFn:              nil, // nil means use real syscall.Kill
+		verifyFn:            nil, // nil means use real verifyProcessGroupTerminated
+		cleanupSlot:         make(chan struct{}, 1),
+		forceShutdown:       cfg.ForceShutdown,
 		stopped:             make(chan bool),
-	}, nil
+	}
+
+	// Initialize cleanup slot with token available (no cleanup in progress)
+	r.cleanupSlot <- struct{}{}
+
+	return r, nil
 }
 
 func NewProcedureRunner(name, srcDir string, cfg Config) (*Runner, error) {
@@ -217,8 +232,15 @@ func (r *Runner) ForceKill() {
 
 	log.Infow("force killing process group", "pid", r.cmd.Process.Pid)
 
-	// Mark cleanup as in progress
-	r.cleanupInProgress = true
+	// Try to take cleanup token
+	gotToken := false
+	select {
+	case <-r.cleanupSlot:
+		gotToken = true
+		log.Infow("acquired cleanup token", "pid", r.cmd.Process.Pid)
+	default:
+		log.Infow("cleanup already in progress, but proceeding with kill", "pid", r.cmd.Process.Pid)
+	}
 
 	// Use injected kill function for testing, or real syscall.Kill
 	killFn := r.killFn
@@ -231,70 +253,62 @@ func (r *Runner) ForceKill() {
 		if !errors.Is(err, syscall.ESRCH) {
 			log.Errorw("failed to kill process group", "pid", r.cmd.Process.Pid, "error", err)
 		}
+		// Return token only if we took it and kill failed (unless ESRCH which is OK)
+		if gotToken && !errors.Is(err, syscall.ESRCH) {
+			r.cleanupSlot <- struct{}{}
+			return
+		}
 	}
 
 	// Mark as killed to prevent PID reuse issues
 	r.killed = true
 
-	// Start verification of process termination in background
-	go r.verifyProcessCleanup(r.cmd.Process.Pid)
+	// Start verification of process termination in background only if we got the token
+	if gotToken {
+		go r.verifyProcessCleanup(r.cmd.Process.Pid)
+	}
 }
 
 // verifyProcessCleanup verifies that all processes in the group have been terminated
 // and updates the cleanup status accordingly
 func (r *Runner) verifyProcessCleanup(pid int) {
 	log := logger.Sugar()
-	const maxWaitTime = 10 * time.Second
-	const checkInterval = 100 * time.Millisecond
+	const checkInterval = 10 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), r.cleanupTimeout)
+	defer cancel()
 
 	start := time.Now()
-	for time.Since(start) < maxWaitTime {
-		if verifyProcessGroupTerminated(pid) {
-			r.mu.Lock()
-			r.cleanupInProgress = false
-			r.mu.Unlock()
-			log.Infow("process cleanup completed successfully", "pid", pid, "elapsed", time.Since(start))
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.stopped:
+			// Runner is being stopped, exit cleanup verification
+			log.Debugw("cleanup verification stopped due to runner shutdown", "pid", pid, "elapsed", time.Since(start))
 			return
-		}
-		time.Sleep(checkInterval)
-	}
-
-	// Timeout reached - log warning but clear cleanup flag
-	r.mu.Lock()
-	r.cleanupInProgress = false
-	r.mu.Unlock()
-	log.Warnw("process cleanup verification timed out, some processes may still be running",
-		"pid", pid, "elapsed", time.Since(start))
-}
-
-// waitForCleanupAndSetReady waits for cleanup to complete and then sets the runner to ready
-func (r *Runner) waitForCleanupAndSetReady() {
-	log := logger.Sugar()
-	const maxWaitTime = 30 * time.Second
-	const checkInterval = 100 * time.Millisecond
-
-	start := time.Now()
-	for time.Since(start) < maxWaitTime {
-		r.mu.Lock()
-		cleanupInProgress := r.cleanupInProgress
-		r.mu.Unlock()
-
-		if !cleanupInProgress {
-			// Cleanup completed, now set ready status
-			log.Infow("cleanup completed, setting runner to ready", "elapsed", time.Since(start))
-			if err := r.HandleIPC(IPCStatusReady); err != nil {
-				log.Errorw("failed to set runner ready after cleanup", "error", err)
+		case <-ctx.Done():
+			// Timeout reached - signal forced shutdown
+			log.Errorw("process cleanup verification timed out, signaling forced shutdown",
+				"pid", pid, "elapsed", time.Since(start))
+			select {
+			case r.forceShutdown <- struct{}{}:
+			default:
 			}
 			return
+		case <-ticker.C:
+			fn := verifyProcessGroupTerminated
+			if r.verifyFn != nil {
+				fn = r.verifyFn
+			}
+			if fn(pid) {
+				// Cleanup completed successfully, return token
+				r.cleanupSlot <- struct{}{}
+				log.Infow("process cleanup completed successfully, returned cleanup token", "pid", pid, "elapsed", time.Since(start))
+				return
+			}
 		}
-
-		time.Sleep(checkInterval)
-	}
-
-	// Timeout reached - force set to ready anyway
-	log.Warnw("timeout waiting for cleanup to complete, forcing ready status", "elapsed", time.Since(start))
-	if err := r.HandleIPC(IPCStatusReady); err != nil {
-		log.Errorw("failed to set runner ready after cleanup timeout", "error", err)
 	}
 }
 
@@ -589,15 +603,9 @@ func (r *Runner) HandleIPC(s IPCStatus) error {
 	log := logger.Sugar()
 	switch s {
 	case IPCStatusReady:
-		// Check if cleanup is still in progress before allowing ready status
-		r.mu.Lock()
-		cleanupInProgress := r.cleanupInProgress
-		r.mu.Unlock()
-
-		if cleanupInProgress {
-			log.Infow("runner ready signal received but cleanup still in progress, deferring ready status")
-			// Start a goroutine to retry when cleanup completes
-			go r.waitForCleanupAndSetReady()
+		// Check if cleanup is in progress using len() on cleanup slot
+		if len(r.cleanupSlot) == 0 {
+			log.Infow("runner ready signal received but cleanup still in progress, remaining busy")
 			return nil
 		}
 
