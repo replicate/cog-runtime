@@ -1,5 +1,6 @@
 import os.path
 import pkgutil
+import tempfile
 from typing import List
 
 import pytest
@@ -28,6 +29,14 @@ async def test_test_inputs(predictor):
 
         # Some predictors calls current_scope() and requires ctx_pid
         scope.ctx_pid.set(predictor)
-        assert await r.test()
+        
+        # Use temporary directory for predictors that create files
+        original_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                os.chdir(temp_dir)
+                assert await r.test()
+            finally:
+                os.chdir(original_cwd)
     except PythonVersionError as e:
         pytest.skip(reason=str(e))
