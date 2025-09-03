@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -638,5 +639,104 @@ func TestRunner_StopGracePeriod(t *testing.T) {
 		assert.Equal(t, -12345, killedPid, "Should kill process group")
 		assert.Equal(t, syscall.SIGKILL, killedSignal, "Should use SIGKILL")
 		assert.True(t, runner.killed, "Should mark runner as killed")
+	})
+}
+
+func TestRunner_CleanupVerification(t *testing.T) {
+	t.Run("HandleIPC waits for cleanup completion", func(t *testing.T) {
+		t.Parallel()
+
+		workingDir := t.TempDir()
+		// Create necessary files to prevent errors in HandleIPC
+		setupResultFile := filepath.Join(workingDir, "setup_result.json")
+		require.NoError(t, os.WriteFile(setupResultFile, []byte(`{"status":"succeeded","started_at":"2023-01-01T00:00:00Z","completed_at":"2023-01-01T00:00:01Z"}`), 0o644))
+		openAPIFile := filepath.Join(workingDir, "openapi.json")
+		require.NoError(t, os.WriteFile(openAPIFile, []byte(`{"openapi":"3.0.0","info":{"title":"Test","version":"1.0.0"}}`), 0o644))
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			status:              StatusStarting,
+			cleanupInProgress:   true, // Simulate cleanup in progress
+			shutdownGracePeriod: 0,
+			workingDir:          workingDir,
+			stopped:             make(chan bool),
+			setupResult:         SetupResult{}, // Initialize empty setup result
+		}
+
+		// Mock kill function that always succeeds
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			return nil
+		}
+
+		// Call HandleIPC with Ready status while cleanup is in progress
+		err := runner.HandleIPC(IPCStatusReady)
+		require.NoError(t, err)
+
+		// Should still be in StatusStarting because cleanup is in progress
+		assert.Equal(t, StatusStarting, runner.status)
+
+		// Simulate cleanup completion
+		runner.mu.Lock()
+		runner.cleanupInProgress = false
+		runner.mu.Unlock()
+
+		// Give some time for the goroutine to process
+		time.Sleep(300 * time.Millisecond)
+
+		// Now status should be Ready (allowing for some timing issues in tests)
+		runner.mu.Lock()
+		actualStatus := runner.status
+		runner.mu.Unlock()
+		assert.Equal(t, StatusReady, actualStatus)
+	})
+
+	t.Run("verifyProcessGroupTerminated detects terminated processes", func(t *testing.T) {
+		t.Parallel()
+
+		// Test with a non-existent PID (should return true)
+		result := verifyProcessGroupTerminated(999999) // Very unlikely to exist
+		assert.True(t, result, "Should detect terminated process group")
+
+		// NOTE: Testing with current process PID may not work reliably in all environments
+		// as the current process may not be in its own process group
+		// So we'll skip that part of the test for now
+	})
+
+	t.Run("ForceKill sets cleanup in progress", func(t *testing.T) {
+		t.Parallel()
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			shutdownGracePeriod: 0,
+			stopped:             make(chan bool),
+		}
+
+		// Mock kill function that always succeeds
+		var killedPid int
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			killedPid = pid
+			return nil
+		}
+
+		// Verify cleanup is not in progress initially
+		assert.False(t, runner.cleanupInProgress)
+
+		// Call ForceKill
+		runner.ForceKill()
+
+		// Verify kill was called and cleanup is in progress
+		assert.Equal(t, -12345, killedPid)
+		assert.True(t, runner.cleanupInProgress)
+		assert.True(t, runner.killed)
+
+		// Give some time for cleanup verification to complete
+		time.Sleep(200 * time.Millisecond)
+
+		// Cleanup should be complete (since the mocked PID doesn't exist)
+		assert.False(t, runner.cleanupInProgress)
 	})
 }
