@@ -19,13 +19,15 @@ import (
 )
 
 type ServerCmd struct {
-	Host                      string        `help:"Host address to bind the HTTP server to" default:"0.0.0.0"`
-	Port                      int           `help:"Port number for the HTTP server" default:"5000"`
-	UseProcedureMode          bool          `help:"Enable procedure mode for concurrent predictions" name:"use-procedure-mode"`
-	AwaitExplicitShutdown     bool          `help:"Wait for explicit shutdown signal instead of auto-shutdown" name:"await-explicit-shutdown"`
-	UploadURL                 string        `help:"Base URL for uploading prediction output files" name:"upload-url"`
-	WorkingDirectory          string        `help:"Override the working directory for predictions" name:"working-directory"`
-	RunnerShutdownGracePeriod time.Duration `help:"Grace period before force-killing prediction runners" name:"runner-shutdown-grace-period" default:"600s"`
+	Host                      string        `help:"Host address to bind the HTTP server to" default:"0.0.0.0" env:"COG_HOST"`
+	Port                      int           `help:"Port number for the HTTP server" default:"5000" env:"COG_PORT"`
+	UseProcedureMode          bool          `help:"Enable procedure mode for concurrent predictions" name:"use-procedure-mode" env:"COG_USE_PROCEDURE_MODE"`
+	AwaitExplicitShutdown     bool          `help:"Wait for explicit shutdown signal instead of auto-shutdown" name:"await-explicit-shutdown" env:"COG_AWAIT_EXPLICIT_SHUTDOWN"`
+	OneShot                   bool          `help:"Enable one-shot mode (single runner, wait for cleanup before ready)" name:"one-shot" env:"COG_ONE_SHOT"`
+	UploadURL                 string        `help:"Base URL for uploading prediction output files" name:"upload-url" env:"COG_UPLOAD_URL"`
+	WorkingDirectory          string        `help:"Override the working directory for predictions" name:"working-directory" env:"COG_WORKING_DIRECTORY"`
+	RunnerShutdownGracePeriod time.Duration `help:"Grace period before force-killing prediction runners" name:"runner-shutdown-grace-period" default:"600s" env:"COG_RUNNER_SHUTDOWN_GRACE_PERIOD"`
+	CleanupTimeout            time.Duration `help:"Maximum time to wait for process cleanup before hard exit" name:"cleanup-timeout" default:"10s" env:"COG_CLEANUP_TIMEOUT"`
 }
 
 type SchemaCmd struct{}
@@ -43,6 +45,12 @@ var logger = util.CreateLogger("cog")
 func (s *ServerCmd) Run() error {
 	log := logger.Sugar()
 
+	// One-shot mode requires procedure mode
+	if s.OneShot && !s.UseProcedureMode {
+		log.Errorw("one-shot mode requires procedure mode")
+		return fmt.Errorf("one-shot mode requires procedure mode, use --use-procedure-mode")
+	}
+
 	// Procedure mode implies await explicit shutdown
 	// i.e. Python process exit should not trigger shutdown
 	if s.UseProcedureMode {
@@ -51,6 +59,7 @@ func (s *ServerCmd) Run() error {
 	log.Infow("configuration",
 		"use-procedure-mode", s.UseProcedureMode,
 		"await-explicit-shutdown", s.AwaitExplicitShutdown,
+		"one-shot", s.OneShot,
 		"upload-url", s.UploadURL,
 	)
 
@@ -67,13 +76,18 @@ func (s *ServerCmd) Run() error {
 		}
 	}
 
+	forceShutdown := make(chan struct{}, 1)
+
 	serverCfg := server.Config{
 		UseProcedureMode:          s.UseProcedureMode,
 		AwaitExplicitShutdown:     s.AwaitExplicitShutdown,
+		OneShot:                   s.OneShot,
 		IPCUrl:                    fmt.Sprintf("http://localhost:%d/_ipc", s.Port),
 		UploadURL:                 s.UploadURL,
 		WorkingDirectory:          currentWorkingDirectory,
 		RunnerShutdownGracePeriod: s.RunnerShutdownGracePeriod,
+		CleanupTimeout:            s.CleanupTimeout,
+		ForceShutdown:             forceShutdown,
 	}
 	// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
 	// statically create the runner list sized at 1.
@@ -107,15 +121,20 @@ func (s *ServerCmd) Run() error {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 		for {
-			sig := <-ch
-			if sig == syscall.SIGTERM && s.AwaitExplicitShutdown {
-				log.Warnw("ignoring signal to stop", "signal", sig)
-			} else {
-				log.Infow("stopping Cog HTTP server", "signal", sig)
-				if err := h.Stop(); err != nil {
-					log.Errorw("failed to stop server handler", "error", err)
-					os.Exit(1)
+			select {
+			case sig := <-ch:
+				if sig == syscall.SIGTERM && s.AwaitExplicitShutdown {
+					log.Warnw("ignoring signal to stop", "signal", sig)
+				} else {
+					log.Infow("stopping Cog HTTP server", "signal", sig)
+					if err := h.Stop(); err != nil {
+						log.Errorw("failed to stop server handler", "error", err)
+						os.Exit(1)
+					}
 				}
+			case <-forceShutdown:
+				log.Errorw("cleanup timeout reached, forcing ungraceful shutdown")
+				os.Exit(1)
 			}
 		}
 	}()

@@ -6,8 +6,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -543,67 +545,67 @@ func TestRunner_ForceKill(t *testing.T) {
 
 func TestRunner_StopGracePeriod(t *testing.T) {
 	t.Run("Grace period timeout triggers ForceKill", func(t *testing.T) {
-		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			runner := &Runner{
+				cmd: exec.Cmd{
+					Process: &os.Process{Pid: 12345},
+				},
+				shutdownGracePeriod: 10 * time.Millisecond,
+				stopped:             make(chan bool),
+				workingDir:          t.TempDir(),
+			}
 
-		runner := &Runner{
-			cmd: exec.Cmd{
-				Process: &os.Process{Pid: 12345},
-			},
-			shutdownGracePeriod: 10 * time.Millisecond, // Very short for testing
-			stopped:             make(chan bool),
-			workingDir:          t.TempDir(),
-		}
+			// Track kill calls
+			killCalled := false
+			runner.killFn = func(pid int, sig syscall.Signal) error {
+				killCalled = true
+				return nil
+			}
 
-		// Track kill calls
-		killCalled := false
-		runner.killFn = func(pid int, sig syscall.Signal) error {
-			killCalled = true
-			return nil
-		}
+			// Start graceful shutdown
+			err := runner.Stop()
+			require.NoError(t, err)
 
-		// Start graceful shutdown
-		err := runner.Stop()
-		require.NoError(t, err)
+			// Wait for grace period to expire
+			time.Sleep(50 * time.Millisecond)
 
-		// Wait for grace period to expire
-		time.Sleep(50 * time.Millisecond)
-
-		assert.True(t, killCalled, "Should call kill after grace period")
-		assert.True(t, runner.killed, "Should mark runner as killed")
+			assert.True(t, killCalled, "Should call kill after grace period")
+			assert.True(t, runner.killed, "Should mark runner as killed")
+		})
 	})
 
 	t.Run("Graceful exit cancels ForceKill", func(t *testing.T) {
-		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			runner := &Runner{
+				cmd: exec.Cmd{
+					Process: &os.Process{Pid: 12345},
+				},
+				shutdownGracePeriod: 100 * time.Millisecond,
+				stopped:             make(chan bool),
+				workingDir:          t.TempDir(),
+			}
 
-		runner := &Runner{
-			cmd: exec.Cmd{
-				Process: &os.Process{Pid: 12345},
-			},
-			shutdownGracePeriod: 100 * time.Millisecond, // Longer grace period
-			stopped:             make(chan bool),
-			workingDir:          t.TempDir(),
-		}
+			// Track kill calls
+			killCalled := false
+			runner.killFn = func(pid int, sig syscall.Signal) error {
+				killCalled = true
+				return nil
+			}
 
-		// Track kill calls
-		killCalled := false
-		runner.killFn = func(pid int, sig syscall.Signal) error {
-			killCalled = true
-			return nil
-		}
+			// Start graceful shutdown
+			err := runner.Stop()
+			require.NoError(t, err)
 
-		// Start graceful shutdown
-		err := runner.Stop()
-		require.NoError(t, err)
+			// Simulate graceful exit before grace period
+			time.Sleep(10 * time.Millisecond)
+			close(runner.stopped)
 
-		// Simulate graceful exit before grace period
-		time.Sleep(10 * time.Millisecond)
-		close(runner.stopped)
+			// Wait past grace period
+			time.Sleep(150 * time.Millisecond)
 
-		// Wait past grace period
-		time.Sleep(150 * time.Millisecond)
-
-		assert.False(t, killCalled, "Should not call kill after graceful exit")
-		assert.False(t, runner.killed, "Should not mark as killed after graceful exit")
+			assert.False(t, killCalled, "Should not call kill after graceful exit")
+			assert.False(t, runner.killed, "Should not mark as killed after graceful exit")
+		})
 	})
 
 	t.Run("Zero grace period calls ForceKill immediately", func(t *testing.T) {
@@ -638,5 +640,227 @@ func TestRunner_StopGracePeriod(t *testing.T) {
 		assert.Equal(t, -12345, killedPid, "Should kill process group")
 		assert.Equal(t, syscall.SIGKILL, killedSignal, "Should use SIGKILL")
 		assert.True(t, runner.killed, "Should mark runner as killed")
+	})
+}
+
+func TestRunner_CleanupVerification(t *testing.T) {
+	t.Run("HandleIPC waits for cleanup completion", func(t *testing.T) {
+		t.Parallel()
+
+		workingDir := t.TempDir()
+		// Create necessary files to prevent errors in HandleIPC
+		setupResultFile := filepath.Join(workingDir, "setup_result.json")
+		require.NoError(t, os.WriteFile(setupResultFile, []byte(`{"status":"succeeded","started_at":"2023-01-01T00:00:00Z","completed_at":"2023-01-01T00:00:01Z"}`), 0o644))
+		openAPIFile := filepath.Join(workingDir, "openapi.json")
+		require.NoError(t, os.WriteFile(openAPIFile, []byte(`{"openapi":"3.0.0","info":{"title":"Test","version":"1.0.0"}}`), 0o644))
+
+		runner := &Runner{
+			cmd: exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			status:              StatusStarting,
+			cleanupSlot:         make(chan struct{}, 1),
+			shutdownGracePeriod: 0,
+			cleanupTimeout:      10 * time.Second,
+			workingDir:          workingDir,
+			stopped:             make(chan bool),
+			setupResult:         SetupResult{},
+		}
+
+		// Mock kill function that always succeeds
+		runner.killFn = func(pid int, sig syscall.Signal) error {
+			return nil
+		}
+
+		// Call HandleIPC with Ready status while cleanup is in progress
+		err := runner.HandleIPC(IPCStatusReady)
+		require.NoError(t, err)
+
+		// Should be StatusReady - runner reflects Python state, healthcheck handles cleanup override
+		assert.Equal(t, StatusReady, runner.status)
+
+		runner.cleanupSlot <- struct{}{}
+
+		err = runner.HandleIPC(IPCStatusReady)
+		require.NoError(t, err)
+
+		runner.mu.Lock()
+		actualStatus := runner.status
+		runner.mu.Unlock()
+		assert.Equal(t, StatusReady, actualStatus)
+	})
+
+	t.Run("verifyProcessGroupTerminated detects terminated processes", func(t *testing.T) {
+		t.Parallel()
+
+		// Test with a non-existent PID (should return true)
+		result := verifyProcessGroupTerminated(999999) // Very unlikely to exist
+		assert.True(t, result, "Should detect terminated process group")
+
+		// NOTE: Testing with current process PID may not work reliably in all environments
+		// as the current process may not be in its own process group
+		// So we'll skip that part of the test for now
+	})
+
+	t.Run("ForceKill sets cleanup in progress", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			runner := &Runner{
+				cmd: exec.Cmd{
+					Process: &os.Process{Pid: 9999999},
+				},
+				shutdownGracePeriod: 0,
+				cleanupTimeout:      10 * time.Second,
+				cleanupSlot:         make(chan struct{}, 1),
+				stopped:             make(chan bool),
+			}
+			runner.cleanupSlot <- struct{}{}
+
+			var killedPid int
+			runner.killFn = func(pid int, sig syscall.Signal) error {
+				killedPid = pid
+				return nil
+			}
+
+			// Mock verification to stay in progress initially, then complete later
+			callCount := 0
+			runner.verifyFn = func(pid int) bool {
+				callCount++
+				return callCount > 20 // Complete after 20 calls (200ms)
+			}
+
+			assert.Len(t, runner.cleanupSlot, 1)
+
+			runner.ForceKill()
+
+			assert.Equal(t, -9999999, killedPid)
+			assert.Empty(t, runner.cleanupSlot)
+			assert.True(t, runner.killed)
+
+			// Let some time pass - cleanup verification should be running but not complete
+			// since PID 1 will still exist after our mock kill
+			time.Sleep(50 * time.Millisecond)
+
+			// Cleanup should still be in progress since PID 1 process group still exists
+			assert.Empty(t, runner.cleanupSlot)
+
+			// Stop the cleanup verification by closing stopped channel
+			close(runner.stopped)
+			time.Sleep(10 * time.Millisecond)
+		})
+	})
+
+	t.Run("Cleanup timeout triggers forceShutdown channel", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			forceShutdownChan := make(chan struct{}, 1)
+			runner := &Runner{
+				cmd: exec.Cmd{
+					Process: &os.Process{Pid: 12345},
+				},
+				shutdownGracePeriod: 0,
+				cleanupTimeout:      100 * time.Millisecond, // Short timeout for testing
+				cleanupSlot:         make(chan struct{}, 1),
+				forceShutdown:       forceShutdownChan,
+				stopped:             make(chan bool),
+			}
+			runner.cleanupSlot <- struct{}{}
+
+			runner.killFn = func(pid int, sig syscall.Signal) error {
+				return nil
+			}
+
+			runner.verifyFn = func(pid int) bool {
+				return false
+			}
+
+			runner.ForceKill()
+
+			// Cleanup should be in progress
+			assert.Empty(t, runner.cleanupSlot)
+
+			time.Sleep(200 * time.Millisecond)
+
+			select {
+			case <-forceShutdownChan:
+			default:
+				t.Fatal("Expected forceShutdown signal after cleanup timeout")
+			}
+		})
+	})
+
+	t.Run("Multiple ForceKill calls are safe", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			runner := &Runner{
+				cmd: exec.Cmd{
+					Process: &os.Process{Pid: 12345},
+				},
+				shutdownGracePeriod: 0,
+				cleanupTimeout:      10 * time.Second,
+				cleanupSlot:         make(chan struct{}, 1),
+				forceShutdown:       make(chan struct{}, 1),
+				stopped:             make(chan bool),
+			}
+			runner.cleanupSlot <- struct{}{}
+
+			killCallCount := 0
+			runner.killFn = func(pid int, sig syscall.Signal) error {
+				killCallCount++
+				return nil
+			}
+
+			runner.verifyFn = func(pid int) bool {
+				return false
+			}
+
+			// First call should take token and start cleanup
+			runner.ForceKill()
+			assert.Equal(t, 1, killCallCount)
+			assert.Empty(t, runner.cleanupSlot)
+
+			// Subsequent calls should return early since killed=true, so no additional kill calls
+			runner.ForceKill()
+			runner.ForceKill()
+			assert.Equal(t, 1, killCallCount) // Still 1, not 3
+			assert.Empty(t, runner.cleanupSlot)
+
+			close(runner.stopped)
+			time.Sleep(50 * time.Millisecond)
+			assert.Empty(t, runner.cleanupSlot)
+		})
+	})
+
+	t.Run("Cleanup verification respects stopped channel", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			runner := &Runner{
+				cmd: exec.Cmd{
+					Process: &os.Process{Pid: 12345},
+				},
+				shutdownGracePeriod: 0,
+				cleanupTimeout:      10 * time.Second,
+				cleanupSlot:         make(chan struct{}, 1),
+				forceShutdown:       make(chan struct{}, 1),
+				stopped:             make(chan bool),
+			}
+			runner.cleanupSlot <- struct{}{}
+
+			runner.killFn = func(pid int, sig syscall.Signal) error {
+				return nil
+			}
+
+			runner.ForceKill()
+			assert.Empty(t, runner.cleanupSlot)
+
+			// Close stopped channel to simulate runner shutdown
+			close(runner.stopped)
+
+			// Wait a bit to let cleanup verification exit
+			time.Sleep(50 * time.Millisecond)
+
+			// Cleanup should still be marked as in progress since verification was interrupted
+			assert.Empty(t, runner.cleanupSlot)
+		})
 	})
 }

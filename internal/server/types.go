@@ -40,11 +40,13 @@ const (
 type Config struct {
 	UseProcedureMode      bool
 	AwaitExplicitShutdown bool
+	OneShot               bool
 	IPCUrl                string
 	UploadURL             string
 	WorkingDirectory      string
 	EnvSet                map[string]string
 	EnvUnset              []string
+	ForceShutdown         chan<- struct{} // channel for signaling ungraceful shutdown
 
 	MaxRunners int
 
@@ -56,6 +58,10 @@ type Config struct {
 	// RunnerShutdownGracePeriod configures how long to wait before force-killing
 	// runners after Stop() is called. Set to 0 to disable grace period.
 	RunnerShutdownGracePeriod time.Duration
+
+	// CleanupTimeout configures the maximum time to wait for process cleanup
+	// verification before triggering ungraceful shutdown.
+	CleanupTimeout time.Duration
 }
 
 type PredictConfig struct {

@@ -78,6 +78,32 @@ func (pr *PendingPrediction) sendResponse() {
 // killFunc is the function signature for killing processes
 type killFunc func(pid int, sig syscall.Signal) error
 
+// verifyProcessGroupTerminatedFunc is the function signature for verifying process group termination
+type verifyProcessGroupTerminatedFunc func(pid int) bool
+
+// verifyProcessGroupTerminated checks if all processes in the group have been terminated
+// Returns true if all processes are gone, false if any are still running
+func verifyProcessGroupTerminated(pid int) bool {
+	log := logger.Sugar()
+
+	// Try to send signal 0 to the process group to check if any processes still exist
+	// Signal 0 doesn't actually send a signal but checks if the process exists
+	err := syscall.Kill(-pid, 0)
+	if err != nil {
+		if errors.Is(err, syscall.ESRCH) {
+			// No such process - process group is terminated
+			log.Debugw("process group fully terminated", "pid", pid)
+			return true
+		}
+		// Other errors (like EPERM) mean processes might still exist
+		log.Debugw("process group verification failed, assuming processes exist", "pid", pid, "error", err)
+		return false
+	}
+	// No error means at least one process in the group still exists
+	log.Debugw("process group still has running processes", "pid", pid)
+	return false
+}
+
 type Runner struct {
 	name                string
 	workingDir          string
@@ -93,8 +119,12 @@ type Runner struct {
 	pending             map[string]*PendingPrediction
 	uploadURL           string
 	shutdownGracePeriod time.Duration
-	killed              bool     // tracks if we've killed this process instance
-	killFn              killFunc // injectable kill function for testing
+	cleanupTimeout      time.Duration                    // timeout for process cleanup verification
+	killed              bool                             // tracks if we've killed this process instance
+	cleanupSlot         chan struct{}                    // buffered size 1, holds cleanup token (len()=1 means no cleanup, len()=0 means cleanup in progress)
+	forceShutdown       chan<- struct{}                  // signals that cleanup failed and forced shutdown is needed
+	killFn              killFunc                         // injectable kill function for testing
+	verifyFn            verifyProcessGroupTerminatedFunc // injectable verification function for testing
 	mu                  sync.Mutex
 	stopped             chan bool
 }
@@ -130,7 +160,7 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 
 	cmd.Env = mergeEnv(os.Environ(), cfg.EnvSet, cfg.EnvUnset)
 
-	return &Runner{
+	r := &Runner{
 		name:                name,
 		workingDir:          workingDir,
 		cmd:                 *cmd,
@@ -139,9 +169,18 @@ func NewRunner(name, cwd string, cfg Config) (*Runner, error) {
 		pending:             make(map[string]*PendingPrediction),
 		uploadURL:           cfg.UploadURL,
 		shutdownGracePeriod: cfg.RunnerShutdownGracePeriod,
+		cleanupTimeout:      cfg.CleanupTimeout,
 		killFn:              nil, // nil means use real syscall.Kill
+		verifyFn:            nil, // nil means use real verifyProcessGroupTerminated
+		cleanupSlot:         make(chan struct{}, 1),
+		forceShutdown:       cfg.ForceShutdown,
 		stopped:             make(chan bool),
-	}, nil
+	}
+
+	// Initialize cleanup slot with token available (no cleanup in progress)
+	r.cleanupSlot <- struct{}{}
+
+	return r, nil
 }
 
 func NewProcedureRunner(name, srcDir string, cfg Config) (*Runner, error) {
@@ -193,6 +232,16 @@ func (r *Runner) ForceKill() {
 
 	log.Infow("force killing process group", "pid", r.cmd.Process.Pid)
 
+	// Try to take cleanup token
+	gotToken := false
+	select {
+	case <-r.cleanupSlot:
+		gotToken = true
+		log.Infow("acquired cleanup token", "pid", r.cmd.Process.Pid)
+	default:
+		log.Infow("cleanup already in progress, but proceeding with kill", "pid", r.cmd.Process.Pid)
+	}
+
 	// Use injected kill function for testing, or real syscall.Kill
 	killFn := r.killFn
 	if killFn == nil {
@@ -204,10 +253,63 @@ func (r *Runner) ForceKill() {
 		if !errors.Is(err, syscall.ESRCH) {
 			log.Errorw("failed to kill process group", "pid", r.cmd.Process.Pid, "error", err)
 		}
+		// Return token only if we took it and kill failed (unless ESRCH which is OK)
+		if gotToken && !errors.Is(err, syscall.ESRCH) {
+			r.cleanupSlot <- struct{}{}
+			return
+		}
 	}
 
 	// Mark as killed to prevent PID reuse issues
 	r.killed = true
+
+	// Start verification of process termination in background only if we got the token
+	if gotToken {
+		go r.verifyProcessCleanup(r.cmd.Process.Pid)
+	}
+}
+
+// verifyProcessCleanup verifies that all processes in the group have been terminated
+// and updates the cleanup status accordingly
+func (r *Runner) verifyProcessCleanup(pid int) {
+	log := logger.Sugar()
+	const checkInterval = 10 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), r.cleanupTimeout)
+	defer cancel()
+
+	start := time.Now()
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.stopped:
+			// Runner is being stopped, exit cleanup verification
+			log.Debugw("cleanup verification stopped due to runner shutdown", "pid", pid, "elapsed", time.Since(start))
+			return
+		case <-ctx.Done():
+			// Timeout reached - signal forced shutdown
+			log.Errorw("process cleanup verification timed out, signaling forced shutdown",
+				"pid", pid, "elapsed", time.Since(start))
+			select {
+			case r.forceShutdown <- struct{}{}:
+			default:
+			}
+			return
+		case <-ticker.C:
+			fn := verifyProcessGroupTerminated
+			if r.verifyFn != nil {
+				fn = r.verifyFn
+			}
+			if fn(pid) {
+				// Cleanup completed successfully, return token
+				r.cleanupSlot <- struct{}{}
+				log.Infow("process cleanup completed successfully, returned cleanup token", "pid", pid, "elapsed", time.Since(start))
+				return
+			}
+		}
+	}
 }
 
 func (r *Runner) Stop() error {
@@ -501,6 +603,7 @@ func (r *Runner) HandleIPC(s IPCStatus) error {
 	log := logger.Sugar()
 	switch s {
 	case IPCStatusReady:
+
 		if r.status == StatusStarting {
 			r.updateSchema()
 			r.updateSetupResult()

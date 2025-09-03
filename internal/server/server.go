@@ -75,7 +75,10 @@ func NewHandler(cfg Config, shutdown context.CancelFunc) (*Handler, error) {
 		// FIXME: this should not be here, it should be lifted to main.go and passed to NewHandler and `0`
 		// should be rejected as invalid
 		maxRunners := cfg.MaxRunners
-		if maxRunners == 0 {
+		if cfg.OneShot {
+			// In one-shot mode, force single runner slot
+			maxRunners = 1
+		} else if maxRunners == 0 {
 			maxRunners = runtime.NumCPU() * 4
 		}
 		h.runners = make([]*Runner, maxRunners)
@@ -188,54 +191,68 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 	// Use Go runner as source of truth for readiness and concurrency
 	log := logger.Sugar()
 	var hc HealthCheck
-	if h.cfg.UseProcedureMode {
-		if err := writeReadyFile(); err != nil {
-			log.Errorw("failed to write ready file", "error", err)
-			return nil, err
-		}
-		hc = HealthCheck{
-			Setup: &SetupResult{
-				StartedAt:   util.FormatTime(h.startedAt),
-				CompletedAt: util.FormatTime(h.startedAt),
-				Status:      SetupSucceeded,
-			},
-			Concurrency: Concurrency{
-				// Max runners as max concurrency
-				Max: len(h.runners),
-			},
-		}
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		for i, runner := range h.runners {
-			if runner == nil {
-				continue
-			}
-			if runner.status == StatusDefunct || runner.status == StatusSetupFailed {
-				h.runners[i] = nil
-				log.Warnw("stopping stale runner", "name", runner.name, "status", runner.status.String())
-				go func() {
-					if err := runner.Stop(); err != nil {
-						log.Errorw("failed to stop runner", "name", runner.name, "error", err)
-					}
-				}()
-				continue
-			}
-			// Aggregate current concurrency across workers
-			hc.Concurrency.Current += runner.Concurrency().Current
-		}
-		if hc.Concurrency.Current < hc.Concurrency.Max {
-			hc.Status = StatusReady.String()
-		} else {
-			hc.Status = StatusBusy.String()
-		}
-	} else {
-		hc = HealthCheck{
+	if !h.cfg.UseProcedureMode {
+		return &HealthCheck{
 			Status:      h.runners[DefaultRunnerID].status.String(),
 			Setup:       &h.runners[DefaultRunnerID].setupResult,
 			Concurrency: h.runners[DefaultRunnerID].Concurrency(),
-		}
+		}, nil
 	}
+
+	if err := writeReadyFile(); err != nil {
+		log.Errorw("failed to write ready file", "error", err)
+		return nil, err
+	}
+	hc = HealthCheck{
+		Setup: &SetupResult{
+			StartedAt:   util.FormatTime(h.startedAt),
+			CompletedAt: util.FormatTime(h.startedAt),
+			Status:      SetupSucceeded,
+		},
+		Concurrency: Concurrency{
+			// Max runners as max concurrency
+			Max: len(h.runners),
+		},
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i, runner := range h.runners {
+		if runner == nil {
+			continue
+		}
+		if runner.status == StatusDefunct || runner.status == StatusSetupFailed {
+			h.runners[i] = nil
+			log.Warnw("stopping stale runner", "name", runner.name, "status", runner.status.String())
+			go func() {
+				if err := runner.Stop(); err != nil {
+					log.Errorw("failed to stop runner", "name", runner.name, "error", err)
+				}
+			}()
+			continue
+		}
+		// Aggregate current concurrency across workers
+		hc.Concurrency.Current += runner.Concurrency().Current
+	}
+
+	// Determine status
+	hc.Status = StatusBusy.String()
+	if hc.Concurrency.Current < hc.Concurrency.Max && !h.cleanupInProgress() {
+		hc.Status = StatusReady.String()
+	}
+
 	return &hc, nil
+}
+
+func (h *Handler) cleanupInProgress() bool {
+	if !h.cfg.OneShot {
+		return false
+	}
+
+	if len(h.runners) == 0 || h.runners[0] == nil {
+		return false
+	}
+
+	return len(h.runners[0].cleanupSlot) == 0
 }
 
 func (h *Handler) OpenAPI(w http.ResponseWriter, r *http.Request) {

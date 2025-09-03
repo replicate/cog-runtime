@@ -64,6 +64,9 @@ linters:
     - source: 'defer resp.Body.Close()'
       linters:
       - errcheck
+    - source: 'synctest\.Test\(t, func\(t \*testing\.T\)'
+      linters:
+      - thelper
   settings:
     errcheck:
       disable-default-exclusions: false
