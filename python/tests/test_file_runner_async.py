@@ -7,19 +7,7 @@ import pytest
 
 from coglet import file_runner
 
-from .test_file_runner import FileRunnerTest
-
-
-def setup_module():
-    from .test_file_runner import setup_module as setup
-
-    setup()
-
-
-def teardown_module():
-    from .test_file_runner import teardown_module as teardown
-
-    teardown()
+from .test_file_runner import FileRunnerTest, ipc_server  # noqa: F401
 
 
 async def async_wait_for_file(path, exists: bool = True) -> None:
@@ -31,8 +19,8 @@ async def async_wait_for_file(path, exists: bool = True) -> None:
 
 
 @pytest.mark.asyncio
-async def test_file_runner_async(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'async_sleep', env={'SETUP_SLEEP': '1'})
+async def test_file_runner_async(tmp_path, ipc_server):  # noqa: F811
+    rt = FileRunnerTest(tmp_path, 'async_sleep', ipc_server, env={'SETUP_SLEEP': '1'})
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)
@@ -72,8 +60,8 @@ async def test_file_runner_async(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_file_runner_async_concurrency(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'async_sleep', max_concurrency=2)
+async def test_file_runner_async_concurrency(tmp_path, ipc_server):  # noqa: F811
+    rt = FileRunnerTest(tmp_path, 'async_sleep', ipc_server, max_concurrency=2)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)
@@ -163,8 +151,8 @@ async def test_file_runner_async_concurrency(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_file_runner_async_cancel(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'async_sleep', env={'SETUP_SLEEP': '1'})
+async def test_file_runner_async_cancel(tmp_path, ipc_server):  # noqa: F811
+    rt = FileRunnerTest(tmp_path, 'async_sleep', ipc_server, env={'SETUP_SLEEP': '1'})
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)

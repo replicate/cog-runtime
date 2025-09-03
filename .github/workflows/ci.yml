@@ -53,7 +53,7 @@ jobs:
         node-version: '24'
 
     - name: Generate type stubs
-      run: script/check.sh stubs
+      run: uv tool run nox -s stubs
 
     - name: Check for stub changes
       run: |

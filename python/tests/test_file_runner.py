@@ -11,10 +11,9 @@ from contextlib import closing
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from coglet import file_runner
+import pytest
 
-ipc_port: Optional[int] = None
-ipc_popen: Optional[subprocess.Popen[bytes]] = None
+from coglet import file_runner
 
 
 def find_free_port() -> int:
@@ -24,19 +23,34 @@ def find_free_port() -> int:
         return s.getsockname()[1]
 
 
-def setup_module():
+@pytest.fixture(scope='module')
+def ipc_server():
+    """Start webhook server for IPC communication, one per test module."""
+    import urllib.error
+    import urllib.request
+
     # Webhook simulates /_ipc endpoint of Go server for receiving Python runner status updates
     cwd = str(Path(__file__).absolute().parent)
     env = os.environ.copy()
-    global ipc_port, ipc_popen
-    ipc_port = find_free_port()
-    env['PORT'] = str(ipc_port)
-    ipc_popen = subprocess.Popen(['python3', 'webhook.py'], cwd=cwd, env=env)
+    port = find_free_port()
+    env['PORT'] = str(port)
+    popen = subprocess.Popen(['python3', 'webhook.py'], cwd=cwd, env=env)
 
+    # Wait for server to actually start and be ready (more robust than fixed sleep)
+    for _ in range(50):  # Try for up to 5 seconds
+        try:
+            urllib.request.urlopen(f'http://localhost:{port}/_requests', timeout=0.1)
+            break
+        except (urllib.error.URLError, ConnectionRefusedError):
+            time.sleep(0.1)
+    else:
+        popen.terminate()
+        raise RuntimeError(f'Webhook server on port {port} failed to start')
 
-def teardown_module():
-    global ipc_popen
-    ipc_popen.terminate()
+    yield port
+
+    popen.terminate()
+    popen.wait()
 
 
 class FileRunnerTest:
@@ -44,6 +58,7 @@ class FileRunnerTest:
         self,
         tmp_path: Path,
         predictor: str,
+        ipc_port: int,
         env: Optional[Dict[str, str]] = None,
         max_concurrency: int = 1,
         predictor_class: str = 'Predictor',
@@ -53,7 +68,7 @@ class FileRunnerTest:
         if env is not None:
             runner_env.update(env)
         runner_env['PYTHONPATH'] = str(Path(__file__).absolute().parent.parent)
-        global ipc_port
+        self.ipc_port = ipc_port
         self.name = f'runner-{uuid.uuid4()}'
         cmd = [
             sys.executable,
@@ -79,8 +94,7 @@ class FileRunnerTest:
         )
 
     def statuses(self) -> List[str]:
-        global ipc_port
-        resp = urllib.request.urlopen(f'http://localhost:{ipc_port}/_requests')
+        resp = urllib.request.urlopen(f'http://localhost:{self.ipc_port}/_requests')
         requests = json.loads(resp.read()) or []
         statuses = []
         for r in requests:
@@ -105,8 +119,8 @@ def wait_for_file(path, exists: bool = True) -> None:
             return
 
 
-def test_file_runner(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'sleep', env={'SETUP_SLEEP': '1'})
+def test_file_runner(tmp_path, ipc_server):
+    rt = FileRunnerTest(tmp_path, 'sleep', ipc_server, env={'SETUP_SLEEP': '1'})
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)
@@ -145,8 +159,10 @@ def test_file_runner(tmp_path):
     rt.stop()
 
 
-def test_file_runner_setup_failed(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'sleep', predictor_class='SetupFailingPredictor')
+def test_file_runner_setup_failed(tmp_path, ipc_server):
+    rt = FileRunnerTest(
+        tmp_path, 'sleep', ipc_server, predictor_class='SetupFailingPredictor'
+    )
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)
@@ -160,9 +176,12 @@ def test_file_runner_setup_failed(tmp_path):
     rt.stop(1)
 
 
-def test_file_runner_predict_failed(tmp_path):
+def test_file_runner_predict_failed(tmp_path, ipc_server):
     rt = FileRunnerTest(
-        tmp_path, 'sleep', predictor_class='PredictionFailingPredictorWithTiming'
+        tmp_path,
+        'sleep',
+        ipc_server,
+        predictor_class='PredictionFailingPredictorWithTiming',
     )
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
@@ -202,8 +221,8 @@ def test_file_runner_predict_failed(tmp_path):
     rt.stop()
 
 
-def test_file_runner_predict_canceled(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'sleep')
+def test_file_runner_predict_canceled(tmp_path, ipc_server):
+    rt = FileRunnerTest(tmp_path, 'sleep', ipc_server)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)

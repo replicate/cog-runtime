@@ -10,6 +10,7 @@ base_dir="$(git rev-parse --show-toplevel)"
 source "$base_dir/script/functions.sh"
 
 check_go() {
+    echo "Checking Go..."
     cd "$base_dir"
     local="$(go list -m)"
     if [[ -z "${CI:-}" ]]; then
@@ -26,6 +27,7 @@ check_go() {
 }
 
 check_python() {
+    echo "Checking Python..."
     cd "$base_dir"
     if [[ -z "${CI:-}" ]]; then
         # Local dev: fix and format
@@ -38,25 +40,11 @@ check_python() {
     fi
 }
 
-check_stubs() {
-    echo "Regenerating stub files..."
-    cd "$base_dir"
-    # Remove existing stubs to avoid duplication
-    find python -name "*.pyi" -type f -delete
-    PYTHONPATH=python npx -y pyright --createstub coglet || echo "Warning: coglet stub creation may have failed"
-    PYTHONPATH=python npx -y pyright --createstub cog || echo "Warning: cog stub creation may have failed"
-    # Move stubs from typings/ to alongside source
-    if [[ -d "typings" ]]; then
-        cp -rv typings/* python/
-    fi
-    # Cleanup
-    rm -rf typings/
-}
 
 if [ $# -eq 0 ]; then
     check_go
     check_python
-    check_stubs
+    # Skip check_stubs - typecheck already generates stubs locally
 else
     for c in "$@"; do
         case "$c" in
@@ -66,11 +54,8 @@ else
             python)
                 check_python
                 ;;
-            stubs)
-                check_stubs
-                ;;
             *)
-                echo "Unknown check $c"
+                echo "Unknown check $c. Available: go, python"
                 exit 1
                 ;;
         esac
