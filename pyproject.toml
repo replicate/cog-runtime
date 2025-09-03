@@ -19,6 +19,7 @@ dev = [
     'ipython',
     'mypy==1.16.0', # pinned to fix CI
     'nox',
+    'ruff',
     'setuptools',
 ]
 

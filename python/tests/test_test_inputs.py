@@ -29,7 +29,7 @@ async def test_test_inputs(predictor):
 
         # Some predictors calls current_scope() and requires ctx_pid
         scope.ctx_pid.set(predictor)
-        
+
         # Use temporary directory for predictors that create files
         original_cwd = os.getcwd()
         with tempfile.TemporaryDirectory() as temp_dir:

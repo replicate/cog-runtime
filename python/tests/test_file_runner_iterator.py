@@ -9,26 +9,15 @@ from coglet import file_runner
 
 from .test_file_runner import (
     FileRunnerTest,
+    ipc_server,  # noqa: F401
     wait_for_file,
 )
 from .test_file_runner_async import async_wait_for_file
 
 
-def setup_module():
-    from .test_file_runner import setup_module as setup
-
-    setup()
-
-
-def teardown_module():
-    from .test_file_runner import teardown_module as teardown
-
-    teardown()
-
-
 @pytest.mark.parametrize('predictor', ['iterator', 'concat_iterator', 'async_iterator'])
-def test_file_runner_iterator(predictor, tmp_path):
-    rt = FileRunnerTest(tmp_path, predictor)
+def test_file_runner_iterator(predictor, tmp_path, ipc_server):  # noqa: F811
+    rt = FileRunnerTest(tmp_path, predictor, ipc_server)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)
@@ -68,8 +57,8 @@ def test_file_runner_iterator(predictor, tmp_path):
 
 
 @pytest.mark.parametrize('predictor', ['iterator', 'concat_iterator', 'async_iterator'])
-def test_file_runner_iterator_webhook(predictor, tmp_path):
-    rt = FileRunnerTest(tmp_path, predictor)
+def test_file_runner_iterator_webhook(predictor, tmp_path, ipc_server):  # noqa: F811
+    rt = FileRunnerTest(tmp_path, predictor, ipc_server)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     wait_for_file(openapi_file)
@@ -134,8 +123,8 @@ def test_file_runner_iterator_webhook(predictor, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_file_runner_async_iterator_concurrency(tmp_path):
-    rt = FileRunnerTest(tmp_path, 'async_iterator')
+async def test_file_runner_async_iterator_concurrency(tmp_path, ipc_server):  # noqa: F811
+    rt = FileRunnerTest(tmp_path, 'async_iterator', ipc_server)
 
     openapi_file = os.path.join(tmp_path, 'openapi.json')
     await async_wait_for_file(openapi_file)
