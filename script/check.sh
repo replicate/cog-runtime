@@ -6,6 +6,9 @@ set -uo pipefail
 
 base_dir="$(git rev-parse --show-toplevel)"
 
+# Source shared functions
+source "$base_dir/script/functions.sh"
+
 check_go() {
     cd "$base_dir"
     local="$(go list -m)"
@@ -23,22 +26,16 @@ check_go() {
 }
 
 check_python() {
-    set -e
-    uv sync --all-extras
+    cd "$base_dir"
     if [[ -z "${CI:-}" ]]; then
-        uv tool run ruff check --fix
-        uv tool run ruff format
+        # Local dev: fix and format
+        run_nox -s lint -- --fix
+        run_nox -s format
+        run_nox -s typecheck
     else
-        uv tool run ruff check
-        uv tool run ruff format --check
+        # CI: use check_all session (lint + format --check + typecheck)
+        run_nox -s check_all
     fi
-    .venv/bin/mypy . --exclude build \
-        --exclude python/tests/cases \
-        --exclude python/tests/bad_inputs \
-        --exclude python/tests/bad_predictors \
-        --exclude python/tests/runners \
-        --exclude python/tests/schemas \
-        --exclude 'python/.*\.pyi'
 }
 
 check_stubs() {
