@@ -11,3 +11,4 @@
 /uv.lock
 __pycache__
 /typings
+/.nox
