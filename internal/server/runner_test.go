@@ -703,6 +703,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 	})
 
 	t.Run("ForceKill sets cleanup in progress", func(t *testing.T) {
+		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
 			runner := &Runner{
 				cmd: exec.Cmd{
@@ -720,7 +721,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 				killedPid = pid
 				return nil
 			}
-			
+
 			// Mock verification to stay in progress initially, then complete later
 			callCount := 0
 			runner.verifyFn = func(pid int) bool {
@@ -728,12 +729,12 @@ func TestRunner_CleanupVerification(t *testing.T) {
 				return callCount > 20 // Complete after 20 calls (200ms)
 			}
 
-			assert.Equal(t, 1, len(runner.cleanupSlot))
+			assert.Len(t, runner.cleanupSlot, 1)
 
 			runner.ForceKill()
 
 			assert.Equal(t, -9999999, killedPid)
-			assert.Equal(t, 0, len(runner.cleanupSlot))
+			assert.Empty(t, runner.cleanupSlot)
 			assert.True(t, runner.killed)
 
 			// Let some time pass - cleanup verification should be running but not complete
@@ -741,8 +742,8 @@ func TestRunner_CleanupVerification(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 
 			// Cleanup should still be in progress since PID 1 process group still exists
-			assert.Equal(t, 0, len(runner.cleanupSlot))
-			
+			assert.Empty(t, runner.cleanupSlot)
+
 			// Stop the cleanup verification by closing stopped channel
 			close(runner.stopped)
 			time.Sleep(10 * time.Millisecond)
@@ -750,6 +751,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 	})
 
 	t.Run("Cleanup timeout triggers forceShutdown channel", func(t *testing.T) {
+		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
 			forceShutdownChan := make(chan struct{}, 1)
 			runner := &Runner{
@@ -767,7 +769,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 			runner.killFn = func(pid int, sig syscall.Signal) error {
 				return nil
 			}
-			
+
 			runner.verifyFn = func(pid int) bool {
 				return false
 			}
@@ -775,7 +777,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 			runner.ForceKill()
 
 			// Cleanup should be in progress
-			assert.Equal(t, 0, len(runner.cleanupSlot))
+			assert.Empty(t, runner.cleanupSlot)
 
 			time.Sleep(200 * time.Millisecond)
 
@@ -788,6 +790,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 	})
 
 	t.Run("Multiple ForceKill calls are safe", func(t *testing.T) {
+		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
 			runner := &Runner{
 				cmd: exec.Cmd{
@@ -806,7 +809,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 				killCallCount++
 				return nil
 			}
-			
+
 			runner.verifyFn = func(pid int) bool {
 				return false
 			}
@@ -829,6 +832,7 @@ func TestRunner_CleanupVerification(t *testing.T) {
 	})
 
 	t.Run("Cleanup verification respects stopped channel", func(t *testing.T) {
+		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
 			runner := &Runner{
 				cmd: exec.Cmd{

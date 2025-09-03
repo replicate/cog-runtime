@@ -119,11 +119,11 @@ type Runner struct {
 	pending             map[string]*PendingPrediction
 	uploadURL           string
 	shutdownGracePeriod time.Duration
-	cleanupTimeout      time.Duration   // timeout for process cleanup verification
-	killed              bool            // tracks if we've killed this process instance
-	cleanupSlot         chan struct{}   // buffered size 1, holds cleanup token (len()=1 means no cleanup, len()=0 means cleanup in progress)
-	forceShutdown       chan<- struct{} // signals that cleanup failed and forced shutdown is needed
-	killFn              killFunc        // injectable kill function for testing
+	cleanupTimeout      time.Duration                    // timeout for process cleanup verification
+	killed              bool                             // tracks if we've killed this process instance
+	cleanupSlot         chan struct{}                    // buffered size 1, holds cleanup token (len()=1 means no cleanup, len()=0 means cleanup in progress)
+	forceShutdown       chan<- struct{}                  // signals that cleanup failed and forced shutdown is needed
+	killFn              killFunc                         // injectable kill function for testing
 	verifyFn            verifyProcessGroupTerminatedFunc // injectable verification function for testing
 	mu                  sync.Mutex
 	stopped             chan bool

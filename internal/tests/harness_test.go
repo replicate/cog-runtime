@@ -45,7 +45,7 @@ var (
 	proceduresPath string
 
 	portMatchRegex = regexp.MustCompile(`http://[^:]+:(\d+)`)
-	
+
 	// Process tracking for cleanup
 	testProcesses   = make(map[int]*os.Process)
 	testProcessesMu sync.Mutex
@@ -302,12 +302,12 @@ func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath, tempDir
 	require.NoError(t, err)
 	err = cmd.Start()
 	require.NoError(t, err)
-	
+
 	// Track process for cleanup
 	if cmd.Process != nil {
 		trackTestProcess(cmd.Process)
 	}
-	
+
 	t.Cleanup(func() {
 		stdErrLogs.Close()
 		process := cmd.Process
@@ -475,17 +475,17 @@ func TestMain(m *testing.M) {
 		legacyCog = &isLegacy
 	}
 	proceduresPath = path.Join(basePath, "python", "tests", "procedures")
-	
+
 	// Set up signal handling for cleanup
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	
+
 	go func() {
 		<-sigCh
 		cleanupAllTestProcesses()
 		os.Exit(1)
 	}()
-	
+
 	code := m.Run()
 	cleanupAllTestProcesses()
 	os.Exit(code)
@@ -512,11 +512,11 @@ func untrackTestProcess(p *os.Process) {
 func cleanupAllTestProcesses() {
 	// Kill any remaining child processes (coglets, etc.)
 	killAllChildProcesses()
-	
+
 	// Also clean up tracked processes (legacy cog servers)
 	testProcessesMu.Lock()
 	defer testProcessesMu.Unlock()
-	
+
 	for pid, p := range testProcesses {
 		// First check if process is still alive before attempting to kill
 		if err := p.Signal(syscall.Signal(0)); err != nil {
@@ -532,13 +532,13 @@ func cleanupAllTestProcesses() {
 func killAllChildProcesses() {
 	cogletPids := findCogletProcesses()
 	ourPid := os.Getpid()
-	
+
 	for _, pid := range cogletPids {
 		// Never kill ourselves or PID 1
 		if pid == ourPid || pid == 1 {
 			continue
 		}
-		
+
 		// Create process handle to validate we can signal it
 		if process, err := os.FindProcess(pid); err == nil {
 			// Try to send signal 0 to check if we can signal this process
@@ -556,7 +556,7 @@ func findCogletProcesses() []int {
 	if cogletPids := findCogletWithPgrep(); len(cogletPids) > 0 {
 		return cogletPids
 	}
-	
+
 	// Fallback to ps command
 	return findCogletWithPs()
 }
@@ -568,7 +568,7 @@ func findCogletWithPgrep() []int {
 	if err != nil {
 		return pids
 	}
-	
+
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, line := range lines {
 		if line == "" {
@@ -584,29 +584,29 @@ func findCogletWithPgrep() []int {
 func findCogletWithPs() []int {
 	var pids []int
 	var cmd *exec.Cmd
-	
+
 	if runtime.GOOS == "darwin" {
 		cmd = exec.Command("ps", "-ax", "-o", "pid,command")
 	} else {
 		cmd = exec.Command("ps", "-e", "-o", "pid,cmd")
 	}
-	
+
 	output, err := cmd.Output()
 	if err != nil {
 		return pids
 	}
-	
+
 	lines := strings.Split(string(output), "\n")
 	for _, line := range lines[1:] { // Skip header
 		if !strings.Contains(line, "coglet") {
 			continue
 		}
-		
+
 		fields := strings.Fields(line)
 		if len(fields) < 1 {
 			continue
 		}
-		
+
 		if pid, err := strconv.Atoi(fields[0]); err == nil {
 			pids = append(pids, pid)
 		}
@@ -619,17 +619,17 @@ func killProcessGroup(pid int, p *os.Process) {
 	if !isOurProcess(p) {
 		return
 	}
-	
+
 	// Kill process group first - this should handle most child processes
 	syscall.Kill(-pid, syscall.SIGKILL)
-	
+
 	if runtime.GOOS == "darwin" {
 		// macOS: additional cleanup steps since signals don't always propagate cleanly
 		syscall.Kill(-pid, syscall.SIGTERM) // Fallback
 		time.Sleep(100 * time.Millisecond)  // Give processes time to exit
 		syscall.Kill(-pid, syscall.SIGKILL) // Final attempt
 	}
-	
+
 	// Individual process kill as final fallback for both platforms
 	p.Kill()
 }
@@ -638,23 +638,23 @@ func isOurProcess(p *os.Process) bool {
 	if p == nil {
 		return false
 	}
-	
+
 	// Get our own PID to avoid killing ourselves or our parent
 	ourPid := os.Getpid()
 	parentPid := os.Getppid()
-	
+
 	// Never kill ourselves, our parent, or PID 1
 	if p.Pid == ourPid || p.Pid == parentPid || p.Pid == 1 {
 		return false
 	}
-	
+
 	// Send signal 0 to check if process exists and we can signal it
 	err := p.Signal(syscall.Signal(0))
 	if err != nil {
 		// Process is gone or we can't signal it
 		return false
 	}
-	
+
 	return true
 }
 
