@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/gabriel-vasile/mimetype v1.4.10
-	github.com/getkin/kin-openapi v0.132.0
+	github.com/getkin/kin-openapi v0.133.0
 	github.com/peterbourgon/ff/v4 v4.0.0-alpha.4
 	github.com/replicate/go v0.0.0-20241101110715-45e9ae8c2040
 	github.com/stretchr/testify v1.11.1
@@ -30,6 +30,7 @@ require (
 	github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/woodsbury/decimal128 v1.3.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.56.0 // indirect
 	go.opentelemetry.io/otel v1.31.0 // indirect
 	go.opentelemetry.io/otel/metric v1.31.0 // indirect
