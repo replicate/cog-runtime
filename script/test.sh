@@ -19,7 +19,12 @@ test_go() {
 }
 
 test_python() {
-    .venv/bin/pytest "$@" -vv
+    # Only add -n auto if -n isn't already specified (supports -n <digits> or -n auto)
+    if [[ ! "$*" =~ -n[[:space:]]*([[:digit:]]+|auto) ]]; then
+        .venv/bin/pytest "$@" -vv -n auto
+    else
+        .venv/bin/pytest "$@" -vv
+    fi
 }
 
 if [ $# -eq 0 ]; then
