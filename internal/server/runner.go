@@ -603,11 +603,6 @@ func (r *Runner) HandleIPC(s IPCStatus) error {
 	log := logger.Sugar()
 	switch s {
 	case IPCStatusReady:
-		// Check if cleanup is in progress using len() on cleanup slot
-		if len(r.cleanupSlot) == 0 {
-			log.Infow("runner ready signal received but cleanup still in progress, remaining busy")
-			return nil
-		}
 
 		if r.status == StatusStarting {
 			r.updateSchema()

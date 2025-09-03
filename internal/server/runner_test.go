@@ -676,8 +676,8 @@ func TestRunner_CleanupVerification(t *testing.T) {
 		err := runner.HandleIPC(IPCStatusReady)
 		require.NoError(t, err)
 
-		// Should still be in StatusStarting because cleanup is in progress
-		assert.Equal(t, StatusStarting, runner.status)
+		// Should be StatusReady - runner reflects Python state, healthcheck handles cleanup override
+		assert.Equal(t, StatusReady, runner.status)
 
 		runner.cleanupSlot <- struct{}{}
 
