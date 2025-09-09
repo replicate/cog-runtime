@@ -2,19 +2,20 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/alecthomas/kong"
+	"github.com/replicate/go/logging"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
-	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/service"
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
@@ -40,118 +41,117 @@ type CLI struct {
 	Test   TestCmd   `cmd:"" help:"Run model tests to verify functionality"`
 }
 
-var logger = util.CreateLogger("cog")
+// createBaseLogger creates a base logger with configurable level
+func createBaseLogger(name string) *zap.Logger {
+	logLevel := os.Getenv("COG_LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = "info"
+	}
+	lvl, err := zapcore.ParseLevel(logLevel)
+	if err != nil {
+		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err) //nolint:forbidigo // logger setup error reporting
+		lvl = zapcore.InfoLevel
+	}
+	return logging.New(name).WithOptions(zap.IncreaseLevel(lvl))
+}
 
-func (s *ServerCmd) Run() error {
-	log := logger.Sugar()
+// buildServiceConfig converts CLI ServerCmd to service configuration
+func buildServiceConfig(s *ServerCmd) (config.Config, error) {
+	log := createBaseLogger("cog-config").Sugar()
 
 	// One-shot mode requires procedure mode
 	if s.OneShot && !s.UseProcedureMode {
 		log.Errorw("one-shot mode requires procedure mode")
-		return fmt.Errorf("one-shot mode requires procedure mode, use --use-procedure-mode")
+		return config.Config{}, fmt.Errorf("one-shot mode requires procedure mode, use --use-procedure-mode")
 	}
 
 	// Procedure mode implies await explicit shutdown
-	// i.e. Python process exit should not trigger shutdown
+	awaitExplicitShutdown := s.AwaitExplicitShutdown
 	if s.UseProcedureMode {
-		s.AwaitExplicitShutdown = true
+		awaitExplicitShutdown = true
 	}
-	log.Infow("configuration",
-		"use-procedure-mode", s.UseProcedureMode,
-		"await-explicit-shutdown", s.AwaitExplicitShutdown,
-		"one-shot", s.OneShot,
-		"upload-url", s.UploadURL,
-	)
 
-	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
-	log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
-
-	var err error
-	currentWorkingDirectory := s.WorkingDirectory
-	if currentWorkingDirectory == "" {
-		currentWorkingDirectory, err = os.Getwd()
+	// Resolve working directory
+	workingDir := s.WorkingDirectory
+	if workingDir == "" {
+		var err error
+		workingDir, err = os.Getwd()
 		if err != nil {
 			log.Errorw("failed to get current working directory", "error", err)
-			return err
+			return config.Config{}, fmt.Errorf("failed to get current working directory: %w", err)
 		}
 	}
 
-	forceShutdown := make(chan struct{}, 1)
+	// Parse max runners from environment
+	maxRunners := 0
+	if maxRunnersEnv, ok := os.LookupEnv("COG_MAX_RUNNERS"); ok && s.UseProcedureMode {
+		if i, err := strconv.Atoi(maxRunnersEnv); err == nil {
+			maxRunners = i
+		} else {
+			log.Errorw("failed to parse COG_MAX_RUNNERS", "value", maxRunnersEnv)
+		}
+	}
 
-	serverCfg := server.Config{
+	cfg := config.Config{
+		Host:                      s.Host,
+		Port:                      s.Port,
 		UseProcedureMode:          s.UseProcedureMode,
-		AwaitExplicitShutdown:     s.AwaitExplicitShutdown,
+		AwaitExplicitShutdown:     awaitExplicitShutdown,
 		OneShot:                   s.OneShot,
-		IPCUrl:                    fmt.Sprintf("http://localhost:%d/_ipc", s.Port),
+		WorkingDirectory:          workingDir,
 		UploadURL:                 s.UploadURL,
-		WorkingDirectory:          currentWorkingDirectory,
+		IPCUrl:                    fmt.Sprintf("http://localhost:%d/_ipc", s.Port),
+		MaxRunners:                maxRunners,
 		RunnerShutdownGracePeriod: s.RunnerShutdownGracePeriod,
 		CleanupTimeout:            s.CleanupTimeout,
-		ForceShutdown:             forceShutdown,
 	}
-	// FIXME: in non-procedure mode we do not support concurrency in a meaningful way, we
-	// statically create the runner list sized at 1.
-	if maxRunners, ok := os.LookupEnv("COG_MAX_RUNNERS"); ok && s.UseProcedureMode {
-		if i, err := strconv.Atoi(maxRunners); err == nil {
-			serverCfg.MaxRunners = i
-		} else {
-			log.Errorw("failed to parse COG_MAX_RUNNERS", "value", maxRunners)
-		}
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	h, err := server.NewHandler(serverCfg, cancel) //nolint:contextcheck // context passing not viable in current architecture
+
+	log.Infow("service configuration",
+		"use_procedure_mode", cfg.UseProcedureMode,
+		"await_explicit_shutdown", cfg.AwaitExplicitShutdown,
+		"one_shot", cfg.OneShot,
+		"upload_url", cfg.UploadURL,
+		"working_directory", cfg.WorkingDirectory,
+		"max_runners", cfg.MaxRunners,
+	)
+
+	return cfg, nil
+}
+
+func (s *ServerCmd) Run() error {
+	// Create base logger
+	baseLogger := createBaseLogger("cog")
+	log := baseLogger.Sugar()
+
+	// Build service configuration
+	cfg, err := buildServiceConfig(s)
 	if err != nil {
-		log.Errorw("failed to create server handler", "error", err)
 		return err
 	}
-	mux := server.NewServeMux(h, s.UseProcedureMode)
-	httpServer := &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second, // TODO: is 5s too long? likely
+
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
+
+	// Create service with base logger
+	svc := service.New(cfg, baseLogger)
+
+	// Initialize service components
+	if err := svc.Initialize(); err != nil {
+		return err
 	}
-	go func() {
-		<-ctx.Done()
-		if err := httpServer.Shutdown(ctx); err != nil {
-			log.Errorw("failed to shutdown server", "error", err)
-			os.Exit(1)
-		}
-	}()
-	go func() {
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-		for {
-			select {
-			case sig := <-ch:
-				if sig == syscall.SIGTERM && s.AwaitExplicitShutdown {
-					log.Warnw("ignoring signal to stop", "signal", sig)
-				} else {
-					log.Infow("stopping Cog HTTP server", "signal", sig)
-					if err := h.Stop(); err != nil {
-						log.Errorw("failed to stop server handler", "error", err)
-						os.Exit(1)
-					}
-				}
-			case <-forceShutdown:
-				log.Errorw("cleanup timeout reached, forcing ungraceful shutdown")
-				os.Exit(1)
-			}
-		}
-	}()
-	if err := httpServer.ListenAndServe(); errors.Is(err, http.ErrServerClosed) {
-		exitCode := h.ExitCode()
-		if exitCode == 0 {
-			log.Infow("shutdown completed normally")
-		} else {
-			log.Errorw("python runner exited with code", "code", exitCode)
-		}
-		return nil
-	}
-	return err
+
+	// Create root context for the entire service
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// TODO: Add signal handling for graceful shutdown
+
+	// Run the service (blocks until shutdown)
+	return svc.Run(ctx)
 }
 
 func (s *SchemaCmd) Run() error {
-	log := logger.Sugar()
+	log := createBaseLogger("cog-schema").Sugar()
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -177,7 +177,7 @@ func (s *SchemaCmd) Run() error {
 }
 
 func (t *TestCmd) Run() error {
-	log := logger.Sugar()
+	log := createBaseLogger("cog-test").Sugar()
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -203,8 +203,6 @@ func (t *TestCmd) Run() error {
 }
 
 func main() {
-	log := logger.Sugar()
-
 	var cli CLI
 	ctx := kong.Parse(&cli,
 		kong.Name("cog"),
@@ -214,7 +212,7 @@ func main() {
 
 	err := ctx.Run()
 	if err != nil {
-		log.Error(err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err) //nolint:forbidigo // main function error handling
 		os.Exit(1)
 	}
 }

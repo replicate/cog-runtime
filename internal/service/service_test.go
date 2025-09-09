@@ -6,30 +6,62 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+
+	"github.com/replicate/cog-runtime/internal/config"
 )
+
+// testServer is a simple blocking server for tests that doesn't actually start HTTP
+type testServer struct {
+	shutdown chan struct{}
+	closed   bool
+}
+
+func newTestServer() *testServer {
+	return &testServer{
+		shutdown: make(chan struct{}),
+	}
+}
+
+func (t *testServer) ListenAndServe() error {
+	// Just block until Close() is called
+	<-t.shutdown
+	return nil
+}
+
+func (t *testServer) Shutdown(ctx context.Context) error {
+	return t.Close()
+}
+
+func (t *testServer) Close() error {
+	if !t.closed {
+		t.closed = true
+		close(t.shutdown)
+	}
+	return nil
+}
 
 func TestService_Lifecycle(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		logger := zaptest.NewLogger(t)
-		cfg := Config{
+		cfg := config.Config{
 			Host:                      "localhost",
 			Port:                      5000,
 			UseProcedureMode:          false,
 			WorkingDirectory:          "/tmp",
-			RunnerShutdownGracePeriod: 5 * time.Second,
+			RunnerShutdownGracePeriod: 10 * time.Millisecond, // Short for tests
 		}
 
 		svc := New(cfg, logger)
+		// Set test server before Initialize() to avoid runner creation
+		svc.httpServer = newTestServer()
 
 		// Service should not be started initially
-		if svc.IsStarted() {
-			t.Error("service should not be started initially")
-		}
-		if svc.IsRunning() {
-			t.Error("service should not be running initially")
-		}
+		assert.False(t, svc.IsStarted(), "service should not be started initially")
+		assert.False(t, svc.IsRunning(), "service should not be running initially")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -44,108 +76,87 @@ func TestService_Lifecycle(t *testing.T) {
 		<-svc.started
 
 		// Service should be started and running
-		if !svc.IsStarted() {
-			t.Error("service should be started")
-		}
-		if !svc.IsRunning() {
-			t.Error("service should be running")
-		}
-		if svc.IsStopped() {
-			t.Error("service should not be stopped")
-		}
+		assert.True(t, svc.IsStarted(), "service should be started")
+		assert.True(t, svc.IsRunning(), "service should be running")
+		assert.False(t, svc.IsStopped(), "service should not be stopped")
 
 		// Shutdown service
 		svc.Shutdown(ctx)
 
 		// Wait for service to finish
 		err := <-done
-		if err != nil && err != context.Canceled {
-			t.Errorf("unexpected error from Run: %v", err)
-		}
+		require.NoError(t, err)
 
 		// Service should be stopped
-		if !svc.IsStopped() {
-			t.Error("service should be stopped")
-		}
-		if svc.IsRunning() {
-			t.Error("service should not be running after shutdown")
-		}
+		assert.True(t, svc.IsStopped(), "service should be stopped")
+		assert.False(t, svc.IsRunning(), "service should not be running after shutdown")
 	})
 }
 
 func TestService_MultipleShutdowns(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		logger := zaptest.NewLogger(t)
-		cfg := Config{
-			Host:                      "localhost",
-			Port:                      5000,
-			WorkingDirectory:          "/tmp",
-			RunnerShutdownGracePeriod: 1 * time.Second,
-		}
+	logger := zaptest.NewLogger(t)
+	cfg := config.Config{
+		Host:                      "localhost",
+		Port:                      5000,
+		WorkingDirectory:          "/tmp",
+		RunnerShutdownGracePeriod: 1 * time.Second,
+	}
 
-		svc := New(cfg, logger)
+	svc := New(cfg, logger)
+	// Set test server before Initialize() to avoid runner creation
+	svc.httpServer = newTestServer()
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		// Start service in background
-		done := make(chan error, 1)
-		go func() {
-			done <- svc.Run(ctx)
-		}()
+	// Start service in background
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.Run(ctx)
+	}()
 
+	// Multiple concurrent shutdowns should be safe
+	for range 10 {
+		go svc.Shutdown(ctx)
+	}
 
-		// Multiple concurrent shutdowns should be safe
-		for range 10 {
-			go svc.Shutdown(ctx)
-		}
+	// Wait for service to finish
+	err := <-done
+	require.NoError(t, err)
 
-		// Wait for service to finish
-		err := <-done
-		if err != nil && err != context.Canceled {
-			t.Errorf("unexpected error from Run: %v", err)
-		}
-
-		// Service should be stopped
-		if !svc.IsStopped() {
-			t.Error("service should be stopped")
-		}
-	})
+	// Service should be stopped
+	assert.True(t, svc.IsStopped(), "service should be stopped")
 }
 
 func TestService_ContextCancellation(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		logger := zaptest.NewLogger(t)
-		cfg := Config{
-			Host:             "localhost",
-			Port:             5000,
-			WorkingDirectory: "/tmp",
-		}
+	logger := zaptest.NewLogger(t)
+	cfg := config.Config{
+		Host:             "localhost",
+		Port:             5000,
+		WorkingDirectory: "/tmp",
+	}
 
-		svc := New(cfg, logger)
+	svc := New(cfg, logger)
+	// Set test server before Initialize() to avoid runner creation
+	svc.httpServer = newTestServer()
 
-		ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 
-		// Start service in background
-		done := make(chan error, 1)
-		go func() {
-			done <- svc.Run(ctx)
-		}()
+	// Start service in background
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.Run(ctx)
+	}()
 
-		// Cancel context instead of explicit shutdown
-		cancel()
+	// Cancel context instead of explicit shutdown
+	cancel()
 
-		// Wait for service to finish
-		err := <-done
-		if err != context.Canceled {
-			t.Errorf("expected context.Canceled, got: %v", err)
-		}
+	// Wait for service to finish
+	err := <-done
+	require.ErrorIs(t, err, context.Canceled)
 
-		// Service should be stopped
-		if !svc.IsStopped() {
-			t.Error("service should be stopped")
-		}
-	})
+	// Service should be stopped
+	assert.True(t, svc.IsStopped(), "service should be stopped")
 }
