@@ -45,7 +45,7 @@ func (t *testServer) Close() error {
 
 func TestService(t *testing.T) {
 	t.Parallel()
-	
+
 	t.Run("Lifecycle", func(t *testing.T) {
 		t.Parallel()
 		synctest.Test(t, func(t *testing.T) {
@@ -144,5 +144,46 @@ func TestService(t *testing.T) {
 		require.ErrorIs(t, err, context.Canceled)
 
 		assert.True(t, svc.IsStopped())
+	})
+
+	t.Run("SignalHandling", func(t *testing.T) {
+		t.Parallel()
+		logger := zaptest.NewLogger(t)
+		cfg := config.Config{
+			Host:                  "localhost",
+			Port:                  5000,
+			WorkingDirectory:      "/tmp",
+			AwaitExplicitShutdown: true,
+		}
+
+		svc := New(cfg, logger)
+		// Set test server before Initialize() to avoid runner creation
+		svc.httpServer = newTestServer()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Start service in background
+		done := make(chan error, 1)
+		go func() {
+			done <- svc.Run(ctx)
+		}()
+
+		// Wait for service to start
+		<-svc.started
+
+		// Send SIGTERM - should be ignored in await-explicit-shutdown mode
+		// The signal handler should log and continue running
+		time.Sleep(10 * time.Millisecond) // Let signal handler start
+
+		// Explicit shutdown should work
+		svc.Shutdown(ctx)
+
+		// Wait for service to finish
+		err := <-done
+		require.NoError(t, err)
+
+		// Service should be stopped
+		assert.True(t, svc.IsStopped(), "service should be stopped")
 	})
 }

@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"go.uber.org/zap"
@@ -50,8 +54,8 @@ func New(cfg config.Config, baseLogger *zap.Logger) *Service {
 }
 
 // Initialize sets up the service components (idempotent)
-func (s *Service) Initialize() error {
-	if err := s.initializeHTTPServer(); err != nil {
+func (s *Service) Initialize(ctx context.Context) error {
+	if err := s.initializeHTTPServer(ctx); err != nil {
 		return err
 	}
 
@@ -59,7 +63,7 @@ func (s *Service) Initialize() error {
 }
 
 // initializeHTTPServer sets up the HTTP server if not already set
-func (s *Service) initializeHTTPServer() error {
+func (s *Service) initializeHTTPServer(ctx context.Context) error {
 	if s.httpServer != nil {
 		return nil
 	}
@@ -89,7 +93,7 @@ func (s *Service) initializeHTTPServer() error {
 		}
 	}
 
-	h, err := server.NewHandler(serverCfg, tempCancel)
+	h, err := server.NewHandler(serverCfg, tempCancel) //nolint:contextcheck // context passing will come as we refactor
 	if err != nil {
 		return fmt.Errorf("failed to create server handler: %w", err)
 	}
@@ -101,6 +105,7 @@ func (s *Service) initializeHTTPServer() error {
 		Addr:              fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
+		BaseContext:       func(l net.Listener) context.Context { return ctx },
 	}
 
 	return nil
@@ -172,6 +177,13 @@ func (s *Service) Run(ctx context.Context) error {
 		}
 	})
 
+	// Handle OS signals only in await-explicit-shutdown mode
+	if s.cfg.AwaitExplicitShutdown {
+		eg.Go(func() error {
+			return s.handleSignals(egCtx)
+		})
+	}
+
 	close(s.started)
 
 	err := eg.Wait()
@@ -231,4 +243,22 @@ func (s *Service) IsStopped() bool {
 // IsRunning returns true if the service is running (started but not stopped)
 func (s *Service) IsRunning() bool {
 	return s.IsStarted() && !s.IsStopped()
+}
+
+// handleSignals handles SIGTERM in await-explicit-shutdown mode
+func (s *Service) handleSignals(ctx context.Context) error {
+	log := s.logger.Sugar()
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGTERM)
+
+	select {
+	case <-s.shutdown:
+		return nil
+	case <-ctx.Done():
+		return nil
+	case <-ch:
+		log.Info("received SIGTERM, starting graceful shutdown")
+		s.Shutdown(ctx)
+		return nil
+	}
 }

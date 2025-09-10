@@ -135,14 +135,14 @@ func (s *ServerCmd) Run() error {
 	// Create service with base logger
 	svc := service.New(cfg, baseLogger)
 
-	// Initialize service components
-	if err := svc.Initialize(); err != nil {
-		return err
-	}
-
 	// Create root context for the entire service
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Initialize service components
+	if err := svc.Initialize(ctx); err != nil {
+		return err
+	}
 
 	// TODO: Add signal handling for graceful shutdown
 
