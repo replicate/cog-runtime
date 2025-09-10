@@ -15,7 +15,7 @@ import (
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
-// Server interface that both http.Server and httptest.Server can implement
+// Server interface that both http.Server and our httptest.Server wrapper can implement
 type Server interface {
 	ListenAndServe() error
 	Shutdown(ctx context.Context) error
@@ -55,21 +55,18 @@ func (s *Service) Initialize() error {
 		return err
 	}
 
-	// TODO: Initialize other components (runners, webhooks, etc.)
-
 	return nil
 }
 
 // initializeHTTPServer sets up the HTTP server if not already set
 func (s *Service) initializeHTTPServer() error {
 	if s.httpServer != nil {
-		return nil // Already initialized with custom server (e.g., for tests)
+		return nil
 	}
 
 	log := s.logger.Sugar()
-	log.Infow("initializing HTTP server")
+	log.Info("initializing HTTP server")
 
-	// Create the existing server handler (temporary until we refactor)
 	forceShutdown := make(chan struct{}, 1)
 	serverCfg := server.Config{
 		UseProcedureMode:          s.cfg.UseProcedureMode,
@@ -97,10 +94,8 @@ func (s *Service) initializeHTTPServer() error {
 		return fmt.Errorf("failed to create server handler: %w", err)
 	}
 
-	// Store handler for proper shutdown
 	s.handler = h
 
-	// Create HTTP server with handler
 	mux := server.NewServeMux(h, s.cfg.UseProcedureMode)
 	s.httpServer = &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
@@ -117,7 +112,8 @@ func (s *Service) Run(ctx context.Context) error {
 
 	select {
 	case <-s.started:
-		return nil // Already started
+		log.Errorw("service already started")
+		return nil
 	default:
 	}
 
@@ -133,7 +129,7 @@ func (s *Service) Run(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error {
-		log.Infow("starting HTTP server")
+		log.Info("starting HTTP server")
 		if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("HTTP server failed: %w", err)
 		}
@@ -142,18 +138,17 @@ func (s *Service) Run(ctx context.Context) error {
 
 	eg.Go(func() error {
 		<-s.shutdown
-		log.Infow("initiating graceful shutdown")
+		log.Info("initiating graceful shutdown")
 
 		// Signal runners to shutdown gracefully and wait for them
 		if s.handler != nil {
-			log.Infow("stopping runners gracefully")
+			log.Info("stopping runners gracefully")
 			if err := s.handler.Stop(); err != nil {
 				log.Errorw("error stopping handler", "error", err)
 			}
 		}
 
-		// Hard shutdown HTTP server - use Close() for immediate shutdown
-		log.Infow("closing HTTP server")
+		log.Info("closing HTTP server")
 		return s.httpServer.Close()
 	})
 
@@ -164,7 +159,7 @@ func (s *Service) Run(ctx context.Context) error {
 			// Shutdown was called, let shutdown handler deal with it
 			return nil
 		case <-egCtx.Done():
-			log.Infow("context canceled, forcing immediate shutdown")
+			log.Info("context canceled, forcing immediate shutdown")
 			// Signal shutdown first to unblock the shutdown handler
 			if s.shutdownStarted.CompareAndSwap(false, true) {
 				close(s.shutdown)
@@ -177,13 +172,10 @@ func (s *Service) Run(ctx context.Context) error {
 		}
 	})
 
-	// Signal that service has started
 	close(s.started)
 
-	// Block until all components finish or error
 	err := eg.Wait()
 
-	// Perform cleanup
 	s.stop(ctx)
 
 	return err
@@ -192,30 +184,25 @@ func (s *Service) Run(ctx context.Context) error {
 // Shutdown initiates graceful shutdown of the service (non-blocking)
 func (s *Service) Shutdown(ctx context.Context) {
 	log := s.logger.Sugar()
-	log.Infow("shutdown requested")
+	log.Info("shutdown requested")
 
 	// Use atomic CAS to ensure only one shutdown
 	if !s.shutdownStarted.CompareAndSwap(false, true) {
-		// Already shutting down
+		log.Debug("already shutting down")
 		return
 	}
 
-	// We won the race, close the shutdown channel
 	close(s.shutdown)
 }
 
 // stop performs final cleanup after shutdown
 func (s *Service) stop(ctx context.Context) {
 	log := s.logger.Sugar()
-	log.Infow("stopping service")
+	log.Info("stopping service")
 
-	// Force stop any remaining components
-	// TODO: Stop all managed components that weren't gracefully shut down
-
-	// Signal that service has stopped
 	select {
 	case <-s.stopped:
-		// Already stopped
+		log.Debug("service already stopped")
 	default:
 		close(s.stopped)
 	}

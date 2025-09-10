@@ -43,120 +43,106 @@ func (t *testServer) Close() error {
 	return nil
 }
 
-func TestService_Lifecycle(t *testing.T) {
+func TestService(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
+	
+	t.Run("Lifecycle", func(t *testing.T) {
+		t.Parallel()
+		synctest.Test(t, func(t *testing.T) {
+			logger := zaptest.NewLogger(t)
+			cfg := config.Config{
+				Host:                      "localhost",
+				Port:                      5000,
+				UseProcedureMode:          false,
+				WorkingDirectory:          "/tmp",
+				RunnerShutdownGracePeriod: 10 * time.Millisecond,
+			}
+
+			svc := New(cfg, logger)
+			svc.httpServer = newTestServer()
+
+			assert.False(t, svc.IsStarted())
+			assert.False(t, svc.IsRunning())
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			done := make(chan error, 1)
+			go func() {
+				done <- svc.Run(ctx)
+			}()
+
+			<-svc.started
+
+			assert.True(t, svc.IsStarted())
+			assert.True(t, svc.IsRunning())
+			assert.False(t, svc.IsStopped())
+
+			svc.Shutdown(ctx)
+
+			err := <-done
+			require.NoError(t, err)
+
+			assert.True(t, svc.IsStopped())
+			assert.False(t, svc.IsRunning())
+		})
+	})
+
+	t.Run("MultipleShutdowns", func(t *testing.T) {
+		t.Parallel()
 		logger := zaptest.NewLogger(t)
 		cfg := config.Config{
 			Host:                      "localhost",
 			Port:                      5000,
-			UseProcedureMode:          false,
 			WorkingDirectory:          "/tmp",
-			RunnerShutdownGracePeriod: 10 * time.Millisecond, // Short for tests
+			RunnerShutdownGracePeriod: 1 * time.Second,
 		}
 
 		svc := New(cfg, logger)
-		// Set test server before Initialize() to avoid runner creation
 		svc.httpServer = newTestServer()
-
-		// Service should not be started initially
-		assert.False(t, svc.IsStarted(), "service should not be started initially")
-		assert.False(t, svc.IsRunning(), "service should not be running initially")
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		// Start service in background
 		done := make(chan error, 1)
 		go func() {
 			done <- svc.Run(ctx)
 		}()
 
-		// Wait for service to start
-		<-svc.started
+		for range 10 {
+			go svc.Shutdown(ctx)
+		}
 
-		// Service should be started and running
-		assert.True(t, svc.IsStarted(), "service should be started")
-		assert.True(t, svc.IsRunning(), "service should be running")
-		assert.False(t, svc.IsStopped(), "service should not be stopped")
-
-		// Shutdown service
-		svc.Shutdown(ctx)
-
-		// Wait for service to finish
 		err := <-done
 		require.NoError(t, err)
 
-		// Service should be stopped
-		assert.True(t, svc.IsStopped(), "service should be stopped")
-		assert.False(t, svc.IsRunning(), "service should not be running after shutdown")
+		assert.True(t, svc.IsStopped())
 	})
-}
 
-func TestService_MultipleShutdowns(t *testing.T) {
-	t.Parallel()
-	logger := zaptest.NewLogger(t)
-	cfg := config.Config{
-		Host:                      "localhost",
-		Port:                      5000,
-		WorkingDirectory:          "/tmp",
-		RunnerShutdownGracePeriod: 1 * time.Second,
-	}
+	t.Run("ContextCancellation", func(t *testing.T) {
+		t.Parallel()
+		logger := zaptest.NewLogger(t)
+		cfg := config.Config{
+			Host:             "localhost",
+			Port:             5000,
+			WorkingDirectory: "/tmp",
+		}
 
-	svc := New(cfg, logger)
-	// Set test server before Initialize() to avoid runner creation
-	svc.httpServer = newTestServer()
+		svc := New(cfg, logger)
+		svc.httpServer = newTestServer()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+		ctx, cancel := context.WithCancel(context.Background())
 
-	// Start service in background
-	done := make(chan error, 1)
-	go func() {
-		done <- svc.Run(ctx)
-	}()
+		done := make(chan error, 1)
+		go func() {
+			done <- svc.Run(ctx)
+		}()
 
-	// Multiple concurrent shutdowns should be safe
-	for range 10 {
-		go svc.Shutdown(ctx)
-	}
+		cancel()
 
-	// Wait for service to finish
-	err := <-done
-	require.NoError(t, err)
+		err := <-done
+		require.ErrorIs(t, err, context.Canceled)
 
-	// Service should be stopped
-	assert.True(t, svc.IsStopped(), "service should be stopped")
-}
-
-func TestService_ContextCancellation(t *testing.T) {
-	t.Parallel()
-	logger := zaptest.NewLogger(t)
-	cfg := config.Config{
-		Host:             "localhost",
-		Port:             5000,
-		WorkingDirectory: "/tmp",
-	}
-
-	svc := New(cfg, logger)
-	// Set test server before Initialize() to avoid runner creation
-	svc.httpServer = newTestServer()
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Start service in background
-	done := make(chan error, 1)
-	go func() {
-		done <- svc.Run(ctx)
-	}()
-
-	// Cancel context instead of explicit shutdown
-	cancel()
-
-	// Wait for service to finish
-	err := <-done
-	require.ErrorIs(t, err, context.Canceled)
-
-	// Service should be stopped
-	assert.True(t, svc.IsStopped(), "service should be stopped")
+		assert.True(t, svc.IsStopped())
+	})
 }

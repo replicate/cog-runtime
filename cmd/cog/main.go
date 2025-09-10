@@ -61,7 +61,7 @@ func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 
 	// One-shot mode requires procedure mode
 	if s.OneShot && !s.UseProcedureMode {
-		log.Errorw("one-shot mode requires procedure mode")
+		log.Error("one-shot mode requires procedure mode")
 		return config.Config{}, fmt.Errorf("one-shot mode requires procedure mode, use --use-procedure-mode")
 	}
 
