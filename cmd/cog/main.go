@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/service"
 	"github.com/replicate/cog-runtime/internal/util"
 )
@@ -29,6 +29,7 @@ type ServerCmd struct {
 	WorkingDirectory          string        `help:"Override the working directory for predictions" name:"working-directory" env:"COG_WORKING_DIRECTORY"`
 	RunnerShutdownGracePeriod time.Duration `help:"Grace period before force-killing prediction runners" name:"runner-shutdown-grace-period" default:"600s" env:"COG_RUNNER_SHUTDOWN_GRACE_PERIOD"`
 	CleanupTimeout            time.Duration `help:"Maximum time to wait for process cleanup before hard exit" name:"cleanup-timeout" default:"10s" env:"COG_CLEANUP_TIMEOUT"`
+	MaxRunners                int           `help:"Maximum number of runners to allow (0 for auto-detect)" name:"max-runners" env:"COG_MAX_RUNNERS" default:"0"`
 }
 
 type SchemaCmd struct{}
@@ -47,18 +48,21 @@ func createBaseLogger(name string) *zap.Logger {
 	if logLevel == "" {
 		logLevel = "info"
 	}
-	lvl, err := zapcore.ParseLevel(logLevel)
+	_, err := zapcore.ParseLevel(logLevel)
 	if err != nil {
 		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err) //nolint:forbidigo // logger setup error reporting
-		lvl = zapcore.InfoLevel
 	}
-	return logging.New(name).WithOptions(zap.IncreaseLevel(lvl))
+
+	return logging.New(name).WithOptions(zap.IncreaseLevel(zapcore.DebugLevel))
 }
 
 // buildServiceConfig converts CLI ServerCmd to service configuration
 func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 	log := createBaseLogger("cog-config").Sugar()
 
+	logLevel := log.Level()
+	log.Infow("log level", "level", logLevel)
+	log.Infow("env log level", "level", os.Getenv("COG_LOG_LEVEL"))
 	// One-shot mode requires procedure mode
 	if s.OneShot && !s.UseProcedureMode {
 		log.Error("one-shot mode requires procedure mode")
@@ -82,16 +86,6 @@ func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 		}
 	}
 
-	// Parse max runners from environment
-	maxRunners := 0
-	if maxRunnersEnv, ok := os.LookupEnv("COG_MAX_RUNNERS"); ok && s.UseProcedureMode {
-		if i, err := strconv.Atoi(maxRunnersEnv); err == nil {
-			maxRunners = i
-		} else {
-			log.Errorw("failed to parse COG_MAX_RUNNERS", "value", maxRunnersEnv)
-		}
-	}
-
 	cfg := config.Config{
 		Host:                      s.Host,
 		Port:                      s.Port,
@@ -101,7 +95,7 @@ func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 		WorkingDirectory:          workingDir,
 		UploadURL:                 s.UploadURL,
 		IPCUrl:                    fmt.Sprintf("http://localhost:%d/_ipc", s.Port),
-		MaxRunners:                maxRunners,
+		MaxRunners:                s.MaxRunners,
 		RunnerShutdownGracePeriod: s.RunnerShutdownGracePeriod,
 		CleanupTimeout:            s.CleanupTimeout,
 	}
@@ -144,9 +138,6 @@ func (s *ServerCmd) Run() error {
 		return err
 	}
 
-	// TODO: Add signal handling for graceful shutdown
-
-	// Run the service (blocks until shutdown)
 	return svc.Run(ctx)
 }
 
@@ -158,7 +149,7 @@ func (s *SchemaCmd) Run() error {
 		log.Errorw("failed to get working directory", "error", err)
 		return err
 	}
-	y, err := util.ReadCogYaml(wd)
+	y, err := runner.ReadCogYaml(wd)
 	if err != nil {
 		log.Errorw("failed to read cog.yaml", "error", err)
 		return err
@@ -184,7 +175,7 @@ func (t *TestCmd) Run() error {
 		log.Errorw("failed to get working directory", "error", err)
 		return err
 	}
-	y, err := util.ReadCogYaml(wd)
+	y, err := runner.ReadCogYaml(wd)
 	if err != nil {
 		log.Errorw("failed to read cog.yaml", "error", err)
 		return err

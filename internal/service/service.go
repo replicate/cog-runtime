@@ -19,13 +19,6 @@ import (
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
-// Server interface that both http.Server and our httptest.Server wrapper can implement
-type Server interface {
-	ListenAndServe() error
-	Shutdown(ctx context.Context) error
-	Close() error
-}
-
 // Service is the root lifecycle owner for the cog runtime
 type Service struct {
 	cfg config.Config
@@ -36,7 +29,7 @@ type Service struct {
 	shutdown        chan struct{}
 	shutdownStarted atomic.Bool
 
-	httpServer Server
+	httpServer *http.Server
 	handler    *server.Handler
 
 	logger *zap.Logger
@@ -72,7 +65,7 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 	log.Info("initializing HTTP server")
 
 	forceShutdown := make(chan struct{}, 1)
-	serverCfg := server.Config{
+	serverCfg := config.Config{
 		UseProcedureMode:          s.cfg.UseProcedureMode,
 		AwaitExplicitShutdown:     s.cfg.AwaitExplicitShutdown,
 		OneShot:                   s.cfg.OneShot,
@@ -93,7 +86,7 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 		}
 	}
 
-	h, err := server.NewHandler(serverCfg, tempCancel) //nolint:contextcheck // context passing will come as we refactor
+	h, err := server.NewHandler(ctx, serverCfg, tempCancel, s.logger) //nolint:contextcheck // context passing will come as we refactor
 	if err != nil {
 		return fmt.Errorf("failed to create server handler: %w", err)
 	}
@@ -132,6 +125,11 @@ func (s *Service) Run(ctx context.Context) error {
 	)
 
 	eg, egCtx := errgroup.WithContext(ctx)
+
+	// Start handler (which starts its internal runner manager)
+	if err := s.handler.Start(egCtx); err != nil {
+		return fmt.Errorf("failed to start handler: %w", err)
+	}
 
 	eg.Go(func() error {
 		log.Info("starting HTTP server")

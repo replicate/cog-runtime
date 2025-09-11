@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
 )
@@ -25,10 +26,10 @@ func TestPredictionSucceeded(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -41,7 +42,7 @@ func TestPredictionSucceeded(t *testing.T) {
 	err = json.Unmarshal(body, &prediction)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, prediction.Status)
+	assert.Equal(t, runner.PredictionSucceeded, prediction.Status)
 	assert.Equal(t, "*bar*", prediction.Output)
 	assert.Contains(t, prediction.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
 	assert.Equal(t, 1.0, prediction.Metrics["i"])     //nolint:testifylint // verifying absolute equality
@@ -57,12 +58,12 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
 	predictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	predictionReq := server.PredictionRequest{
+	predictionReq := runner.PredictionRequest{
 		ID:    predictionID,
 		Input: input,
 	}
@@ -78,7 +79,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 	assert.Equal(t, "*bar*", predictionResponse.Output)
 	assert.Equal(t, predictionID, predictionResponse.ID)
 	assert.Contains(t, predictionResponse.Logs, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n")
@@ -93,10 +94,10 @@ func TestPredictionFailure(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "PredictionFailingPredictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -109,7 +110,7 @@ func TestPredictionFailure(t *testing.T) {
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionFailed, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionFailed, predictionResponse.Status)
 	assert.Nil(t, predictionResponse.Output)
 	assert.Contains(t, predictionResponse.Logs, "starting prediction\nprediction failed\n")
 	assert.Equal(t, "prediction failed", predictionResponse.Error)
@@ -125,10 +126,10 @@ func TestPredictionCrash(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "PredictionCrashingPredictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -147,7 +148,7 @@ func TestPredictionCrash(t *testing.T) {
 		var predictionResponse server.PredictionResponse
 		err = json.Unmarshal(body, &predictionResponse)
 		require.NoError(t, err)
-		assert.Equal(t, server.PredictionFailed, predictionResponse.Status)
+		assert.Equal(t, runner.PredictionFailed, predictionResponse.Status)
 		assert.Nil(t, predictionResponse.Output)
 		assert.Contains(t, predictionResponse.Logs, "starting prediction")
 		assert.Contains(t, predictionResponse.Logs, "SystemExit: 1\n")
@@ -170,7 +171,7 @@ func TestPredictionConcurrency(t *testing.T) {
 	})
 	receiverServer := testHarnessReceiverServer(t)
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 5, "s": "bar"}
 
@@ -179,10 +180,10 @@ func TestPredictionConcurrency(t *testing.T) {
 	wg := sync.WaitGroup{}
 
 	wg.Go(func() {
-		predictionReq := server.PredictionRequest{
+		predictionReq := runner.PredictionRequest{
 			Input:               input,
 			Webhook:             receiverServer.URL + "/webhook",
-			WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+			WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 		}
 		req := httpPredictionRequest(t, runtimeServer, predictionReq)
 		resp, err := http.DefaultClient.Do(req)
@@ -197,7 +198,7 @@ func TestPredictionConcurrency(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			assert.Fail(t, "timeout waiting for webhook")
 		}
-		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+		assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 		// NOTE(morgan): since we're using the webhook format, the deserialization
 		// of `i` is a float64, so we need to convert it to an int, since we've already
 		// shipped the input, we can change it directly
@@ -208,7 +209,7 @@ func TestPredictionConcurrency(t *testing.T) {
 		assert.Contains(t, webhook.Response.Logs, "starting prediction\nprediction in progress 1/5\nprediction in progress 2/5\nprediction in progress 3/5\nprediction in progress 4/5\nprediction in progress 5/5\ncompleted prediction\n")
 	})
 
-	predictionReq := server.PredictionRequest{
+	predictionReq := runner.PredictionRequest{
 		Input: input,
 	}
 	req := httpPredictionRequest(t, runtimeServer, predictionReq)

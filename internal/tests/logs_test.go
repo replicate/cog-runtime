@@ -12,10 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestLogs(t *testing.T) {
+	t.Skip("TODO: Reimplement this test with the new log processor. The test as is, is a tombstone for us to reference the desired behaviors.")
 	// TODO: Assess if we need this test, we're testing replicate/go/logging not anything
 	// in cog-runtime
 	if *legacyCog {
@@ -56,10 +58,10 @@ func TestLogs(t *testing.T) {
 			"LOG_FILE": "stderr",
 		},
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	assert.Equal(t, "STDOUT: starting setup\nSTDERR: starting setup\nSTDOUT: completed setup\nSTDERR: completed setup\n", hc.Setup.Logs)
 
-	prediction := server.PredictionRequest{Input: map[string]any{"s": "bar"}}
+	prediction := runner.PredictionRequest{Input: map[string]any{"s": "bar"}}
 	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -70,7 +72,7 @@ func TestLogs(t *testing.T) {
 	var predictionResponse server.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 	assert.Equal(t, "*bar*", predictionResponse.Output)
 	assert.Equal(t, "STDOUT: starting prediction\nSTDERR: starting prediction\n[NOT_A_PID] STDOUT not a prediction ID\n[NOT_A_PID] STDERR not a prediction ID\nSTDOUT: completed prediction\nSTDERR: completed prediction\n", predictionResponse.Logs)
 

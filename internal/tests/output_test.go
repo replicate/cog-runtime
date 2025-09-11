@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -21,10 +22,10 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 		module:           "output",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -35,7 +36,7 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 	assert.Contains(t, predictionResponse.Logs, "reading input file\nwriting output file\n")
 	var b64 string
 	if *legacyCog {

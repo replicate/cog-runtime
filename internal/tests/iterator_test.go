@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
 )
@@ -46,10 +47,10 @@ func TestIteratorTypes(t *testing.T) {
 			})
 			receiverServer := testHarnessReceiverServer(t)
 
-			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+			waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 			input := map[string]any{"i": 2, "s": "bar"}
-			req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input, Webhook: receiverServer.URL + "/webhook"})
+			req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input, Webhook: receiverServer.URL + "/webhook"})
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
 			defer resp.Body.Close()
@@ -57,7 +58,7 @@ func TestIteratorTypes(t *testing.T) {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			var predictionResponse server.PredictionResponse
 			for webhook := range receiverServer.webhookReceiverChan {
-				if webhook.Response.Status == server.PredictionSucceeded {
+				if webhook.Response.Status == runner.PredictionSucceeded {
 					predictionResponse = webhook.Response
 					break
 				}
@@ -65,7 +66,7 @@ func TestIteratorTypes(t *testing.T) {
 
 			expectedOutput := []any{"*bar-0*", "*bar-1*"}
 
-			assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+			assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 			assert.Equal(t, expectedOutput, predictionResponse.Output)
 			assert.Equal(t, "starting prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted prediction\n", predictionResponse.Logs)
 		})
@@ -88,23 +89,23 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	})
 	receiverServer := testHarnessReceiverServer(t)
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	barID, err := util.PredictionID()
 	require.NoError(t, err)
 	bazID, err := util.PredictionID()
 	require.NoError(t, err)
-	barPrediction := server.PredictionRequest{
+	barPrediction := runner.PredictionRequest{
 		Input:               map[string]any{"i": 1, "s": "bar"},
 		Webhook:             receiverServer.URL + "/webhook",
 		ID:                  barID,
-		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 	}
-	bazPrediction := server.PredictionRequest{
+	bazPrediction := runner.PredictionRequest{
 		Input:               map[string]any{"i": 2, "s": "baz"},
 		Webhook:             receiverServer.URL + "/webhook",
 		ID:                  bazID,
-		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 	}
 	barReq := httpPredictionRequestWithID(t, runtimeServer, barPrediction)
 	bazReq := httpPredictionRequestWithID(t, runtimeServer, bazPrediction)
@@ -119,7 +120,7 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	var barR *server.PredictionResponse
 	var bazR *server.PredictionResponse
 	for webhook := range receiverServer.webhookReceiverChan {
-		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+		assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 		switch webhook.Response.ID {
 		case barPrediction.ID:
 			barR = &webhook.Response
@@ -130,10 +131,10 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 			break
 		}
 	}
-	assert.Equal(t, server.PredictionSucceeded, barR.Status)
+	assert.Equal(t, runner.PredictionSucceeded, barR.Status)
 	assert.Equal(t, []any{"*bar-0*"}, barR.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/1\ncompleted prediction\n", barR.Logs)
-	assert.Equal(t, server.PredictionSucceeded, bazR.Status)
+	assert.Equal(t, runner.PredictionSucceeded, bazR.Status)
 	assert.Equal(t, []any{"*baz-0*", "*baz-1*"}, bazR.Output)
 	assert.Equal(t, "starting prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted prediction\n", bazR.Logs)
 }

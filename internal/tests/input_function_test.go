@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -26,7 +27,7 @@ func TestInputFunctionSchemaGeneration(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	resp, err := http.Get(runtimeServer.URL + "/openapi.json")
 	require.NoError(t, err)
@@ -94,10 +95,10 @@ func TestInputFunctionBasicPrediction(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"message": "hello world"}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -107,11 +108,11 @@ func TestInputFunctionBasicPrediction(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var prediction server.PredictionResponse
+	var prediction runner.PredictionResponse
 	err = json.Unmarshal(body, &prediction)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, prediction.Status)
+	assert.Equal(t, runner.PredictionSucceeded, prediction.Status)
 	assert.Equal(t, "Result: hello world", prediction.Output)
 }
 
@@ -128,7 +129,7 @@ func TestInputFunctionComplexPrediction(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{
 		"message":           "test message",
@@ -138,7 +139,7 @@ func TestInputFunctionComplexPrediction(t *testing.T) {
 		"suffix":            " [END]",
 		"deprecated_option": "custom",
 	}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -148,11 +149,11 @@ func TestInputFunctionComplexPrediction(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var prediction server.PredictionResponse
+	var prediction runner.PredictionResponse
 	err = json.Unmarshal(body, &prediction)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, prediction.Status)
+	assert.Equal(t, runner.PredictionSucceeded, prediction.Status)
 	assert.Equal(t, "Output: TEST MESSAGE TEST MESSAGE [END]", prediction.Output)
 }
 
@@ -169,7 +170,7 @@ func TestInputFunctionConstraintViolations(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	testCases := []struct {
 		name     string
@@ -205,7 +206,7 @@ func TestInputFunctionConstraintViolations(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: tc.input})
+			req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: tc.input})
 
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
@@ -214,12 +215,17 @@ func TestInputFunctionConstraintViolations(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			var errorResp server.PredictionResponse
+			var errorResp runner.PredictionResponse
+			t.Logf("body: %s", string(body))
 			err = json.Unmarshal(body, &errorResp)
 			require.NoError(t, err)
 
-			assert.Equal(t, server.PredictionFailed, errorResp.Status)
+			assert.Equal(t, runner.PredictionFailed, errorResp.Status)
 			assert.Contains(t, errorResp.Error, tc.errorMsg)
+			// FIXME: python's internal task for sending IPC updates has a 100ms delay
+			// without adding a delay here now that go is a lot more async, we will
+			// fail the prediction since we have not reset from `BUSY` to `READY`
+			waitForReady(t, runtimeServer)
 		})
 	}
 }
@@ -237,10 +243,10 @@ func TestInputFunctionMissingRequired(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"repeat_count": 2}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -249,11 +255,11 @@ func TestInputFunctionMissingRequired(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var errorResp server.PredictionResponse
+	var errorResp runner.PredictionResponse
 	err = json.Unmarshal(body, &errorResp)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionFailed, errorResp.Status)
+	assert.Equal(t, runner.PredictionFailed, errorResp.Status)
 	assert.Contains(t, errorResp.Error, "missing required input field: message")
 }
 
@@ -270,10 +276,10 @@ func TestInputFunctionSimple(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"message": "hello", "count": 3}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -287,6 +293,6 @@ func TestInputFunctionSimple(t *testing.T) {
 	err = json.Unmarshal(body, &prediction)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, prediction.Status)
+	assert.Equal(t, runner.PredictionSucceeded, prediction.Status)
 	assert.Equal(t, "hellohellohello", prediction.Output)
 }

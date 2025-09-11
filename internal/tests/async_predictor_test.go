@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
@@ -25,22 +25,22 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 		concurrencyMax:   2,
 	})
 	receiverServer := testHarnessReceiverServer(t)
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	barID, err := util.PredictionID()
 	require.NoError(t, err)
 	bazID, err := util.PredictionID()
 	require.NoError(t, err)
-	barReq := httpPredictionRequestWithID(t, runtimeServer, server.PredictionRequest{
+	barReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:               map[string]any{"i": 1, "s": "bar"},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 		ID:                  barID,
 	})
-	bazReq := httpPredictionRequestWithID(t, runtimeServer, server.PredictionRequest{
+	bazReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:               map[string]any{"i": 2, "s": "baz"},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 		ID:                  bazID,
 	})
 	barResp, err := http.DefaultClient.Do(barReq)
@@ -58,7 +58,7 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 	var bazRCompleted bool
 
 	for webhook := range receiverServer.webhookReceiverChan {
-		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+		assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 		switch webhook.Response.ID {
 		case barID:
 			assert.Equal(t, "*bar*", webhook.Response.Output)
@@ -91,16 +91,16 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 		concurrencyMax:   2,
 	})
 	receiverServer := testHarnessReceiverServer(t)
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	barID, err := util.PredictionID()
 	require.NoError(t, err)
-	barReq := httpPredictionRequestWithID(t, runtimeServer, server.PredictionRequest{
+	barReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:   map[string]any{"i": 60, "s": "bar"},
 		Webhook: receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []server.WebhookEvent{
-			server.WebhookStart,
-			server.WebhookCompleted,
+		WebhookEventsFilter: []runner.WebhookEvent{
+			runner.WebhookStart,
+			runner.WebhookCompleted,
 		},
 		ID: barID,
 	})
@@ -135,7 +135,7 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 		t.Fatalf("timeout waiting for webhook")
 	}
 
-	assert.Equal(t, server.PredictionCanceled, webhook.Response.Status)
+	assert.Equal(t, runner.PredictionCanceled, webhook.Response.Status)
 	assert.Equal(t, barID, webhook.Response.ID)
 	// NOTE(morgan): The logs are not deterministic, so we can only assert that `prediction canceled` is in the logs.
 	// previously we asserted that the prediction was making progress. We are assured that we have a "starting" webhook, but

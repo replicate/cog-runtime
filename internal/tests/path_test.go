@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
 )
@@ -51,10 +52,10 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 		module:           "path",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	prediction := map[string]any{"p": b64encode("bar")}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
+	prediction := runner.PredictionRequest{Input: map[string]any{"p": b64encode("bar")}}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -67,7 +68,7 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 	assert.Contains(t, allowedOutputs, predictionResponse.Output)
 	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
 }
@@ -86,10 +87,10 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 	ts := testDataContentServer(t)
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	prediction := map[string]any{"p": ts.URL + "/.python_version"}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
+	prediction := runner.PredictionRequest{Input: map[string]any{"p": ts.URL + "/.python_version"}}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -102,7 +103,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 
 	assert.Contains(t, allowedOutputs, predictionResponse.Output)
 	assert.Equal(t, "reading input file\nwriting output file\n", predictionResponse.Logs)
@@ -118,10 +119,10 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	prediction := map[string]any{"s": "https://replicate.com"}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: prediction})
+	prediction := runner.PredictionRequest{Input: map[string]any{"s": "https://replicate.com"}}
+	req := httpPredictionRequest(t, runtimeServer, prediction)
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -135,7 +136,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 	assert.Equal(t, "*https://replicate.com*", predictionResponse.Output)
 	assert.Empty(t, predictionResponse.Logs)
 }
@@ -151,12 +152,12 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 		module:           "path",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	prediction := server.PredictionRequest{
+	prediction := runner.PredictionRequest{
 		Input:               map[string]any{"p": b64encode("bar")},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 	}
 	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
@@ -173,7 +174,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 		t.Fatalf("timeout waiting for webhook")
 	}
 
-	assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
 	output, ok := webhook.Response.Output.(string)
 	assert.True(t, ok)
@@ -209,12 +210,12 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 		predictorClass:   "Predictor",
 	})
 
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	prediction := server.PredictionRequest{
+	prediction := runner.PredictionRequest{
 		Input:               map[string]any{"p": b64encode("bar")},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 	}
 	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
@@ -232,7 +233,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 		t.Fatalf("timeout waiting for webhook")
 	}
 
-	assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+	assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
 	output, ok := webhook.Response.Output.(string)
 	assert.True(t, ok)
@@ -266,9 +267,9 @@ func TestPredictionPathUploadIterator(t *testing.T) {
 		module:           "path_out_iter",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	prediction := server.PredictionRequest{
+	prediction := runner.PredictionRequest{
 		Input:   map[string]any{"n": 3},
 		Webhook: receiverServer.URL + "/webhook",
 	}
@@ -288,15 +289,15 @@ func TestPredictionPathUploadIterator(t *testing.T) {
 		case webhook := <-receiverServer.webhookReceiverChan:
 			switch count {
 			case 0:
-				assert.Equal(t, server.PredictionProcessing, webhook.Response.Status)
+				assert.Equal(t, runner.PredictionProcessing, webhook.Response.Status)
 				assert.Nil(t, webhook.Response.Output)
 			case 1, 2, 3:
-				assert.Equal(t, server.PredictionProcessing, webhook.Response.Status)
+				assert.Equal(t, runner.PredictionProcessing, webhook.Response.Status)
 				output, ok := webhook.Response.Output.([]any)
 				require.True(t, ok)
 				assert.Len(t, output, count)
 			case 4:
-				assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+				assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 				output, ok := webhook.Response.Output.([]any)
 				require.True(t, ok)
 				assert.Len(t, output, 3)
@@ -331,7 +332,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 		module:           "mime",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	testDataPrefix := contentServer.URL + "/mimetype/"
 
@@ -373,11 +374,11 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 	for _, tc := range predictions {
 		// Each of these are treated as subtests, they will be run serially
 		t.Run(tc.fileName, func(t *testing.T) {
-			prediction := server.PredictionRequest{
+			prediction := runner.PredictionRequest{
 				Input:               map[string]any{"u": testDataPrefix + tc.fileName},
 				ID:                  tc.predictionID,
 				Webhook:             receiverServer.URL + "/webhook",
-				WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+				WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 			}
 			t.Logf("prediction file: %s", tc.fileName)
 			req := httpPredictionRequestWithID(t, runtimeServer, prediction)
@@ -391,7 +392,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 			// Wait for webhook completion
 			select {
 			case webhook := <-receiverServer.webhookReceiverChan:
-				assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+				assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 			case <-time.After(10 * time.Second):
 				t.Fatalf("timeout waiting for webhook")
 			}
@@ -404,6 +405,10 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 			case <-time.After(10 * time.Second):
 				t.Fatalf("timeout waiting for upload")
 			}
+			// FIXME: python's internal task for sending IPC updates has a 100ms delay
+			// without adding a delay here now that go is a lot more async, we will
+			// fail the prediction since we have not reset from `BUSY` to `READY`
+			waitForReady(t, runtimeServer)
 		})
 	}
 
@@ -421,7 +426,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 		module:           "mimes",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	files := []struct {
 		fileName            string
@@ -445,7 +450,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 		},
 	}
 
-	prediction := server.PredictionRequest{
+	prediction := runner.PredictionRequest{
 		Input: map[string]any{"us": []string{
 			contentServer.URL + "/mimetype/" + files[0].fileName,
 			contentServer.URL + "/mimetype/" + files[1].fileName,
@@ -453,7 +458,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 			contentServer.URL + "/mimetype/" + files[3].fileName,
 		}},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []server.WebhookEvent{server.WebhookCompleted},
+		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
 	}
 
 	req := httpPredictionRequest(t, runtimeServer, prediction)
@@ -467,7 +472,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 	// Wait for webhook completion
 	select {
 	case webhook := <-receiverServer.webhookReceiverChan:
-		assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+		assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for webhook")
 	}

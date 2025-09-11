@@ -29,4 +29,7 @@ type Config struct {
 	// Environment configuration
 	EnvSet   map[string]string
 	EnvUnset []string
+
+	// Force shutdown channel
+	ForceShutdown chan<- struct{}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
@@ -20,7 +20,7 @@ func TestAsyncPrediction(t *testing.T) {
 		predictorClass   string
 		expectedLogs     string
 		expectedOutput   any
-		expectedStatus   server.PredictionStatus
+		expectedStatus   runner.PredictionStatus
 		expectedHCStatus string
 	}{
 		{
@@ -28,14 +28,14 @@ func TestAsyncPrediction(t *testing.T) {
 			predictorClass: "Predictor",
 			expectedLogs:   "starting prediction\nprediction in progress 1/1\ncompleted prediction\n",
 			expectedOutput: "*bar*",
-			expectedStatus: server.PredictionSucceeded,
+			expectedStatus: runner.PredictionSucceeded,
 		},
 		{
 			name:           "failed",
 			predictorClass: "PredictionFailingPredictor",
 			expectedLogs:   "starting prediction\nprediction failed\n",
 			expectedOutput: nil,
-			expectedStatus: server.PredictionFailed,
+			expectedStatus: runner.PredictionFailed,
 		},
 
 		{
@@ -43,8 +43,8 @@ func TestAsyncPrediction(t *testing.T) {
 			predictorClass:   "PredictionCrashingPredictor",
 			expectedLogs:     "starting prediction\nprediction crashed\n",
 			expectedOutput:   nil,
-			expectedStatus:   server.PredictionFailed,
-			expectedHCStatus: server.StatusDefunct.String(),
+			expectedStatus:   runner.PredictionFailed,
+			expectedHCStatus: runner.StatusDefunct.String(),
 		},
 	}
 	for _, tc := range testCases {
@@ -59,15 +59,15 @@ func TestAsyncPrediction(t *testing.T) {
 				predictorClass:   tc.predictorClass,
 				concurrencyMax:   1,
 			})
-			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+			waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 			predictionID, err := util.PredictionID()
 			require.NoError(t, err)
-			prediction := server.PredictionRequest{
+			prediction := runner.PredictionRequest{
 				Input:   map[string]any{"i": 1, "s": "bar"},
 				Webhook: receiverServer.URL + "/webhook",
-				WebhookEventsFilter: []server.WebhookEvent{
-					server.WebhookCompleted,
+				WebhookEventsFilter: []runner.WebhookEvent{
+					runner.WebhookCompleted,
 				},
 				ID: predictionID,
 			}
@@ -115,18 +115,18 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 		predictorClass:   "Predictor",
 		concurrencyMax:   2,
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	predictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	prediction := server.PredictionRequest{
+	prediction := runner.PredictionRequest{
 		Input:   map[string]any{"i": 60, "s": "bar"},
 		Webhook: receiverServer.URL + "/webhook",
 		ID:      predictionID,
-		WebhookEventsFilter: []server.WebhookEvent{
-			server.WebhookStart,
-			server.WebhookLogs,
-			server.WebhookCompleted,
+		WebhookEventsFilter: []runner.WebhookEvent{
+			runner.WebhookStart,
+			runner.WebhookLogs,
+			runner.WebhookCompleted,
 		},
 	}
 	req := httpPredictionRequestWithID(t, runtimeServer, prediction)
@@ -157,7 +157,7 @@ waitLoop:
 	for {
 		select {
 		case webhook = <-receiverServer.webhookReceiverChan:
-			if webhook.Response.Status != server.PredictionProcessing {
+			if webhook.Response.Status != runner.PredictionProcessing {
 				// We only break out if we get a prediction canceled webhook. without the
 				// named loop we can only break out of the select case.
 				break waitLoop
@@ -167,7 +167,7 @@ waitLoop:
 		}
 	}
 
-	assert.Equal(t, server.PredictionCanceled, webhook.Response.Status)
+	assert.Equal(t, runner.PredictionCanceled, webhook.Response.Status)
 	assert.Equal(t, predictionID, webhook.Response.ID)
 	// NOTE(morgan): The logs are not deterministic, so we can only assert that `prediction canceled` is in the logs.
 	// previously we asserted that the prediction was making progress. We are assured that we have a "starting" webhook, but
@@ -190,13 +190,13 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 		// FIXME: The doesn't really affect the values in the healthcheck, those are hard-coded to 1 for non-procedure mode.
 		concurrencyMax: 1,
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	assert.Equal(t, 1, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
 	predictionID, err := util.PredictionID()
 	require.NoError(t, err)
-	prediction := server.PredictionRequest{
+	prediction := runner.PredictionRequest{
 		Input:   map[string]any{"i": 1, "s": "bar"},
 		Webhook: receiverServer.URL + "/webhook",
 		ID:      predictionID,

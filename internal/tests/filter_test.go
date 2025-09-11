@@ -9,84 +9,91 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/util"
 )
 
 func TestPredictionWebhookFilter(t *testing.T) {
 	testCases := []struct {
 		name                          string
-		webhookEvents                 []server.WebhookEvent
+		webhookEvents                 []runner.WebhookEvent
 		expectedWebhookCount          int
 		legacyCogExpectedWebhookCount int
-		allowedPredictionStatuses     []server.PredictionStatus
+		allowedPredictionStatuses     []runner.PredictionStatus
 	}{
 		{
 			name: "all",
-			webhookEvents: []server.WebhookEvent{
-				server.WebhookStart,
-				server.WebhookOutput,
-				server.WebhookLogs,
-				server.WebhookCompleted,
+			webhookEvents: []runner.WebhookEvent{
+				runner.WebhookStart,
+				runner.WebhookOutput,
+				runner.WebhookLogs,
+				runner.WebhookCompleted,
 			},
 			expectedWebhookCount:          8,
 			legacyCogExpectedWebhookCount: 7,
-			allowedPredictionStatuses: []server.PredictionStatus{
-				server.PredictionStarting,
-				server.PredictionProcessing,
-				server.PredictionSucceeded,
-				server.PredictionFailed,
+			allowedPredictionStatuses: []runner.PredictionStatus{
+				runner.PredictionStarting,
+				runner.PredictionProcessing,
+				runner.PredictionSucceeded,
+				runner.PredictionFailed,
 			},
 		},
 		{
 			name: "completed",
-			webhookEvents: []server.WebhookEvent{
-				server.WebhookCompleted,
+			webhookEvents: []runner.WebhookEvent{
+				runner.WebhookCompleted,
 			},
 			expectedWebhookCount:          1,
 			legacyCogExpectedWebhookCount: 1,
-			allowedPredictionStatuses: []server.PredictionStatus{
-				server.PredictionSucceeded,
+			allowedPredictionStatuses: []runner.PredictionStatus{
+				runner.PredictionSucceeded,
 			},
 		},
 		{
 			name: "start_completed",
-			webhookEvents: []server.WebhookEvent{
-				server.WebhookStart,
-				server.WebhookCompleted,
+			webhookEvents: []runner.WebhookEvent{
+				runner.WebhookStart,
+				runner.WebhookCompleted,
 			},
 			expectedWebhookCount:          2,
 			legacyCogExpectedWebhookCount: 2,
-			allowedPredictionStatuses: []server.PredictionStatus{
-				server.PredictionStarting,
-				server.PredictionProcessing,
-				server.PredictionSucceeded,
+			allowedPredictionStatuses: []runner.PredictionStatus{
+				runner.PredictionStarting,
+				runner.PredictionProcessing,
+				runner.PredictionSucceeded,
+			},
+		},
+		{
+			allowedPredictionStatuses: []runner.PredictionStatus{
+				runner.PredictionStarting,
+				runner.PredictionProcessing,
+				runner.PredictionSucceeded,
 			},
 		},
 		{
 			name: "output_completed",
-			webhookEvents: []server.WebhookEvent{
-				server.WebhookOutput,
-				server.WebhookCompleted,
+			webhookEvents: []runner.WebhookEvent{
+				runner.WebhookOutput,
+				runner.WebhookCompleted,
 			},
 			expectedWebhookCount:          3,
 			legacyCogExpectedWebhookCount: 3,
-			allowedPredictionStatuses: []server.PredictionStatus{
-				server.PredictionProcessing,
-				server.PredictionSucceeded,
+			allowedPredictionStatuses: []runner.PredictionStatus{
+				runner.PredictionProcessing,
+				runner.PredictionSucceeded,
 			},
 		},
 		{
 			name: "logs_completed",
-			webhookEvents: []server.WebhookEvent{
-				server.WebhookLogs,
-				server.WebhookCompleted,
+			webhookEvents: []runner.WebhookEvent{
+				runner.WebhookLogs,
+				runner.WebhookCompleted,
 			},
 			expectedWebhookCount:          5,
 			legacyCogExpectedWebhookCount: 5,
-			allowedPredictionStatuses: []server.PredictionStatus{
-				server.PredictionProcessing,
-				server.PredictionSucceeded,
+			allowedPredictionStatuses: []runner.PredictionStatus{
+				runner.PredictionProcessing,
+				runner.PredictionSucceeded,
 			},
 		},
 	}
@@ -101,11 +108,11 @@ func TestPredictionWebhookFilter(t *testing.T) {
 				module:           "iterator",
 				predictorClass:   "Predictor",
 			})
-			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+			waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 			predictionID, err := util.PredictionID()
 			require.NoError(t, err)
-			prediction := server.PredictionRequest{
+			prediction := runner.PredictionRequest{
 				Input:               map[string]any{"i": 2, "s": "bar"},
 				Webhook:             receiverServer.URL + "/webhook",
 				WebhookEventsFilter: tc.webhookEvents,
@@ -130,7 +137,7 @@ func TestPredictionWebhookFilter(t *testing.T) {
 				select {
 				case webhookEvent := <-receiverServer.webhookReceiverChan:
 					assert.Contains(t, tc.allowedPredictionStatuses, webhookEvent.Response.Status)
-					if webhookEvent.Response.Status == server.PredictionSucceeded {
+					if webhookEvent.Response.Status == runner.PredictionSucceeded {
 						assert.Equal(t, "starting prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted prediction\n", webhookEvent.Response.Logs)
 						assert.Equal(t, []any{"*bar-0*", "*bar-1*"}, webhookEvent.Response.Output)
 					}

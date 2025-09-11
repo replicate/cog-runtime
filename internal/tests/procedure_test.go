@@ -15,13 +15,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
 var errProcedureFailedToStart = errors.New("procedure failed to start")
 
 // runProcedure runs a procedure and returns the prediction id and HTTP status code
-func runProcedure(t *testing.T, runtimeServer *httptest.Server, predictionRequest server.PredictionRequest) (string, int) {
+func runProcedure(t *testing.T, runtimeServer *httptest.Server, predictionRequest runner.PredictionRequest) (string, int) {
 	t.Helper()
 
 	// we only run procedures with webhooks/receivers for testing purposes. It eliminates complexity
@@ -61,7 +62,7 @@ type procedureRun struct {
 func runAndValidateProcedure(t *testing.T, runtimeServer *httptest.Server, run procedureRun) error {
 	t.Helper()
 	receiverServer := testHarnessReceiverServer(t)
-	procPrediction := server.PredictionRequest{
+	procPrediction := runner.PredictionRequest{
 		Context: map[string]any{
 			"procedure_source_url": run.URL,
 			"replicate_api_token":  run.Token,
@@ -81,14 +82,18 @@ func runAndValidateProcedure(t *testing.T, runtimeServer *httptest.Server, run p
 			t.Fatalf("timeout waiting for prediction to complete")
 		default:
 			switch webhook.Response.Status {
-			case server.PredictionStarting, server.PredictionProcessing:
+			case runner.PredictionStarting, runner.PredictionProcessing:
 				safeCloseChannel(run.Started)
-			case server.PredictionSucceeded:
+			case runner.PredictionSucceeded:
 				assert.Equal(t, run.ExpectedOutput, webhook.Response.Output)
-				assert.Equal(t, server.PredictionSucceeded, webhook.Response.Status)
+				assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 				assert.Contains(t, webhook.Response.Logs, run.ExpectedLogs)
 				return nil
+			case runner.PredictionFailed:
+				t.Fatalf("unexpected prediction failure: %v", webhook.Response.Error)
+				return fmt.Errorf("unexpected prediction failure: %v", webhook.Response.Error)
 			default:
+				t.Logf("unexpected webhook event: %v", webhook.Response.Status)
 				// continue the loop.
 			}
 		}
@@ -111,7 +116,7 @@ func TestProcedureSlots(t *testing.T) {
 		uploadURL:        "",
 		maxRunners:       2,
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
@@ -137,14 +142,14 @@ func TestProcedureSlots(t *testing.T) {
 	<-fooPredictionStarted
 
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, runner.StatusReady.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 1, hc.Concurrency.Current)
 
 	activeRunners := handler.ActiveRunners()
 	assert.NotNil(t, activeRunners[0])
 	assert.Nil(t, activeRunners[1])
-	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
+	assert.Contains(t, activeRunners[0].String(), fooURL)
 	assert.False(t, activeRunners[0].Idle())
 
 	// occupy slot 2
@@ -168,14 +173,14 @@ func TestProcedureSlots(t *testing.T) {
 
 	// Ensure both slots are occupied with active runners
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusBusy.String(), hc.Status)
+	assert.Equal(t, runner.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 2, hc.Concurrency.Current)
 
 	activeRunners = handler.ActiveRunners()
 	assert.Len(t, activeRunners, 2)
-	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
-	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
+	assert.Contains(t, activeRunners[0].String(), fooURL)
+	assert.Contains(t, activeRunners[1].String(), barURL)
 	assert.False(t, activeRunners[0].Idle())
 	assert.False(t, activeRunners[1].Idle())
 
@@ -204,9 +209,9 @@ func TestProcedureSlots(t *testing.T) {
 	assert.NotNil(t, activeRunners[1])
 	// find the baz runner and ensure it is in the active runner list
 	foundBazRunner := false
-	for _, runner := range activeRunners {
+	for _, r := range activeRunners {
 		// strip off the `NN:` prefix from the runner string/named, e.g. 00:file:///path/to/procedure -> file:///path/to/procedure
-		parts := strings.SplitN(runner.String(), ":", 2)
+		parts := strings.SplitN(r.String(), ":", 2)
 		require.Len(t, parts, 2)
 		if parts[1] == bazURL {
 			foundBazRunner = true
@@ -228,14 +233,14 @@ func TestProcedureSlotBadProcedure(t *testing.T) {
 		uploadURL:        "",
 		maxRunners:       2,
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
 	// a bad procedure should fail to start and auto vacate the slot
 	badProcURL := fmt.Sprintf(procedureFilePathURITemplate, basePath, "bad")
 	receiverServer := testHarnessReceiverServer(t)
-	procPrediction := server.PredictionRequest{
+	procPrediction := runner.PredictionRequest{
 		Context: map[string]any{
 			"procedure_source_url": badProcURL,
 			"replicate_api_token":  "badtok",
@@ -251,12 +256,16 @@ func TestProcedureSlotBadProcedure(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for prediction to complete")
 	}
-	assert.Equal(t, server.PredictionFailed, webhook.Response.Status)
+	assert.Equal(t, runner.PredictionFailed, webhook.Response.Status)
 	assert.Contains(t, webhook.Response.Logs, "unsupported Cog type")
 	assert.Equal(t, "setup failed", webhook.Response.Error)
 
+	// FIXME: this sleep is a small wait to ensure the runner list is cleanedup
+	// verified with -count=100 that this is consistent and reliable
+	time.Sleep(1 * time.Millisecond)
+
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, runner.StatusReady.String(), hc.Status)
 	assert.Equal(t, 2, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
@@ -284,7 +293,7 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 		uploadURL:        "",
 		maxRunners:       4,
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
@@ -327,14 +336,14 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 	activeRunners := handler.ActiveRunners()
 	// The prediction slot cannot be nil, must be occupied  the equality assert will panic
 	require.NotNil(t, activeRunners[0])
-	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
+	assert.Contains(t, activeRunners[0].String(), fooURL)
 	assert.Nil(t, activeRunners[1])
 	assert.Nil(t, activeRunners[2])
 	assert.Nil(t, activeRunners[3])
 	assert.False(t, activeRunners[0].Idle())
 
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, runner.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 2, hc.Concurrency.Current)
 
@@ -372,8 +381,13 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 	// The prediction slot cannot be nil, must be occupied or the equality assert will panic
 	require.NotNil(t, activeRunners[0])
 	require.NotNil(t, activeRunners[1])
-	assert.Equal(t, "00:"+fooURL, activeRunners[0].String())
-	assert.Equal(t, "01:"+fooURL, activeRunners[1].String())
+	assert.Contains(t, activeRunners[0].String(), fooURL)
+	assert.Contains(t, activeRunners[1].String(), fooURL)
+
+	// Ensure the two runners have different names
+	runner0Name := strings.Split(activeRunners[0].String(), ":")[0]
+	runner1Name := strings.Split(activeRunners[1].String(), ":")[0]
+	assert.NotEqual(t, runner0Name, runner1Name, "Both runners should have different names")
 
 	assert.Nil(t, activeRunners[2])
 	assert.Nil(t, activeRunners[3])
@@ -381,15 +395,18 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 	assert.False(t, activeRunners[1].Idle())
 
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusBusy.String(), hc.Status)
+	assert.Equal(t, runner.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 4, hc.Concurrency.Current)
 
 	// Wait for all predictions to finish
 	wg.Wait()
 
+	// FIXME: Sleep to allow all predictions to clear out of the runners
+	time.Sleep(100 * time.Millisecond)
+
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, runner.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 	activeRunners = handler.ActiveRunners()
@@ -413,7 +430,7 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 		uploadURL:        "",
 		maxRunners:       4,
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
@@ -457,15 +474,25 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 	// The prediction slot cannot be nil, must be occupied  the equality assert will panic
 	require.NotNil(t, activeRunners[0])
 	require.NotNil(t, activeRunners[1])
-	assert.Equal(t, "00:"+barURL, activeRunners[0].String())
-	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
-	assert.Nil(t, activeRunners[2])
-	assert.Nil(t, activeRunners[3])
+	// Check that both runners are showing the correct procedure URL format
+	// With semaphore-based system, we use random runner IDs instead of fixed slots
+	assert.Contains(t, activeRunners[0].String(), barURL)
+	assert.Contains(t, activeRunners[1].String(), barURL)
+
+	// Ensure the two runners have different names
+	runner0Name := strings.Split(activeRunners[0].String(), ":")[0]
+	runner1Name := strings.Split(activeRunners[1].String(), ":")[0]
+	assert.NotEqual(t, runner0Name, runner1Name, "Both runners should have different names")
+
+	// We should only have 2 active runners for this test, but we have a capacity of 4
+	assert.Len(t, activeRunners, 4)
 	assert.False(t, activeRunners[0].Idle())
 	assert.False(t, activeRunners[1].Idle())
+	assert.Nil(t, activeRunners[2])
+	assert.Nil(t, activeRunners[3])
 
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, runner.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 2, hc.Concurrency.Current)
 
@@ -505,10 +532,19 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 	require.NotNil(t, activeRunners[1])
 	require.NotNil(t, activeRunners[2])
 	require.NotNil(t, activeRunners[3])
-	assert.Equal(t, "00:"+barURL, activeRunners[0].String())
-	assert.Equal(t, "01:"+barURL, activeRunners[1].String())
-	assert.Equal(t, "02:"+barURL, activeRunners[2].String())
-	assert.Equal(t, "03:"+barURL, activeRunners[3].String())
+	// Check that all 4 runners show the correct procedure URL format
+	assert.Contains(t, activeRunners[0].String(), barURL)
+	assert.Contains(t, activeRunners[1].String(), barURL)
+	assert.Contains(t, activeRunners[2].String(), barURL)
+	assert.Contains(t, activeRunners[3].String(), barURL)
+
+	// Ensure all 4 runners have different names
+	runnerNames := make(map[string]bool)
+	for i, r := range activeRunners[:4] {
+		runnerName := strings.Split(r.String(), ":")[0]
+		assert.False(t, runnerNames[runnerName], "Runner %d name %s should be unique", i, runnerName)
+		runnerNames[runnerName] = true
+	}
 
 	assert.False(t, activeRunners[0].Idle())
 	assert.False(t, activeRunners[1].Idle())
@@ -516,7 +552,7 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 	assert.False(t, activeRunners[3].Idle())
 
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusBusy.String(), hc.Status)
+	assert.Equal(t, runner.StatusBusy.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 4, hc.Concurrency.Current)
 
@@ -524,7 +560,7 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 	wg.Wait()
 
 	hc = healthCheck(t, runtimeServer)
-	assert.Equal(t, server.StatusReady.String(), hc.Status)
+	assert.Equal(t, runner.StatusReady.String(), hc.Status)
 	assert.Equal(t, 4, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 	activeRunners = handler.ActiveRunners()

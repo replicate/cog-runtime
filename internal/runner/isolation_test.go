@@ -1,16 +1,16 @@
-package server
+package runner
 
 import (
-	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUIDMinimum(t *testing.T) {
+	t.Parallel()
+
 	counter := &uidCounter{}
 	uid, err := counter.allocate()
 	require.NoError(t, err, "allocateUID should not error")
@@ -18,6 +18,8 @@ func TestUIDMinimum(t *testing.T) {
 }
 
 func TestUIDWrapAround(t *testing.T) {
+	t.Parallel()
+
 	counter := &uidCounter{}
 	counter.uid = MaxUID
 	uid, err := counter.allocate()
@@ -27,6 +29,8 @@ func TestUIDWrapAround(t *testing.T) {
 
 func TestUID(t *testing.T) {
 	t.Run("AllocationThreadSafety", func(t *testing.T) {
+		t.Parallel()
+
 		uidCounter := &uidCounter{}
 
 		const numGoroutines = 10
@@ -73,6 +77,8 @@ func TestUID(t *testing.T) {
 	})
 
 	t.Run("SequentialAllocation", func(t *testing.T) {
+		t.Parallel()
+
 		uidCounter := &uidCounter{}
 		firstUID, err := uidCounter.allocate()
 		require.NoError(t, err, "allocateUID should not error")
@@ -88,6 +94,8 @@ func TestUID(t *testing.T) {
 	})
 
 	t.Run("ErrorHandling", func(t *testing.T) {
+		t.Parallel()
+
 		// Test that allocateUID returns proper error when it fails
 		// This is hard to test in practice since UIDs 9000+ are usually available
 		// But this documents the expected error behavior
@@ -101,44 +109,12 @@ func TestUID(t *testing.T) {
 	})
 }
 
-func TestTempDirectoryCleanup(t *testing.T) {
-	t.Run("CleansUpTempDirectory", func(t *testing.T) {
-		workdir := t.TempDir()
-		runner := &Runner{
-			workingDir: workdir,
-		}
+func TestAllocateUID(t *testing.T) {
+	t.Parallel()
 
-		tmpDir, err := os.MkdirTemp("", "test-cog-runner-tmp-")
-		require.NoError(t, err, "Failed to create temp directory")
-
-		runner.SetTmpDir(tmpDir)
-
-		testFile := tmpDir + "/test-file.txt"
-		err = os.WriteFile(testFile, []byte("test content"), 0o644)
-		require.NoError(t, err, "Failed to create test file")
-
-		_, err = os.Stat(tmpDir)
-		assert.False(t, os.IsNotExist(err), "Temp directory should exist before cleanup")
-
-		_, err = os.Stat(testFile)
-		assert.False(t, os.IsNotExist(err), "Test file should exist before cleanup")
-
-		err = runner.Stop()
-		require.NoError(t, err, "Runner.Stop() should not error")
-
-		time.Sleep(100 * time.Millisecond)
-
-		_, err = os.Stat(tmpDir)
-		assert.True(t, os.IsNotExist(err), "Temp directory should be cleaned up after Stop()")
-	})
-
-	t.Run("HandlesEmptyTmpDir", func(t *testing.T) {
-		workdir := t.TempDir()
-		runner := &Runner{
-			workingDir: workdir,
-		}
-
-		err := runner.Stop()
-		assert.NoError(t, err, "Runner.Stop() should not error when tmpDir is empty")
-	})
+	// Test the public function
+	uid, err := AllocateUID()
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, uid, BaseUID)
+	assert.LessOrEqual(t, uid, MaxUID)
 }

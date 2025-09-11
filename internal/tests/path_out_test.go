@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -78,9 +79,9 @@ func TestPathOut(t *testing.T) {
 				module:           testCase.predictor,
 				predictorClass:   "Predictor",
 			})
-			waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+			waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-			prediction := server.PredictionRequest{Input: map[string]any{"s": "foo"}}
+			prediction := runner.PredictionRequest{Input: map[string]any{"s": "foo"}}
 			req := httpPredictionRequest(t, runtimeServer, prediction)
 			resp, err := http.DefaultClient.Do(req)
 			require.NoError(t, err)
@@ -91,7 +92,7 @@ func TestPathOut(t *testing.T) {
 			var predictionResponse server.PredictionResponse
 			err = json.Unmarshal(body, &predictionResponse)
 			require.NoError(t, err)
-			assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+			assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 
 			if testCase.nested {
 				assert.Len(t, predictionResponse.Output, 1)

@@ -17,6 +17,9 @@ name="test-setuid-$(date '+%s')"
 read -r -d '' SCRIPT << EOF || :
 set -e
 
+LOG_LEVEL=debug
+export LOG_LEVEL
+
 # Procedure source URLs in production might be readable by root only
 # So symlink won't work after dropping privilege
 cp -r /src/python/tests/procedures /
@@ -24,7 +27,7 @@ chmod 700 /procedures/setuid
 chmod 600 /procedures/setuid/*
 
 find /src/dist -name '*.whl' -exec pip install {} \;
-python3 -m cog.server.http --port $port --use-procedure-mode
+python3 -m cog.server.http --port $port --use-procedure-mode --max-runners 5
 EOF
 docker run -it --rm --detach \
     --name "$name" \
