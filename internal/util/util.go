@@ -117,9 +117,12 @@ func HTTPClientWithRetry() *http.Client {
 }
 
 func CreateLogger(name string) *zap.Logger {
-	logLevel := os.Getenv("COG_LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "info"
+	logLevel := strings.ToUpper(os.Getenv("COG_LOG_LEVEL"))
+	switch logLevel {
+	case "WARNING":
+		logLevel = "WARN"
+	case "":
+		logLevel = "INFO"
 	}
 	lvl, err := zapcore.ParseLevel(logLevel)
 	if err != nil {
