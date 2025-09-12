@@ -1,10 +1,7 @@
 import contextvars
 import sys
-import warnings
 from collections import defaultdict
 from typing import Any, Callable, Dict, Optional
-
-from coglet import api
 
 ctx_pid: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     'pid', default=None
@@ -33,11 +30,6 @@ class Scope:
 # Compat: for internal model metrics
 # https://github.com/replicate/cog/blob/main/python/cog/server/scope.py
 def current_scope() -> Scope:
-    warnings.warn(
-        'current_scope is an experimental internal function. It may change or be removed without warning.',
-        category=api.ExperimentalFeatureWarning,
-        stacklevel=1,
-    )
     pid = ctx_pid.get()
     assert pid is not None
     return Scope(pid)
