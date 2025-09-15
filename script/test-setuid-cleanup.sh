@@ -38,7 +38,7 @@ python3 -m cog.server.http \
 EOF
 
 # Start Docker container
-docker run -it --detach \
+docker run -it --rm --detach \
     --name "$name" \
     --entrypoint /bin/bash \
     --publish "$port:$port" \
