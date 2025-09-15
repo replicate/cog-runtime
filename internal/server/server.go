@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,10 +16,14 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/replicate/go/httpclient"
+	"github.com/replicate/go/uuid"
+
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/util"
 )
+
+const TimeLayout = "2006-01-02T15:04:05.999999-07:00"
 
 // errAsyncPrediction is a sentinel error used to indicate that a prediction is being served asynchronously, it is not surfaced outside of server
 var errAsyncPrediction = errors.New("async prediction")
@@ -110,8 +115,8 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 	hc := HealthCheck{
 		Status: runnerStatus,
 		Setup: &SetupResult{
-			StartedAt:   util.FormatTime(h.startedAt),
-			CompletedAt: util.FormatTime(h.startedAt),
+			StartedAt:   formatTime(h.startedAt),
+			CompletedAt: formatTime(h.startedAt),
 			Status:      runnerSetupResult.Status,
 			Logs:        logsStr,
 		},
@@ -231,7 +236,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		req.ID = id
 	}
 	if req.ID == "" {
-		req.ID, err = util.PredictionID()
+		req.ID, err = PredictionID()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -304,7 +309,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			log.Debugw("runner result received", "id", runnerResult.ID, "logs_count", len(runnerResult.Logs))
 			if len(runnerResult.Logs) > 0 {
 				log.Debugw("joining logs", "logs", runnerResult.Logs)
-				logsStr = util.JoinLogs(runnerResult.Logs)
+				logsStr = runnerResult.Logs.String()
 				log.Debugw("joined logs result", "logs_str", logsStr)
 			}
 			var metrics map[string]any
@@ -390,7 +395,7 @@ func SendWebhook(webhook string, pr *PredictionResponse) error {
 	// Only retry on completed webhooks
 	client := http.DefaultClient
 	if pr.Status.IsCompleted() {
-		client = util.HTTPClientWithRetry()
+		client = httpclient.ApplyRetryPolicy(http.DefaultClient)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -437,4 +442,21 @@ func writeReadyFile() error {
 	}
 
 	return nil
+}
+
+func PredictionID() (string, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	shuffle := make([]byte, uuid.Size)
+	for i := 0; i < 4; i++ {
+		shuffle[i], shuffle[i+4], shuffle[i+8], shuffle[i+12] = u[i+12], u[i+4], u[i], u[i+8]
+	}
+	encoding := base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+	return encoding.EncodeToString(shuffle), nil
+}
+
+func formatTime(t time.Time) string {
+	return t.UTC().Format(TimeLayout)
 }

@@ -139,7 +139,7 @@ func TestPredictionResponse(t *testing.T) {
 		assert.Equal(t, PredictionSucceeded, resp.Status)
 		assert.Equal(t, map[string]any{"result": "success"}, resp.Output)
 		assert.Empty(t, resp.Error)
-		assert.Equal(t, []string{"log1", "log2"}, resp.Logs)
+		assert.Equal(t, LogsSlice{"log1", "log2"}, resp.Logs)
 		assert.Equal(t, map[string]any{"duration": 1.5}, resp.Metrics)
 		assert.Equal(t, "http://example.com/webhook", resp.WebhookURL)
 	})
@@ -330,7 +330,7 @@ func TestPredictionResponseUnmarshalFromExternalJSON(t *testing.T) {
 	err := json.Unmarshal([]byte(jsonStr), &response)
 	require.NoError(t, err)
 
-	expected := []string{
+	expected := LogsSlice{
 		"starting prediction",
 		"prediction in progress 1/2",
 		"prediction in progress 2/2",

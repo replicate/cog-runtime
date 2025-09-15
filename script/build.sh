@@ -15,7 +15,7 @@ rm -rf python/cog/cog-*
 # Skip Go binaries if building "clet", i.e. coglet without go for pyodide
 if [ -z "${CLET:-}" ]; then
     # Export Python version to Go
-    uv run --with setuptools_scm python3 -m setuptools_scm > internal/util/version.txt
+    uv run --with setuptools_scm python3 -m setuptools_scm > internal/version/version.txt
     # Binaries are bundled in Python wheel
     for os in darwin linux; do
         for arch in amd64 arm64; do

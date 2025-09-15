@@ -5,7 +5,7 @@
 /.idea
 /build
 /dist
-/internal/util/version.txt
+/internal/version/version.txt
 /python/cog/cog-*
 /python/coglet/_version.py
 /uv.lock

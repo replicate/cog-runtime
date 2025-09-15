@@ -7,9 +7,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/replicate/go/httpclient"
 	"go.uber.org/zap"
-
-	"github.com/replicate/cog-runtime/internal/util"
 )
 
 // Event represents a webhook event - using string to be compatible with any type
@@ -41,7 +40,7 @@ type DefaultSender struct {
 func NewSender(logger *zap.Logger) *DefaultSender {
 	return &DefaultSender{
 		logger: logger.Named("webhook"),
-		client: util.HTTPClientWithRetry(),
+		client: httpclient.ApplyRetryPolicy(http.DefaultClient),
 	}
 }
 

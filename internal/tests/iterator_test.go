@@ -10,7 +10,6 @@ import (
 
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
-	"github.com/replicate/cog-runtime/internal/util"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -92,9 +91,9 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 
 	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	barID, err := util.PredictionID()
+	barID, err := server.PredictionID()
 	require.NoError(t, err)
-	bazID, err := util.PredictionID()
+	bazID, err := server.PredictionID()
 	require.NoError(t, err)
 	barPrediction := runner.PredictionRequest{
 		Input:               map[string]any{"i": 1, "s": "bar"},

@@ -2,10 +2,12 @@ package runner
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -20,8 +22,10 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"go.uber.org/zap"
 
+	"github.com/replicate/go/httpclient"
+
 	"github.com/replicate/cog-runtime/internal/config"
-	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/version"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -293,7 +297,7 @@ type Runner struct {
 	schema             string
 	doc                *openapi3.T
 	setupResult        SetupResult
-	logs               []string
+	logs               LogsSlice
 	asyncPredict       bool
 	maxConcurrency     int
 	pending            map[string]*PendingPrediction
@@ -521,7 +525,7 @@ func (r *Runner) captureLogLine(line string) {
 		} else {
 			// Add to runner logs for crash reporting
 			r.logs = append(r.logs, line)
-			r.setupResult.Logs = util.JoinLogs(r.logs)
+			r.setupResult.Logs = r.logs.String()
 		}
 		r.mu.Unlock()
 	default:
@@ -566,6 +570,9 @@ func (r *Runner) Config(ctx context.Context) error {
 	// Default to 1 if not set in cog.yaml, regardless whether async predict or not
 	maxConcurrency := max(1, cogYaml.Concurrency.Max)
 
+	// Send metrics
+	go r.sendRunnerMetric(*cogYaml)
+
 	// Create config.json for the coglet process
 	configJSON := map[string]any{
 		"module_name":     moduleName,
@@ -591,6 +598,36 @@ func (r *Runner) Config(ctx context.Context) error {
 
 	// Status remains StatusStarting until IPC "READY" signal
 	return nil
+}
+
+func (r *Runner) sendRunnerMetric(cogYaml CogYaml) {
+	log := r.logger.Sugar()
+	// FIXME: wire this up through more than os.getenv
+	endpoint := os.Getenv("COG_METRICS_ENDPOINT")
+	if endpoint == "" {
+		return
+	}
+	data := map[string]any{
+		"gpu":         cogYaml.Build.GPU,
+		"fast":        cogYaml.Build.Fast,
+		"cog_runtime": cogYaml.Build.CogRuntime,
+		"version":     version.Version(),
+	}
+	payload := MetricsPayload{
+		Source: "cog-runtime",
+		Type:   "runner",
+		Data:   data,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		log.Errorw("failed to marshal payload", "error", err)
+		return
+	}
+	resp, err := httpclient.ApplyRetryPolicy(http.DefaultClient).Post(endpoint, "application/json", bytes.NewBuffer(body))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		log.Errorw("failed to send runner metrics", "error", err)
+	}
+	defer resp.Body.Close()
 }
 
 func (r *Runner) Stop() error {
@@ -913,7 +950,10 @@ func (r *Runner) updateSetupResult() {
 	}
 
 	// Set logs first (original pattern)
-	r.setupResult.Logs = util.JoinLogs(logLines)
+	r.setupResult.Logs = strings.Join(logLines, "\n")
+	if r.setupResult.Logs != "" {
+		r.setupResult.Logs += "\n"
+	}
 
 	setupResultPath := filepath.Join(r.runnerCtx.workingdir, "setup_result.json")
 	log.Debug("reading setup_result.json", "path", setupResultPath)
@@ -954,7 +994,7 @@ func (r *Runner) rotateLogs() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	allLogs := util.JoinLogs(r.logs)
+	allLogs := r.logs.String()
 	r.logs = r.logs[:0]
 	return allLogs
 }

@@ -16,9 +16,49 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/replicate/cog-runtime/internal/util"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
+
+// LogsSlice is a []string that marshals to/from a newline-joined string in JSON
+type LogsSlice []string
+
+func (l LogsSlice) String() string {
+	r := strings.Join(l, "\n")
+	if r != "" {
+		r += "\n"
+	}
+	return r
+}
+
+// MarshalJSON implements custom JSON marshaling to convert logs from []string to string
+func (l LogsSlice) MarshalJSON() ([]byte, error) {
+	result := strings.Join(l, "\n")
+	if result != "" {
+		result += "\n"
+	}
+	return json.Marshal(result)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling to convert logs from string to []string
+func (l *LogsSlice) UnmarshalJSON(data []byte) error {
+	var str string
+	if err := json.Unmarshal(data, &str); err != nil {
+		return err
+	}
+
+	if str == "" {
+		*l = nil
+		return nil
+	}
+
+	// Split on newline and remove the trailing empty element if it exists
+	parts := strings.Split(str, "\n")
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	*l = LogsSlice(parts)
+	return nil
+}
 
 type Status int
 
@@ -116,70 +156,9 @@ type PredictionResponse struct {
 	Input      any              `json:"input,omitempty"`
 	Output     any              `json:"output,omitempty"`
 	Error      string           `json:"error,omitempty"`
-	Logs       []string         `json:"logs,omitempty"`
+	Logs       LogsSlice        `json:"logs,omitempty"`
 	Metrics    any              `json:"metrics,omitempty"`
 	WebhookURL string           `json:"webhook,omitempty"`
-}
-
-// MarshalJSON implements custom JSON marshaling to convert logs from []string to string
-func (pr PredictionResponse) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		ID         string           `json:"id"`
-		Status     PredictionStatus `json:"status"`
-		Input      any              `json:"input,omitempty"`
-		Output     any              `json:"output,omitempty"`
-		Error      string           `json:"error,omitempty"`
-		Logs       string           `json:"logs,omitempty"`
-		Metrics    any              `json:"metrics,omitempty"`
-		WebhookURL string           `json:"webhook,omitempty"`
-	}{
-		ID:         pr.ID,
-		Status:     pr.Status,
-		Input:      pr.Input,
-		Output:     pr.Output,
-		Error:      pr.Error,
-		Logs:       util.JoinLogs(pr.Logs),
-		Metrics:    pr.Metrics,
-		WebhookURL: pr.WebhookURL,
-	})
-}
-
-// UnmarshalJSON implements custom JSON unmarshalling to convert logs from string to []string
-func (pr *PredictionResponse) UnmarshalJSON(data []byte) error {
-	aux := &struct {
-		ID         string           `json:"id"`
-		Status     PredictionStatus `json:"status"`
-		Input      any              `json:"input,omitempty"`
-		Output     any              `json:"output,omitempty"`
-		Error      string           `json:"error,omitempty"`
-		Logs       string           `json:"logs,omitempty"`
-		Metrics    any              `json:"metrics,omitempty"`
-		WebhookURL string           `json:"webhook,omitempty"`
-	}{}
-	if err := json.Unmarshal(data, aux); err != nil {
-		return err
-	}
-
-	pr.ID = aux.ID
-	pr.Status = aux.Status
-	pr.Input = aux.Input
-	pr.Output = aux.Output
-	pr.Error = aux.Error
-	pr.Metrics = aux.Metrics
-	pr.WebhookURL = aux.WebhookURL
-
-	// Convert string logs back to []string
-	if aux.Logs != "" {
-		// Split on newline and remove the trailing empty element if it exists
-		parts := strings.Split(aux.Logs, "\n")
-		if len(parts) > 0 && parts[len(parts)-1] == "" {
-			parts = parts[:len(parts)-1]
-		}
-		pr.Logs = parts
-	} else {
-		pr.Logs = nil
-	}
-	return nil
 }
 
 // RunnerID is a unique identifier for a runner instance.
@@ -390,4 +369,10 @@ func (p *PendingPrediction) sendWebhookSync(event webhook.Event) error {
 	// Send webhook synchronously for terminal events
 	_ = p.webhookSender.SendConditional(p.request.Webhook, bytes.NewReader(body), event, p.request.WebhookEventsFilter, &p.lastUpdated)
 	return nil
+}
+
+type MetricsPayload struct {
+	Source string         `json:"source,omitempty"`
+	Type   string         `json:"type,omitempty"`
+	Data   map[string]any `json:"data,omitempty"`
 }
