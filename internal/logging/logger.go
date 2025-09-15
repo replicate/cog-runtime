@@ -14,6 +14,26 @@ const (
 	TraceLevel = zapcore.Level(-8) // Below Debug (-4)
 )
 
+// customLowercaseLevelEncoder handles our custom Trace level display (lowercase)
+func customLowercaseLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+	switch level {
+	case TraceLevel:
+		enc.AppendString("trace")
+	default:
+		zapcore.LowercaseLevelEncoder(level, enc)
+	}
+}
+
+// customColorLevelEncoder handles our custom Trace level display (with colors)
+func customColorLevelEncoder(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+	switch level {
+	case TraceLevel:
+		enc.AppendString("\x1b[90mTRACE\x1b[0m") // Gray color for trace
+	default:
+		zapcore.CapitalColorLevelEncoder(level, enc)
+	}
+}
+
 // Logger embeds zap.Logger and adds Trace level support
 type Logger struct {
 	*zap.Logger
@@ -34,11 +54,11 @@ func New(name string) *Logger {
 	if isDevelopment {
 		cfg = zap.NewDevelopmentConfig()
 		cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
-		cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		cfg.EncoderConfig.EncodeLevel = customColorLevelEncoder
 	} else {
 		cfg = zap.NewProductionConfig()
 		cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
-		cfg.EncoderConfig.EncodeLevel = zapcore.LowercaseLevelEncoder
+		cfg.EncoderConfig.EncodeLevel = customLowercaseLevelEncoder
 	}
 
 	// Set log level from environment (COG_LOG_LEVEL takes precedence, fallback to LOG_LEVEL)
@@ -138,4 +158,14 @@ func (s *SugaredLogger) Trace(args ...any) {
 // Add Tracew method to SugaredLogger
 func (s *SugaredLogger) Tracew(msg string, keysAndValues ...any) {
 	s.Logw(TraceLevel, msg, keysAndValues...)
+}
+
+// Override With to return our custom SugaredLogger
+func (s *SugaredLogger) With(args ...any) *SugaredLogger {
+	return &SugaredLogger{SugaredLogger: s.SugaredLogger.With(args...)}
+}
+
+// Override Named to return our custom SugaredLogger
+func (s *SugaredLogger) Named(name string) *SugaredLogger {
+	return &SugaredLogger{SugaredLogger: s.SugaredLogger.Named(name)}
 }

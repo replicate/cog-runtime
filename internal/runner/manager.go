@@ -176,7 +176,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error
 
 	runner, err := m.assignReqToRunner(deadlineCtx, req)
 	if err != nil {
-		log.Debugw("failed to get runner for async request", "error", err)
+		log.Tracew("failed to get runner for async request", "error", err)
 		m.releaseSlot()
 		return err
 	}
@@ -197,7 +197,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error
 
 	respChan, err := runner.predict(req)
 	if err != nil {
-		log.Debugw("failed to predict", "error", err)
+		log.Tracew("failed to predict", "error", err)
 		m.releaseSlot()
 		return err
 	}
@@ -206,7 +206,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error
 	go func() {
 		defer m.releaseSlot() // Release slot after prediction completes
 		<-respChan            // Wait for prediction to complete
-		log.Debugw("async prediction completed", "prediction_id", req.ID)
+		log.Tracew("async prediction completed", "prediction_id", req.ID)
 	}()
 
 	return nil
@@ -485,7 +485,7 @@ func (m *Manager) assignReqToRunner(ctx context.Context, req PredictionRequest) 
 	// First, try to find existing runner with capacity and atomically reserve slot
 	procRunner := m.findRunnerWithCapacity(ctx, req)
 	if procRunner != nil {
-		log.Debugw("allocated request to existing runner", "runner", procRunner.runnerCtx.id)
+		log.Tracew("allocated request to existing runner", "runner", procRunner.runnerCtx.id)
 		return procRunner, nil
 	}
 
@@ -824,7 +824,7 @@ func (m *Manager) Stop() error {
 				// Wait for this runner to become idle OR timeout
 				select {
 				case <-runner.readyForShutdown:
-					log.Infow("runner became idle naturally", "name", runner.runnerCtx.id)
+					log.Debugw("runner became idle naturally", "name", runner.runnerCtx.id)
 				case <-graceCtx.Done():
 					log.Warnw("grace period expired for runner", "name", runner.runnerCtx.id, "context_err", graceCtx.Err())
 				}
@@ -877,7 +877,7 @@ func (m *Manager) Status() string {
 			runner.mu.Unlock()
 			return status
 		}
-		log.Debug("default runner not found, returning STARTING")
+		log.Trace("default runner not found, returning STARTING")
 		return "STARTING"
 	}
 
@@ -1071,9 +1071,9 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 		}
 
 		// Capture crash logs from runner and fail predictions one by one
-		log.Debugw("checking runner logs for crash", "runner_logs_count", len(runner.logs), "runner_logs", runner.logs)
+		log.Tracew("checking runner logs for crash", "runner_logs_count", len(runner.logs), "runner_logs", runner.logs)
 		crashLogs := runner.logs
-		log.Debugw("captured crash logs", "crash_logs_count", len(crashLogs), "crash_logs", crashLogs)
+		log.Tracew("captured crash logs", "crash_logs_count", len(crashLogs), "crash_logs", crashLogs)
 
 		for id, pending := range runner.pending {
 			log.Debugw("failing prediction due to setup failure", "prediction_id", id)

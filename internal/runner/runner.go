@@ -54,7 +54,7 @@ func (r *Runner) watchPredictionResponses(ctx context.Context, predictionID stri
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debugw("response watcher canceled", "prediction_id", predictionID)
+			log.Tracew("response watcher canceled", "prediction_id", predictionID)
 			return
 
 		// TODO: Add inotify case when implemented
@@ -68,7 +68,7 @@ func (r *Runner) watchPredictionResponses(ctx context.Context, predictionID stri
 			// Drain IPC OUTPUT notifications - when inotify available, we blackhole these
 			// When inotify unavailable, this triggers immediate processing
 			// TODO: Only process if inotify unavailable
-			log.Debugw("received OUTPUT IPC notification", "prediction_id", predictionID)
+			log.Tracew("received OUTPUT IPC notification", "prediction_id", predictionID)
 			pollTimer.Reset(100 * time.Millisecond) // Reset polling timer since we got an event
 			if err := r.processResponseFiles(predictionID, pending, responsePattern, log); err != nil {
 				log.Errorw("failed to process response files from IPC", "prediction_id", predictionID, "error", err)
@@ -86,7 +86,7 @@ func (r *Runner) watchPredictionResponses(ctx context.Context, predictionID stri
 		completed := pending.response.Status.IsCompleted()
 		pending.mu.Unlock()
 		if completed {
-			log.Debugw("prediction completed, watcher exiting", "prediction_id", predictionID)
+			log.Tracew("prediction completed, watcher exiting", "prediction_id", predictionID)
 			return
 		}
 	}
@@ -274,7 +274,7 @@ func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionRespons
 		}
 
 		// Watcher exits - manager defer will handle webhook and cleanup
-		log.Debugw("prediction completed, watcher exiting", "prediction_id", predictionID)
+		log.Tracew("prediction completed, watcher exiting", "prediction_id", predictionID)
 		return
 	}
 }
@@ -356,7 +356,7 @@ func (r *Runner) WaitForStop() {
 func (r *Runner) GracefulShutdown() {
 	log := r.logger.Sugar()
 	if !r.shutdownWhenIdle.CompareAndSwap(false, true) {
-		log.Debugw("graceful shutdown already initiated", "runner_id", r.runnerCtx.id)
+		log.Tracew("graceful shutdown already initiated", "runner_id", r.runnerCtx.id)
 		return
 	}
 
@@ -364,7 +364,7 @@ func (r *Runner) GracefulShutdown() {
 	shouldSignal := (r.status == StatusReady && len(r.pending) == 0)
 	r.mu.RUnlock()
 
-	log.Debugw("graceful shutdown initiated", "runner_id", r.runnerCtx.id, "status", r.status, "pending_count", len(r.pending), "should_signal", shouldSignal)
+	log.Tracew("graceful shutdown initiated", "runner_id", r.runnerCtx.id, "status", r.status, "pending_count", len(r.pending), "should_signal", shouldSignal)
 
 	if shouldSignal {
 		if r.readyForShutdown == nil {
@@ -372,9 +372,9 @@ func (r *Runner) GracefulShutdown() {
 		} else {
 			select {
 			case <-r.readyForShutdown:
-				log.Debugw("readyForShutdown already closed", "runner_id", r.runnerCtx.id)
+				log.Tracew("readyForShutdown already closed", "runner_id", r.runnerCtx.id)
 			default:
-				log.Debugw("closing readyForShutdown channel", "runner_id", r.runnerCtx.id)
+				log.Tracew("closing readyForShutdown channel", "runner_id", r.runnerCtx.id)
 				close(r.readyForShutdown)
 			}
 		}
@@ -407,7 +407,7 @@ func (r *Runner) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to start subprocess: %w", err)
 	}
 
-	log.Debugw("runner process started successfully", "pid", cmd.Process.Pid)
+	log.Tracew("runner process started successfully", "pid", cmd.Process.Pid)
 
 	return nil
 }
@@ -437,7 +437,7 @@ func (r *Runner) setupLogCapture() error {
 			line := scanner.Text()
 			r.logStdout(line)
 		}
-		r.logger.Debug("finished stdout log capture")
+		r.logger.Trace("finished stdout log capture")
 	})
 
 	wg.Go(func() {
@@ -446,7 +446,7 @@ func (r *Runner) setupLogCapture() error {
 			line := scanner.Text()
 			r.logStderr(line)
 		}
-		r.logger.Debug("finished stderr log capture")
+		r.logger.Trace("finished stderr log capture")
 	})
 
 	// Signal when both pipes are closed (with double-close protection)
@@ -792,7 +792,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	log.Debugw("runner.predict called", "prediction_id", req.ID, "status", r.status)
+	log.Tracew("runner.predict called", "prediction_id", req.ID, "status", r.status)
 
 	// Prediction must be pre-allocated by manager
 	pending, exists := r.pending[req.ID]
@@ -800,7 +800,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		return nil, fmt.Errorf("prediction %s not allocated", req.ID)
 	}
 
-	log.Debugw("prediction found in pending", "prediction_id", req.ID)
+	log.Tracew("prediction found in pending", "prediction_id", req.ID)
 
 	// Process input paths (base64 and URL inputs)
 	inputPaths := make([]string, 0)
@@ -829,13 +829,13 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		return nil, fmt.Errorf("failed to write request file: %w", err)
 	}
 
-	log.Debugw("wrote prediction request file", "prediction_id", req.ID, "path", requestPath, "working_dir", r.runnerCtx.workingdir, "request_data", string(requestData))
+	log.Tracew("wrote prediction request file", "prediction_id", req.ID, "path", requestPath, "working_dir", r.runnerCtx.workingdir, "request_data", string(requestData))
 
 	// Debug: Check if file actually exists and list directory contents
 	if _, err := os.Stat(requestPath); err != nil {
-		log.Debugw("ERROR: written request file does not exist", "prediction_id", req.ID, "path", requestPath, "error", err)
+		log.Tracew("ERROR: written request file does not exist", "prediction_id", req.ID, "path", requestPath, "error", err)
 	} else {
-		log.Debugw("confirmed request file exists", "prediction_id", req.ID, "path", requestPath)
+		log.Tracew("confirmed request file exists", "prediction_id", req.ID, "path", requestPath)
 	}
 
 	// Debug: List all files in working directory
@@ -844,13 +844,13 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 		for i, entry := range entries {
 			fileNames[i] = entry.Name()
 		}
-		log.Debugw("working directory contents after write", "prediction_id", req.ID, "working_dir", r.runnerCtx.workingdir, "files", fileNames)
+		log.Tracew("working directory contents after write", "prediction_id", req.ID, "working_dir", r.runnerCtx.workingdir, "files", fileNames)
 	}
 
 	// Update pending prediction with request details
 	pending.request = req
 
-	log.Debugw("returning prediction channel", "prediction_id", req.ID)
+	log.Tracew("returning prediction channel", "prediction_id", req.ID)
 	return pending.c, nil
 }
 
@@ -970,21 +970,21 @@ func (r *Runner) updateSetupResult() {
 	}
 
 	setupResultPath := filepath.Join(r.runnerCtx.workingdir, "setup_result.json")
-	log.Debug("reading setup_result.json", "path", setupResultPath)
+	log.Trace("reading setup_result.json", "path", setupResultPath)
 
 	// Try to read additional setup result data from file
 	var setupResultFromFile SetupResult
 	if err := r.readJSON(setupResultPath, &setupResultFromFile); err != nil {
-		log.Debugw("failed to read setup_result.json, assuming success", "error", err)
+		log.Tracew("failed to read setup_result.json, assuming success", "error", err)
 		// If setup_result.json doesn't exist, assume setup succeeded and status is ready
 		r.setupResult.Status = SetupSucceeded
 		r.setupResult.Schema = "" // Will be populated by updateSchema if available
 		r.status = StatusReady
-		log.Debugw("setup result not found, assuming success", "status", r.status.String())
+		log.Tracew("setup result not found, assuming success", "status", r.status.String())
 		return
 	}
 
-	log.Debugw("successfully read setup_result.json", "status", setupResultFromFile.Status, "schema_length", len(setupResultFromFile.Schema))
+	log.Tracew("successfully read setup_result.json", "status", setupResultFromFile.Status, "schema_length", len(setupResultFromFile.Schema))
 
 	// Update setup result with data from file, preserving logs that were already set
 	r.setupResult.Status = setupResultFromFile.Status

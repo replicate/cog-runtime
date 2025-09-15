@@ -65,6 +65,26 @@ func TestLoggerChaining(t *testing.T) {
 	optionsLogger.Trace("options trace")
 }
 
+func TestSugaredLoggerChaining(t *testing.T) {
+	logger := NewTestLogger(t)
+	sugar := logger.Sugar()
+
+	// Test With returns our custom SugaredLogger with Trace support
+	withSugar := sugar.With("component", "test")
+	withSugar.Trace("trace with sugar chaining")
+	withSugar.Tracew("tracew with sugar chaining", "key", "value")
+
+	// Test Named returns our custom SugaredLogger with Trace support
+	namedSugar := sugar.Named("child")
+	namedSugar.Trace("trace with named sugar")
+	namedSugar.Tracew("tracew with named sugar", "key", "value")
+
+	// Test chaining both With and Named
+	chainedSugar := sugar.With("component", "test").Named("child")
+	chainedSugar.Trace("trace with full chaining")
+	chainedSugar.Tracew("tracew with full chaining", "key", "value")
+}
+
 func TestTraceLevel(t *testing.T) {
 	// Verify TraceLevel is below DebugLevel
 	if logging.TraceLevel >= zapcore.DebugLevel {

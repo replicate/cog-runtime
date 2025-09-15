@@ -233,7 +233,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	// Monitor for forced shutdown from cleanup failures
 	eg.Go(func() error {
-		defer log.Debug("force shutdown goroutine exiting")
+		defer log.Trace("force shutdown goroutine exiting")
 		select {
 		case <-s.forceShutdown.WatchForForceShutdown():
 			log.Errorw("process cleanup failed, forcing immediate exit")
@@ -249,7 +249,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	close(s.started)
 
-	log.Debug("waiting for all service goroutines to complete")
+	log.Trace("waiting for all service goroutines to complete")
 	err := eg.Wait()
 	log.Debug("all service goroutines completed")
 
@@ -271,7 +271,7 @@ func (s *Service) Shutdown() {
 
 	// Use atomic CAS to ensure only one shutdown
 	if !s.shutdownStarted.CompareAndSwap(false, true) {
-		log.Debug("already shutting down")
+		log.Trace("already shutting down")
 		return
 	}
 
@@ -285,7 +285,7 @@ func (s *Service) stop(ctx context.Context) {
 
 	select {
 	case <-s.stopped:
-		log.Debug("service already stopped")
+		log.Trace("service already stopped")
 	default:
 		close(s.stopped)
 	}
