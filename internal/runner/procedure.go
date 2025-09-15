@@ -1,4 +1,4 @@
-package util //nolint:revive // FIXME: break up util package and move functions to where they're used
+package runner
 
 import (
 	"crypto/sha256"
@@ -44,13 +44,11 @@ func copyRecursive(srcRoot, dstRoot string) error {
 	})
 }
 
-func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
-	// Deterministic destination directory to avoid duplicate copies
+func PrepareProcedureSourceURL(srcURL, runnerID string) (string, error) {
 	sha := sha256.New()
 	sha.Write([]byte(srcURL))
-	dstDir := filepath.Join(os.TempDir(), fmt.Sprintf("procedure-%x-%02d", sha.Sum(nil), slot))
+	dstDir := filepath.Join(os.TempDir(), fmt.Sprintf("procedure-%x-%s", sha.Sum(nil), runnerID))
 
-	// Always clean up before preparing
 	if err := os.RemoveAll(dstDir); err != nil {
 		return "", err
 	}
@@ -61,7 +59,6 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 	}
 	switch u.Scheme {
 	case "file":
-		// file:///path/to/existing/dir
 		stat, err := os.Stat(u.Path)
 		if err != nil {
 			return "", err
@@ -79,10 +76,7 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 		}
 		return dstDir, nil
 	case "http", "https":
-		// http://host/path/to/tarball
-		// Download to temporary file
-		// tar -xf cannot detect compression from stdin and the file should be small enough
-		resp, err := http.Get(srcURL) //nolint:gosec // expected dynamic URL
+		resp, err := http.Get(srcURL) //nolint:gosec // expected dynamic path
 		if err != nil {
 			return "", err
 		}
@@ -94,13 +88,14 @@ func PrepareProcedureSourceURL(srcURL string, slot int) (string, error) {
 		if _, err := io.Copy(tarball, resp.Body); err != nil {
 			return "", err
 		}
-		defer os.Remove(tarball.Name()) //nolint:errcheck // cleanup, we should try and remove, best effort
+		defer func() {
+			_ = os.Remove(tarball.Name())
+		}()
 
-		// Extract tarball
 		if err := os.MkdirAll(dstDir, 0o700); err != nil {
 			return "", err
 		}
-		cmd := exec.Command("tar", "-xf", tarball.Name(), "-C", dstDir) //nolint:gosec // expected subprocess launched with variable, TODO: consider using go stdlib encoding/tar package
+		cmd := exec.Command("tar", "-xf", tarball.Name(), "-C", dstDir) //nolint:gosec // expected subprocess launched with variable
 		if err := cmd.Run(); err != nil {
 			return "", err
 		}

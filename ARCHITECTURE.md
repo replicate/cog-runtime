@@ -25,17 +25,33 @@ This hybrid architecture combines Go's performance advantages with Python's mach
 
 ### Go HTTP server
 
-The HTTP server component handles all external communication and process management:
+The HTTP server component is organized into focused packages with clear separation of concerns:
 
+#### `internal/server` - HTTP API Layer
 **HTTP routing**: Implements the Cog prediction API with endpoints for predictions, health checks, cancellation, and shutdown. Routes are dynamically configured based on runtime mode (standard vs procedure).
 
-**Process management**: Manages Python runner processes including startup, shutdown, health monitoring, and crash recovery. In procedure mode, can manage multiple isolated runners with automatic eviction policies.
+**Request handling**: Processes incoming HTTP requests, validates payloads, and coordinates with the runner management layer. Handles both synchronous and asynchronous prediction workflows.
 
-**Request coordination**: Handles request queuing, concurrency limits, and response aggregation. Maps HTTP requests to appropriate Python runners and manages the full request lifecycle.
+**Response management**: Aggregates results from runner layer and formats responses according to API specifications. Manages streaming responses and webhook notifications.
 
-**File I/O handling**: Manages input file downloads and output file uploads, with support for both local storage and external upload endpoints. Handles path resolution and cleanup automatically.
+#### `internal/runner` - Process Management Layer
+**Centralized runner management**: The `Manager` component handles all Python process lifecycle including startup, shutdown, health monitoring, and crash recovery. Provides slot-based concurrency control and automatic resource cleanup.
 
-**IPC coordination**: Receives status updates from Python processes via HTTP and manages bidirectional communication through the filesystem.
+**Individual runner management**: The `Runner` component manages individual Python processes with proper context cancellation, log accumulation, and per-prediction response tracking.
+
+**Procedure support**: Dynamic runner creation for different source URLs with automatic eviction policies. Handles isolation requirements and resource allocation in multi-tenant scenarios.
+
+**Configuration management**: Handles cog.yaml parsing, environment setup, and runtime configuration for both standard and procedure modes.
+
+#### `internal/webhook` - Webhook Delivery
+**Webhook coordination**: Manages webhook delivery with deduplication, retry logic, and proper event filtering. Uses atomic operations to prevent duplicate terminal webhooks.
+
+**Event tracking**: Tracks webhook events per prediction with proper timing and log accumulation to ensure complete notification delivery.
+
+#### `internal/service` - Application Lifecycle
+**Service coordination**: Manages overall application lifecycle including graceful shutdown, signal handling, and component initialization.
+
+**Configuration integration**: Bridges CLI configuration with internal component configuration and handles service-level concerns like working directory management.
 
 ### Python model runner (coglet)
 
@@ -53,11 +69,24 @@ The `coglet` component focuses purely on model execution and introspection:
 
 ### Request flow architecture
 
-**Standard mode**: Single Python runner handling requests sequentially or with limited concurrency based on predictor capabilities.
+The architecture provides clean separation between HTTP handling, runner management, and process execution:
 
-**Procedure mode**: Dynamic runner management where the Go server creates Python processes on-demand for different source URLs, with automatic scaling and eviction based on usage patterns.
+#### Request Processing Flow
 
-**Concurrency handling**: The Go server aggregates concurrency limits across all runners and provides global throttling while individual Python processes handle their own internal concurrency based on predictor type (sync vs async).
+1. **HTTP Request**: `internal/server` receives and validates incoming requests
+2. **Runner Assignment**: `internal/runner/Manager` assigns requests to available runners using slot-based concurrency control
+3. **Process Execution**: `internal/runner/Runner` manages individual Python process interaction via file-based IPC
+4. **Response Tracking**: Per-prediction watchers monitor Python process responses and handle log accumulation
+5. **Webhook Delivery**: `internal/webhook` manages asynchronous webhook notifications with deduplication
+6. **HTTP Response**: `internal/server` formats and returns final responses to clients
+
+#### Execution Modes
+
+**Standard mode**: Single Python runner managed by the system with configurable concurrency based on predictor capabilities. The Manager creates and maintains one long-lived runner process.
+
+**Procedure mode**: Dynamic runner management where the Manager creates Python processes on-demand for different source URLs. Implements LRU eviction, automatic scaling, and resource isolation between procedures.
+
+**Concurrency handling**: The Manager provides global slot-based concurrency control while individual Runners handle per-process concurrency limits. Atomic operations ensure safe concurrent access to shared state.
 
 ## Communication patterns
 
@@ -87,38 +116,38 @@ The server exposes a RESTful API compatible with the original Cog specification:
 
 **Output processing**: Python runners write outputs to files when needed, and the Go server handles upload/base64 encoding based on client preferences.
 
-## Contrast with old Cog server
+## Architecture benefits
 
-The new architecture addresses several limitations of the original FastAPI-based implementation:
+The hybrid Go/Python architecture provides several key advantages:
 
-### Performance improvements
+### Performance characteristics
 
-**Go HTTP handling**: The Go server can handle much higher request throughput and lower latency compared to Python's uvicorn, especially for health checks and simple requests.
+**Go HTTP handling**: The Go server provides high request throughput and low latency, especially for health checks and management requests.
 
-**Process isolation**: Model crashes or hangs no longer affect the HTTP server, providing better availability and faster recovery.
+**Process isolation**: Model crashes or hangs do not affect the HTTP server, providing better availability and faster recovery.
 
-**Concurrent processing**: Better support for concurrent predictions with proper resource accounting and backpressure management.
+**Concurrent processing**: Supports concurrent predictions with proper resource accounting and backpressure management through slot-based concurrency control.
 
-### Reliability improvements
+### Reliability features
 
-**Fault tolerance**: Python process crashes are isolated and can be recovered without restarting the entire server.
+**Fault tolerance**: Python process crashes are isolated and recovered without affecting other operations or requiring server restart.
 
-**Resource management**: Better control over memory usage, file descriptor limits, and process lifecycle.
+**Resource management**: Provides precise control over memory usage, file descriptor limits, and process lifecycle with automatic cleanup.
 
 **Dependency isolation**: Zero Python dependencies in the runtime layer eliminates version conflicts with model requirements.
 
-### Operational improvements
+### Operational capabilities
 
-**Multi-tenancy**: Procedure mode allows serving multiple models/procedures from a single server instance with proper isolation.
+**Multi-tenancy**: Procedure mode serves multiple models/procedures from a single server instance with proper isolation and resource allocation.
 
-**Debuggability**: File-based IPC makes it easy to inspect request/response payloads and trace execution flow.
+**Debuggability**: File-based IPC enables easy inspection of request/response payloads and execution flow tracing.
 
-**Resource cleanup**: Automatic cleanup of temporary files, processes, and other resources with proper error handling.
+**Resource cleanup**: Automatic cleanup of temporary files, processes, and other resources with comprehensive error handling.
 
-### API compatibility
+### API design
 
-**Backward compatibility**: Maintains full API compatibility with existing Cog clients while providing performance and reliability improvements.
+**Client compatibility**: Maintains full API compatibility with existing Cog clients while providing enhanced performance and reliability.
 
-**Extended features**: Adds procedure mode capabilities while preserving the original single-model deployment pattern.
+**Flexible deployment**: Supports both single-model deployment patterns and multi-tenant procedure mode from the same codebase.
 
-The old server's single-process architecture required careful management of async/await patterns and could suffer from blocking operations affecting the entire service. The new architecture's process separation eliminates these concerns while providing better scalability and fault isolation.
+The process separation architecture eliminates concerns around blocking operations affecting the entire service while providing better scalability and fault isolation through clear component boundaries.

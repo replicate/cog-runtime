@@ -1,68 +1,8 @@
 package server
 
-import "time"
-
-type Status int
-
-const (
-	StatusStarting Status = iota
-	StatusSetupFailed
-	StatusReady
-	StatusBusy
-	StatusDefunct
+import (
+	"github.com/replicate/cog-runtime/internal/runner"
 )
-
-func (s Status) String() string {
-	switch s {
-	case StatusStarting:
-		return "STARTING"
-	case StatusSetupFailed:
-		return "SETUP_FAILED"
-	case StatusReady:
-		return "READY"
-	case StatusBusy:
-		return "BUSY"
-
-	case StatusDefunct:
-		return "DEFUNCT"
-	default:
-		return "INVALID"
-	}
-}
-
-type SetupStatus string
-
-const (
-	SetupSucceeded SetupStatus = "succeeded"
-	SetupFailed    SetupStatus = "failed"
-)
-
-type Config struct {
-	UseProcedureMode      bool
-	AwaitExplicitShutdown bool
-	OneShot               bool
-	IPCUrl                string
-	UploadURL             string
-	WorkingDirectory      string
-	EnvSet                map[string]string
-	EnvUnset              []string
-	ForceShutdown         chan<- struct{} // channel for signaling ungraceful shutdown
-
-	MaxRunners int
-
-	// PythonBinPath is the path to the python binary to use for all runners. Future
-	// implementations may support alternate venvs or alternate python versions per
-	// runner.
-	PythonBinPath string
-
-	// RunnerShutdownGracePeriod configures how long to wait before force-killing
-	// runners after Stop() is called. Set to 0 to disable grace period.
-	RunnerShutdownGracePeriod time.Duration
-
-	// CleanupTimeout configures the maximum time to wait for process cleanup
-	// verification before triggering ungraceful shutdown.
-	CleanupTimeout time.Duration
-}
 
 type PredictConfig struct {
 	ModuleName     string `json:"module_name,omitempty"`
@@ -70,67 +10,28 @@ type PredictConfig struct {
 	MaxConcurrency int    `json:"max_concurrency,omitempty"`
 }
 
-type PredictionStatus string
-
-const (
-	PredictionStarting   PredictionStatus = "starting"
-	PredictionProcessing PredictionStatus = "processing"
-	PredictionSucceeded  PredictionStatus = "succeeded"
-	PredictionCanceled   PredictionStatus = "canceled"
-	PredictionFailed     PredictionStatus = "failed"
-)
-
-func (s PredictionStatus) IsCompleted() bool {
-	return s == PredictionSucceeded || s == PredictionCanceled || s == PredictionFailed
-}
-
-type WebhookEvent string
-
-const (
-	WebhookStart     WebhookEvent = "start"
-	WebhookOutput    WebhookEvent = "output"
-	WebhookLogs      WebhookEvent = "logs"
-	WebhookCompleted WebhookEvent = "completed"
-)
-
-type Concurrency struct {
-	Max     int `json:"max,omitempty"`
-	Current int `json:"current,omitempty"`
-}
-
 type HealthCheck struct {
-	Status      string       `json:"status"`
-	Setup       *SetupResult `json:"setup,omitempty"`
-	Concurrency Concurrency  `json:"concurrency,omitempty"`
+	Status      string             `json:"status"`
+	Setup       *SetupResult       `json:"setup,omitempty"`
+	Concurrency runner.Concurrency `json:"concurrency,omitempty"`
 }
 
 type SetupResult struct {
-	StartedAt   string      `json:"started_at"`
-	CompletedAt string      `json:"completed_at"`
-	Status      SetupStatus `json:"status"`
-	Logs        string      `json:"logs,omitempty"`
-}
-
-type PredictionRequest struct {
-	Input               any            `json:"input"`
-	ID                  string         `json:"id"`
-	CreatedAt           string         `json:"created_at"`
-	StartedAt           string         `json:"started_at"`
-	Webhook             string         `json:"webhook,omitempty"`
-	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
-	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
-	Context             map[string]any `json:"context"`
+	StartedAt   string             `json:"started_at"`
+	CompletedAt string             `json:"completed_at"`
+	Status      runner.SetupStatus `json:"status"`
+	Logs        string             `json:"logs,omitempty"`
 }
 
 type PredictionResponse struct {
-	Input       any              `json:"input"`
-	Output      any              `json:"output,omitempty"`
-	ID          string           `json:"id"`
-	CreatedAt   string           `json:"created_at,omitempty"`
-	StartedAt   string           `json:"started_at,omitempty"`
-	CompletedAt string           `json:"completed_at,omitempty"`
-	Logs        string           `json:"logs,omitempty"`
-	Error       string           `json:"error,omitempty"`
-	Status      PredictionStatus `json:"status,omitempty"`
-	Metrics     map[string]any   `json:"metrics,omitempty"`
+	Input       any                     `json:"input"`
+	Output      any                     `json:"output,omitempty"`
+	ID          string                  `json:"id"`
+	CreatedAt   string                  `json:"created_at,omitempty"`
+	StartedAt   string                  `json:"started_at,omitempty"`
+	CompletedAt string                  `json:"completed_at,omitempty"`
+	Logs        string                  `json:"logs,omitempty"`
+	Error       string                  `json:"error,omitempty"`
+	Status      runner.PredictionStatus `json:"status,omitempty"`
+	Metrics     map[string]any          `json:"metrics,omitempty"`
 }

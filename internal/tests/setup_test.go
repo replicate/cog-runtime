@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/runner"
 )
 
 func TestSetupSucceeded(t *testing.T) {
@@ -19,7 +19,7 @@ func TestSetupSucceeded(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "SetupSleepingPredictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	assert.Equal(t, "starting setup\nsetup in progress 1/1\ncompleted setup\n", hc.Setup.Logs)
 
 	resp, err := http.DefaultClient.Get(runtimeServer.URL + "/openapi.json")
@@ -37,7 +37,7 @@ func TestSetupFailure(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "SetupFailingPredictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusSetupFailed, runner.SetupFailed)
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace
 		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: setup failed\n")
@@ -55,7 +55,7 @@ func TestSetupCrash(t *testing.T) {
 		module:           "sleep",
 		predictorClass:   "SetupCrashingPredictor",
 	})
-	hc := waitForSetupComplete(t, runtimeServer, server.StatusSetupFailed, server.SetupFailed)
+	hc := waitForSetupComplete(t, runtimeServer, runner.StatusSetupFailed, runner.SetupFailed)
 	if *legacyCog {
 		// Compat: legacy Cog includes worker stacktrace
 		assert.Contains(t, hc.Setup.Logs, "Predictor errored during setup: 1\n")

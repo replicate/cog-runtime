@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -25,7 +26,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 		module:           "dataclass",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{
 		"account": map[string]any{
@@ -35,7 +36,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 			"credentials": map[string]any{"password": "foo", "pubkey": b64encode("bar")},
 		},
 	}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -55,7 +56,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 		},
 	}
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 }
 
 func TestPredictionChatCoderSucceeded(t *testing.T) {
@@ -71,10 +72,10 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 		module:           "chat",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"msg": map[string]any{"role": "assistant", "content": "bar"}}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -86,7 +87,7 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 	require.NoError(t, err)
 	expectedOutput := map[string]any{"role": "assistant", "content": "*bar*"}
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 }
 
 func TestPredictionCustomOutputCoder(t *testing.T) {
@@ -102,10 +103,10 @@ func TestPredictionCustomOutputCoder(t *testing.T) {
 		module:           "custom_output",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 3}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -128,7 +129,7 @@ func TestPredictionCustomOutputCoder(t *testing.T) {
 	err = json.Unmarshal(expectedJSON, &expectedOutput)
 	require.NoError(t, err)
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 }
 
 func TestPredictionComplexOutputCoder(t *testing.T) {
@@ -144,10 +145,10 @@ func TestPredictionComplexOutputCoder(t *testing.T) {
 		module:           "custom_output",
 		predictorClass:   "ComplexOutputPredictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 3}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -169,7 +170,7 @@ func TestPredictionComplexOutputCoder(t *testing.T) {
 	err = json.Unmarshal(expectedJSON, &expectedOutput)
 	require.NoError(t, err)
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 }
 
 func TestPredictionCustomDataclassOutputCoder(t *testing.T) {
@@ -185,10 +186,10 @@ func TestPredictionCustomDataclassOutputCoder(t *testing.T) {
 		module:           "custom_output",
 		predictorClass:   "CustomDataclassOutputPredictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 3}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -209,7 +210,7 @@ func TestPredictionCustomDataclassOutputCoder(t *testing.T) {
 	err = json.Unmarshal(expectedJSON, &expectedOutput)
 	require.NoError(t, err)
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 }
 
 func TestPredictionComplexDataclassOutputCoder(t *testing.T) {
@@ -225,10 +226,10 @@ func TestPredictionComplexDataclassOutputCoder(t *testing.T) {
 		module:           "custom_output",
 		predictorClass:   "ComplexDataclassOutputPredictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 3}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -250,5 +251,5 @@ func TestPredictionComplexDataclassOutputCoder(t *testing.T) {
 	err = json.Unmarshal(expectedJSON, &expectedOutput)
 	require.NoError(t, err)
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 }
