@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -30,83 +29,6 @@ var (
 	CancelFmt     = "cancel-%s"
 	ErrNoCommand  = errors.New("no command available")
 )
-
-type PendingPrediction struct {
-	request     PredictionRequest
-	response    PredictionResponse
-	lastUpdated time.Time
-	inputPaths  []string
-	outputCache map[string]string
-	mu          sync.Mutex
-	c           chan PredictionResponse
-	closed      bool
-
-	// Per-prediction watcher cancellation and notification
-	cancel       context.CancelFunc
-	watcherDone  chan struct{}
-	outputNotify chan struct{} // Receives OUTPUT IPC events for this prediction
-
-	terminalWebhookSent atomic.Bool
-}
-
-func (p *PendingPrediction) safeSend(resp PredictionResponse) bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.closed {
-		return false
-	}
-	select {
-	case p.c <- resp:
-		return true
-	default:
-		return false
-	}
-}
-
-func (p *PendingPrediction) safeClose() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.closed {
-		return false
-	}
-	p.closed = true
-	close(p.c)
-	return true
-}
-
-func (p *PendingPrediction) sendWebhook(webhookSender *webhook.Sender, webhookURL string, event webhook.Event, allowedEvents []WebhookEvent) {
-	if webhookURL == "" || webhookSender == nil {
-		return
-	}
-
-	// Convert runner WebhookEvent slice to webhook.Event slice
-	webhookEvents := make([]webhook.Event, len(allowedEvents))
-	for i, e := range allowedEvents {
-		webhookEvents[i] = webhook.Event(e)
-	}
-
-	// Use the prediction response as the webhook payload
-	go func() {
-		_ = webhookSender.SendConditional(webhookURL, p.response, event, webhookEvents, &p.lastUpdated)
-	}()
-}
-
-func (p *PendingPrediction) sendWebhookSync(webhookSender *webhook.Sender, webhookURL string, event webhook.Event, allowedEvents []WebhookEvent) {
-	if webhookURL == "" || webhookSender == nil {
-		return
-	}
-
-	// Convert runner WebhookEvent slice to webhook.Event slice
-	webhookEvents := make([]webhook.Event, len(allowedEvents))
-	for i, e := range allowedEvents {
-		webhookEvents[i] = webhook.Event(e)
-	}
-
-	// Send webhook synchronously for terminal events
-	_ = webhookSender.SendConditional(webhookURL, p.response, event, webhookEvents, &p.lastUpdated)
-}
 
 // watchPredictionResponses watches for response files specific to a prediction using inotify + fallback polling + IPC drain
 func (r *Runner) watchPredictionResponses(ctx context.Context, predictionID string, pending *PendingPrediction) {

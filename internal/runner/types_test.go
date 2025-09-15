@@ -3,7 +3,9 @@ package runner
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -338,4 +340,113 @@ func TestPredictionResponseUnmarshalFromExternalJSON(t *testing.T) {
 	assert.Equal(t, PredictionSucceeded, response.Status)
 	assert.Equal(t, "test output", response.Output)
 	assert.Equal(t, expected, response.Logs)
+}
+
+func TestPendingPrediction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("safeSend", func(t *testing.T) {
+		t.Parallel()
+
+		tests := []struct {
+			name     string
+			setup    func(*PendingPrediction)
+			response PredictionResponse
+			want     bool
+		}{
+			{
+				name:     "send to open channel",
+				setup:    func(p *PendingPrediction) {},
+				response: PredictionResponse{ID: "test", Status: PredictionProcessing},
+				want:     true,
+			},
+			{
+				name: "send to closed channel",
+				setup: func(p *PendingPrediction) {
+					p.safeClose()
+				},
+				response: PredictionResponse{ID: "test", Status: PredictionProcessing},
+				want:     false,
+			},
+			{
+				name: "send to full channel",
+				setup: func(p *PendingPrediction) {
+					// Fill the buffered channel
+					p.c <- PredictionResponse{ID: "blocking", Status: PredictionProcessing}
+				},
+				response: PredictionResponse{ID: "test", Status: PredictionProcessing},
+				want:     false,
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				p := &PendingPrediction{
+					c: make(chan PredictionResponse, 1),
+				}
+				tt.setup(p)
+
+				got := p.safeSend(tt.response)
+				assert.Equal(t, tt.want, got)
+			})
+		}
+	})
+
+	t.Run("safeClose", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("close open channel", func(t *testing.T) {
+			t.Parallel()
+
+			p := &PendingPrediction{
+				c: make(chan PredictionResponse, 1),
+			}
+
+			got := p.safeClose()
+			assert.True(t, got)
+			assert.True(t, p.closed)
+		})
+
+		t.Run("close already closed channel", func(t *testing.T) {
+			t.Parallel()
+
+			p := &PendingPrediction{
+				c: make(chan PredictionResponse, 1),
+			}
+			p.safeClose()
+
+			got := p.safeClose()
+			assert.False(t, got)
+		})
+	})
+
+	t.Run("concurrent operations", func(t *testing.T) {
+		t.Parallel()
+
+		p := &PendingPrediction{
+			c: make(chan PredictionResponse, 10),
+		}
+
+		var wg sync.WaitGroup
+		const numGoroutines = 10
+
+		// Start multiple goroutines sending
+		for i := 0; i < numGoroutines; i++ {
+			wg.Go(func() {
+				resp := PredictionResponse{ID: "test", Status: PredictionProcessing}
+				p.safeSend(resp)
+			})
+		}
+
+		// Start one goroutine closing
+		wg.Go(func() {
+			time.Sleep(1 * time.Millisecond)
+			p.safeClose()
+		})
+
+		wg.Wait()
+		assert.True(t, p.closed)
+	})
 }

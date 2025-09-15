@@ -1,15 +1,19 @@
 package runner
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
 type Status int
@@ -225,4 +229,83 @@ func (rc *RunnerContext) Cleanup() error {
 		return os.RemoveAll(rc.tmpDir)
 	}
 	return nil
+}
+
+type PendingPrediction struct {
+	request     PredictionRequest
+	response    PredictionResponse
+	lastUpdated time.Time
+	inputPaths  []string
+	outputCache map[string]string
+	mu          sync.Mutex
+	c           chan PredictionResponse
+	closed      bool
+
+	// Per-prediction watcher cancellation and notification
+	cancel       context.CancelFunc
+	watcherDone  chan struct{}
+	outputNotify chan struct{} // Receives OUTPUT IPC events for this prediction
+
+	terminalWebhookSent atomic.Bool
+}
+
+func (p *PendingPrediction) safeSend(resp PredictionResponse) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.closed {
+		return false
+	}
+	select {
+	case p.c <- resp:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *PendingPrediction) safeClose() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.closed {
+		return false
+	}
+	p.closed = true
+	close(p.c)
+	return true
+}
+
+// sendWebhook sends a webhook asynchronously
+func (p *PendingPrediction) sendWebhook(webhookSender *webhook.Sender, webhookURL string, event webhook.Event, allowedEvents []WebhookEvent) {
+	if webhookURL == "" || webhookSender == nil {
+		return
+	}
+
+	// Convert runner WebhookEvent slice to webhook.Event slice
+	webhookEvents := make([]webhook.Event, len(allowedEvents))
+	for i, e := range allowedEvents {
+		webhookEvents[i] = webhook.Event(e)
+	}
+
+	// Use the prediction response as the webhook payload
+	go func() {
+		_ = webhookSender.SendConditional(webhookURL, p.response, event, webhookEvents, &p.lastUpdated)
+	}()
+}
+
+// sendWebhookSync sends a webhook synchronously
+func (p *PendingPrediction) sendWebhookSync(webhookSender *webhook.Sender, webhookURL string, event webhook.Event, allowedEvents []WebhookEvent) {
+	if webhookURL == "" || webhookSender == nil {
+		return
+	}
+
+	// Convert runner WebhookEvent slice to webhook.Event slice
+	webhookEvents := make([]webhook.Event, len(allowedEvents))
+	for i, e := range allowedEvents {
+		webhookEvents[i] = webhook.Event(e)
+	}
+
+	// Send webhook synchronously for terminal events
+	_ = webhookSender.SendConditional(webhookURL, p.response, event, webhookEvents, &p.lastUpdated)
 }
