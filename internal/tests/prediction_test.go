@@ -14,6 +14,7 @@ import (
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
 func TestPredictionSucceeded(t *testing.T) {
@@ -183,7 +184,7 @@ func TestPredictionConcurrency(t *testing.T) {
 		predictionReq := runner.PredictionRequest{
 			Input:               input,
 			Webhook:             receiverServer.URL + "/webhook",
-			WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+			WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 		}
 		req := httpPredictionRequest(t, runtimeServer, predictionReq)
 		resp, err := http.DefaultClient.Do(req)

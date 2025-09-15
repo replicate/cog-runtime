@@ -66,7 +66,7 @@ func TestSenderSend(t *testing.T) {
 		defer server.Close()
 
 		// Use a sender with regular HTTP client for faster test
-		sender := &Sender{
+		sender := &DefaultSender{
 			logger: zaptest.NewLogger(t).Named("webhook"),
 			client: &http.Client{},
 		}
@@ -80,7 +80,7 @@ func TestSenderSend(t *testing.T) {
 		t.Parallel()
 
 		// Use a sender with regular HTTP client for faster test
-		sender := &Sender{
+		sender := &DefaultSender{
 			logger: zaptest.NewLogger(t).Named("webhook"),
 			client: &http.Client{},
 		}

@@ -80,26 +80,17 @@ type SetupResult struct {
 }
 
 type PredictionRequest struct {
-	Input               any            `json:"input"`
-	ID                  string         `json:"id"`
-	CreatedAt           string         `json:"created_at"`
-	StartedAt           string         `json:"started_at"`
-	Webhook             string         `json:"webhook,omitempty"`
-	WebhookEventsFilter []WebhookEvent `json:"webhook_events_filter,omitempty"`
-	OutputFilePrefix    string         `json:"output_file_prefix,omitempty"`
-	Context             map[string]any `json:"context"`
+	Input               any             `json:"input"`
+	ID                  string          `json:"id"`
+	CreatedAt           string          `json:"created_at"`
+	StartedAt           string          `json:"started_at"`
+	Webhook             string          `json:"webhook,omitempty"`
+	WebhookEventsFilter []webhook.Event `json:"webhook_events_filter,omitempty"`
+	OutputFilePrefix    string          `json:"output_file_prefix,omitempty"`
+	Context             map[string]any  `json:"context"`
 
 	ProcedureSourceURL string `json:"-"` // this is not sent to the python code, used internally
 }
-
-type WebhookEvent string
-
-const (
-	WebhookStart     WebhookEvent = "start"
-	WebhookOutput    WebhookEvent = "output"
-	WebhookLogs      WebhookEvent = "logs"
-	WebhookCompleted WebhookEvent = "completed"
-)
 
 type PredictionStatus string
 
@@ -247,6 +238,7 @@ type PendingPrediction struct {
 	outputNotify chan struct{} // Receives OUTPUT IPC events for this prediction
 
 	terminalWebhookSent atomic.Bool
+	webhookSender       webhook.Sender
 }
 
 func (p *PendingPrediction) safeSend(resp PredictionResponse) bool {
@@ -277,15 +269,9 @@ func (p *PendingPrediction) safeClose() bool {
 }
 
 // sendWebhook sends a webhook asynchronously
-func (p *PendingPrediction) sendWebhook(webhookSender *webhook.Sender, webhookURL string, event webhook.Event, allowedEvents []WebhookEvent) {
+func (p *PendingPrediction) sendWebhook(webhookSender webhook.Sender, webhookURL string, event webhook.Event, webhookEvents []webhook.Event) {
 	if webhookURL == "" || webhookSender == nil {
 		return
-	}
-
-	// Convert runner WebhookEvent slice to webhook.Event slice
-	webhookEvents := make([]webhook.Event, len(allowedEvents))
-	for i, e := range allowedEvents {
-		webhookEvents[i] = webhook.Event(e)
 	}
 
 	// Use the prediction response as the webhook payload
@@ -295,15 +281,9 @@ func (p *PendingPrediction) sendWebhook(webhookSender *webhook.Sender, webhookUR
 }
 
 // sendWebhookSync sends a webhook synchronously
-func (p *PendingPrediction) sendWebhookSync(webhookSender *webhook.Sender, webhookURL string, event webhook.Event, allowedEvents []WebhookEvent) {
+func (p *PendingPrediction) sendWebhookSync(webhookSender webhook.Sender, webhookURL string, event webhook.Event, webhookEvents []webhook.Event) {
 	if webhookURL == "" || webhookSender == nil {
 		return
-	}
-
-	// Convert runner WebhookEvent slice to webhook.Event slice
-	webhookEvents := make([]webhook.Event, len(allowedEvents))
-	for i, e := range allowedEvents {
-		webhookEvents[i] = webhook.Event(e)
 	}
 
 	// Send webhook synchronously for terminal events

@@ -11,23 +11,24 @@ import (
 
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
 func TestPredictionWebhookFilter(t *testing.T) {
 	testCases := []struct {
 		name                          string
-		webhookEvents                 []runner.WebhookEvent
+		webhookEvents                 []webhook.Event
 		expectedWebhookCount          int
 		legacyCogExpectedWebhookCount int
 		allowedPredictionStatuses     []runner.PredictionStatus
 	}{
 		{
 			name: "all",
-			webhookEvents: []runner.WebhookEvent{
-				runner.WebhookStart,
-				runner.WebhookOutput,
-				runner.WebhookLogs,
-				runner.WebhookCompleted,
+			webhookEvents: []webhook.Event{
+				webhook.EventStart,
+				webhook.EventOutput,
+				webhook.EventLogs,
+				webhook.EventCompleted,
 			},
 			expectedWebhookCount:          8,
 			legacyCogExpectedWebhookCount: 7,
@@ -40,8 +41,8 @@ func TestPredictionWebhookFilter(t *testing.T) {
 		},
 		{
 			name: "completed",
-			webhookEvents: []runner.WebhookEvent{
-				runner.WebhookCompleted,
+			webhookEvents: []webhook.Event{
+				webhook.EventCompleted,
 			},
 			expectedWebhookCount:          1,
 			legacyCogExpectedWebhookCount: 1,
@@ -51,9 +52,9 @@ func TestPredictionWebhookFilter(t *testing.T) {
 		},
 		{
 			name: "start_completed",
-			webhookEvents: []runner.WebhookEvent{
-				runner.WebhookStart,
-				runner.WebhookCompleted,
+			webhookEvents: []webhook.Event{
+				webhook.EventStart,
+				webhook.EventCompleted,
 			},
 			expectedWebhookCount:          2,
 			legacyCogExpectedWebhookCount: 2,
@@ -72,9 +73,9 @@ func TestPredictionWebhookFilter(t *testing.T) {
 		},
 		{
 			name: "output_completed",
-			webhookEvents: []runner.WebhookEvent{
-				runner.WebhookOutput,
-				runner.WebhookCompleted,
+			webhookEvents: []webhook.Event{
+				webhook.EventOutput,
+				webhook.EventCompleted,
 			},
 			expectedWebhookCount:          3,
 			legacyCogExpectedWebhookCount: 3,
@@ -85,9 +86,9 @@ func TestPredictionWebhookFilter(t *testing.T) {
 		},
 		{
 			name: "logs_completed",
-			webhookEvents: []runner.WebhookEvent{
-				runner.WebhookLogs,
-				runner.WebhookCompleted,
+			webhookEvents: []webhook.Event{
+				webhook.EventLogs,
+				webhook.EventCompleted,
 			},
 			expectedWebhookCount:          5,
 			legacyCogExpectedWebhookCount: 5,

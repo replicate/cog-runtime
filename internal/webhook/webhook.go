@@ -24,21 +24,30 @@ const (
 )
 
 // Sender handles webhook delivery
-type Sender struct {
+type Sender interface {
+	Send(url string, payload any) error
+	SendConditional(url string, payload any, event Event, allowedEvents []Event, lastUpdated *time.Time) error
+}
+
+// Build time assertion that DefaultSender implements the Sender interface
+var _ Sender = (*DefaultSender)(nil)
+
+// DefaultSender handles webhook delivery
+type DefaultSender struct {
 	logger *zap.Logger
 	client *http.Client
 }
 
 // NewSender creates a new webhook sender
-func NewSender(logger *zap.Logger) *Sender {
-	return &Sender{
+func NewSender(logger *zap.Logger) *DefaultSender {
+	return &DefaultSender{
 		logger: logger.Named("webhook"),
 		client: util.HTTPClientWithRetry(),
 	}
 }
 
 // Send delivers a webhook with the given payload
-func (s *Sender) Send(url string, payload any) error {
+func (s *DefaultSender) Send(url string, payload any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("failed to marshal webhook payload: %w", err)
@@ -65,7 +74,7 @@ func (s *Sender) Send(url string, payload any) error {
 }
 
 // SendConditional sends webhook if conditions are met
-func (s *Sender) SendConditional(url string, payload any, event Event, allowedEvents []Event, lastUpdated *time.Time) error {
+func (s *DefaultSender) SendConditional(url string, payload any, event Event, allowedEvents []Event, lastUpdated *time.Time) error {
 	log := s.logger.Sugar()
 	log.Debugw("sending webhook", "url", url, "event", string(event), "allowed_events", allowedEvents, "last_updated", lastUpdated)
 	if url == "" {

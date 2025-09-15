@@ -40,7 +40,7 @@ type Manager struct {
 	capacity      chan struct{}
 	stopped       chan struct{}
 	stopOnce      sync.Once
-	webhookSender *webhook.Sender
+	webhookSender webhook.Sender
 	monitoringWG  sync.WaitGroup // tracks monitoring goroutines for clean shutdown
 
 	mu sync.RWMutex
@@ -253,15 +253,9 @@ func (m *Manager) predict(ctx context.Context, req PredictionRequest) (chan Pred
 func (m *Manager) sendTerminalWebhook(req PredictionRequest, resp PredictionResponse) {
 	log := m.logger.Sugar()
 
-	// Convert webhook events filter
-	var allowedEvents []webhook.Event
-	for _, event := range req.WebhookEventsFilter {
-		allowedEvents = append(allowedEvents, webhook.Event(event))
-	}
-
 	// Send synchronously using SendConditional to respect filters
 	// Send the actual PredictionResponse object, not a custom map
-	if err := m.webhookSender.SendConditional(req.Webhook, resp, webhook.EventCompleted, allowedEvents, nil); err != nil {
+	if err := m.webhookSender.SendConditional(req.Webhook, resp, webhook.EventCompleted, req.WebhookEventsFilter, nil); err != nil {
 		log.Errorw("failed to send terminal webhook", "prediction_id", resp.ID, "webhook_url", req.Webhook, "error", err)
 		return
 	}
@@ -383,12 +377,13 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 	watcherCtx, cancel := context.WithCancel(m.ctx)
 
 	pending := &PendingPrediction{
-		request:      req,
-		outputCache:  make(map[string]string),
-		c:            make(chan PredictionResponse, 1),
-		cancel:       cancel, // Manager can cancel this watcher explicitly
-		watcherDone:  make(chan struct{}),
-		outputNotify: make(chan struct{}, 1),
+		request:       req,
+		outputCache:   make(map[string]string),
+		c:             make(chan PredictionResponse, 1),
+		cancel:        cancel, // Manager can cancel this watcher explicitly
+		watcherDone:   make(chan struct{}),
+		outputNotify:  make(chan struct{}, 1),
+		webhookSender: m.webhookSender,
 	}
 	runner.pending[req.ID] = pending
 

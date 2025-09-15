@@ -11,6 +11,7 @@ import (
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
 func TestIteratorTypes(t *testing.T) {
@@ -99,13 +100,13 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 		Input:               map[string]any{"i": 1, "s": "bar"},
 		Webhook:             receiverServer.URL + "/webhook",
 		ID:                  barID,
-		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+		WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 	}
 	bazPrediction := runner.PredictionRequest{
 		Input:               map[string]any{"i": 2, "s": "baz"},
 		Webhook:             receiverServer.URL + "/webhook",
 		ID:                  bazID,
-		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+		WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 	}
 	barReq := httpPredictionRequestWithID(t, runtimeServer, barPrediction)
 	bazReq := httpPredictionRequestWithID(t, runtimeServer, bazPrediction)
@@ -119,13 +120,13 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	_, _ = io.Copy(io.Discard, bazResp.Body)
 	var barR *server.PredictionResponse
 	var bazR *server.PredictionResponse
-	for webhook := range receiverServer.webhookReceiverChan {
-		assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
-		switch webhook.Response.ID {
+	for wh := range receiverServer.webhookReceiverChan {
+		assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+		switch wh.Response.ID {
 		case barPrediction.ID:
-			barR = &webhook.Response
+			barR = &wh.Response
 		case bazPrediction.ID:
-			bazR = &webhook.Response
+			bazR = &wh.Response
 		}
 		if barR != nil && bazR != nil {
 			break

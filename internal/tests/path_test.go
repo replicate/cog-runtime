@@ -19,6 +19,7 @@ import (
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
 func testDataContentServer(t *testing.T) *httptest.Server {
@@ -157,7 +158,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	prediction := runner.PredictionRequest{
 		Input:               map[string]any{"p": b64encode("bar")},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+		WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 	}
 	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
@@ -166,17 +167,17 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	// Wait for webhook completion
-	var webhook webhookData
+	// Wait for wh completion
+	var wh webhookData
 	select {
-	case webhook = <-receiverServer.webhookReceiverChan:
+	case wh = <-receiverServer.webhookReceiverChan:
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for webhook")
 	}
 
-	assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
-	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
-	output, ok := webhook.Response.Output.(string)
+	assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+	assert.Equal(t, "reading input file\nwriting output file\n", wh.Response.Logs)
+	output, ok := wh.Response.Output.(string)
 	assert.True(t, ok)
 	assert.True(t, strings.HasPrefix(output, receiverServer.URL+"/upload/"))
 
@@ -215,7 +216,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	prediction := runner.PredictionRequest{
 		Input:               map[string]any{"p": b64encode("bar")},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+		WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 	}
 	req := httpPredictionRequest(t, runtimeServer, prediction)
 	resp, err := http.DefaultClient.Do(req)
@@ -225,17 +226,17 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	// Wait for webhook completion
-	var webhook webhookData
+	// Wait for wh completion
+	var wh webhookData
 	select {
-	case webhook = <-receiverServer.webhookReceiverChan:
+	case wh = <-receiverServer.webhookReceiverChan:
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for webhook")
 	}
 
-	assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
-	assert.Equal(t, "reading input file\nwriting output file\n", webhook.Response.Logs)
-	output, ok := webhook.Response.Output.(string)
+	assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+	assert.Equal(t, "reading input file\nwriting output file\n", wh.Response.Logs)
+	output, ok := wh.Response.Output.(string)
 	assert.True(t, ok)
 	assert.True(t, strings.HasPrefix(output, receiverServer.URL+"/upload/"))
 
@@ -286,19 +287,19 @@ func TestPredictionPathUploadIterator(t *testing.T) {
 	timer := time.After(10 * time.Second)
 	for count := 0; count < 5; count++ {
 		select {
-		case webhook := <-receiverServer.webhookReceiverChan:
+		case wh := <-receiverServer.webhookReceiverChan:
 			switch count {
 			case 0:
-				assert.Equal(t, runner.PredictionProcessing, webhook.Response.Status)
-				assert.Nil(t, webhook.Response.Output)
+				assert.Equal(t, runner.PredictionProcessing, wh.Response.Status)
+				assert.Nil(t, wh.Response.Output)
 			case 1, 2, 3:
-				assert.Equal(t, runner.PredictionProcessing, webhook.Response.Status)
-				output, ok := webhook.Response.Output.([]any)
+				assert.Equal(t, runner.PredictionProcessing, wh.Response.Status)
+				output, ok := wh.Response.Output.([]any)
 				require.True(t, ok)
 				assert.Len(t, output, count)
 			case 4:
-				assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
-				output, ok := webhook.Response.Output.([]any)
+				assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+				output, ok := wh.Response.Output.([]any)
 				require.True(t, ok)
 				assert.Len(t, output, 3)
 			}
@@ -378,7 +379,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 				Input:               map[string]any{"u": testDataPrefix + tc.fileName},
 				ID:                  tc.predictionID,
 				Webhook:             receiverServer.URL + "/webhook",
-				WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+				WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 			}
 			t.Logf("prediction file: %s", tc.fileName)
 			req := httpPredictionRequestWithID(t, runtimeServer, prediction)
@@ -458,7 +459,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 			contentServer.URL + "/mimetype/" + files[3].fileName,
 		}},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+		WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 	}
 
 	req := httpPredictionRequest(t, runtimeServer, prediction)
@@ -471,8 +472,8 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 
 	// Wait for webhook completion
 	select {
-	case webhook := <-receiverServer.webhookReceiverChan:
-		assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
+	case wh := <-receiverServer.webhookReceiverChan:
+		assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for webhook")
 	}

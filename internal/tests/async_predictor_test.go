@@ -12,6 +12,7 @@ import (
 
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
 func TestAsyncPredictorConcurrency(t *testing.T) {
@@ -34,13 +35,13 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 	barReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:               map[string]any{"i": 1, "s": "bar"},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+		WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 		ID:                  barID,
 	})
 	bazReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:               map[string]any{"i": 2, "s": "baz"},
 		Webhook:             receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []runner.WebhookEvent{runner.WebhookCompleted},
+		WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
 		ID:                  bazID,
 	})
 	barResp, err := http.DefaultClient.Do(barReq)
@@ -57,16 +58,16 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 	var barRCompleted bool
 	var bazRCompleted bool
 
-	for webhook := range receiverServer.webhookReceiverChan {
-		assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
-		switch webhook.Response.ID {
+	for wh := range receiverServer.webhookReceiverChan {
+		assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+		switch wh.Response.ID {
 		case barID:
-			assert.Equal(t, "*bar*", webhook.Response.Output)
-			assert.Contains(t, webhook.Response.Logs, "starting async prediction\nprediction in progress 1/1\ncompleted async prediction\n")
+			assert.Equal(t, "*bar*", wh.Response.Output)
+			assert.Contains(t, wh.Response.Logs, "starting async prediction\nprediction in progress 1/1\ncompleted async prediction\n")
 			barRCompleted = true
 		case bazID:
-			assert.Equal(t, "*baz*", webhook.Response.Output)
-			assert.Equal(t, "starting async prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted async prediction\n", webhook.Response.Logs)
+			assert.Equal(t, "*baz*", wh.Response.Output)
+			assert.Equal(t, "starting async prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted async prediction\n", wh.Response.Logs)
 			bazRCompleted = true
 		}
 		if barRCompleted && bazRCompleted {
@@ -98,9 +99,9 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 	barReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:   map[string]any{"i": 60, "s": "bar"},
 		Webhook: receiverServer.URL + "/webhook",
-		WebhookEventsFilter: []runner.WebhookEvent{
-			runner.WebhookStart,
-			runner.WebhookCompleted,
+		WebhookEventsFilter: []webhook.Event{
+			webhook.EventStart,
+			webhook.EventCompleted,
 		},
 		ID: barID,
 	})
@@ -113,14 +114,14 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 	cancelReq, err := http.NewRequest(http.MethodPost, runtimeServer.URL+fmt.Sprintf("/predictions/%s/cancel", barID), nil)
 	require.NoError(t, err)
 
-	// Get the start webhook, then continue.
-	var webhook webhookData
+	// Get the start wh, then continue.
+	var wh webhookData
 	select {
-	case webhook = <-receiverServer.webhookReceiverChan:
+	case wh = <-receiverServer.webhookReceiverChan:
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for webhook")
 	}
-	assert.Equal(t, barID, webhook.Response.ID)
+	assert.Equal(t, barID, wh.Response.ID)
 
 	// cancel the prediction now that we're sure it has "Started " (for some value of "Started")
 	cancelResp, err := http.DefaultClient.Do(cancelReq)
@@ -130,15 +131,15 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 	_, _ = io.Copy(io.Discard, cancelResp.Body)
 
 	select {
-	case webhook = <-receiverServer.webhookReceiverChan:
+	case wh = <-receiverServer.webhookReceiverChan:
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for webhook")
 	}
 
-	assert.Equal(t, runner.PredictionCanceled, webhook.Response.Status)
-	assert.Equal(t, barID, webhook.Response.ID)
+	assert.Equal(t, runner.PredictionCanceled, wh.Response.Status)
+	assert.Equal(t, barID, wh.Response.ID)
 	// NOTE(morgan): The logs are not deterministic, so we can only assert that `prediction canceled` is in the logs.
 	// previously we asserted that the prediction was making progress. We are assured that we have a "starting" webhook, but
 	// internally this test not reacts faster than the runner does.
-	assert.Contains(t, webhook.Response.Logs, "prediction canceled\n")
+	assert.Contains(t, wh.Response.Logs, "prediction canceled\n")
 }

@@ -303,7 +303,7 @@ type Runner struct {
 	mu                 sync.RWMutex
 	stopped            chan bool
 	setupComplete      chan struct{} // closed on first READY after setup
-	webhookSender      *webhook.Sender
+	webhookSender      webhook.Sender
 	logCaptureComplete chan struct{} // closed when both stdout/stderr capture complete
 
 	logger *zap.Logger
