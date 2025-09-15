@@ -249,7 +249,9 @@ func (s *Service) Run(ctx context.Context) error {
 
 	close(s.started)
 
+	log.Debug("waiting for all service goroutines to complete")
 	err := eg.Wait()
+	log.Debug("all service goroutines completed")
 
 	s.stop(ctx)
 
