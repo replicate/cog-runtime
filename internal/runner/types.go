@@ -7,10 +7,13 @@ import (
 	"encoding/base32"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/replicate/cog-runtime/internal/util"
@@ -210,16 +213,98 @@ func (r RunnerID) String() string {
 
 // RunnerContext contains everything a runner needs to operate
 type RunnerContext struct {
-	id         string
-	workingdir string
-	tmpDir     string
-	uploader   *uploader
+	id                 string
+	workingdir         string
+	tmpDir             string
+	uploader           *uploader
+	uid                *int     // UID used for setUID isolation, nil if not using setUID
+	cleanupDirectories []string // Directories to walk for cleanup of files owned by isolated UIDs
 }
 
 func (rc *RunnerContext) Cleanup() error {
 	if rc.tmpDir != "" {
-		return os.RemoveAll(rc.tmpDir)
+		if err := os.RemoveAll(rc.tmpDir); err != nil {
+			return err
+		}
 	}
+
+	// Clean up files in configured directories owned by this UID when using setUID isolation
+	if rc.uid != nil && len(rc.cleanupDirectories) > 0 {
+		return rc.cleanupDirectoriesFiles()
+	}
+
+	return nil
+}
+
+// cleanupDirectoriesFiles removes files in configured directories owned by the isolated UID
+func (rc *RunnerContext) cleanupDirectoriesFiles() error {
+	if rc.uid == nil {
+		return nil
+	}
+
+	// Avoid cleaning our own workingdir/tmpdir if they're in the cleanup directories
+	skipPaths := make(map[string]bool)
+	for _, cleanupDir := range rc.cleanupDirectories {
+		if strings.HasPrefix(rc.workingdir, cleanupDir+"/") {
+			skipPaths[rc.workingdir] = true
+		}
+		if strings.HasPrefix(rc.tmpDir, cleanupDir+"/") {
+			skipPaths[rc.tmpDir] = true
+		}
+	}
+
+	for _, cleanupDir := range rc.cleanupDirectories {
+		// Use os.OpenRoot to create a secure chrooted view of the cleanup directory
+		root, err := os.OpenRoot(cleanupDir)
+		if err != nil {
+			continue // Skip directories we can't root into
+		}
+
+		err = fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil // Continue walking on errors
+			}
+
+			// Convert relative path back to absolute for skipPaths check
+			absPath := filepath.Join(cleanupDir, path)
+			if skipPaths[absPath] {
+				return filepath.SkipDir
+			}
+
+			// Don't follow symlinks
+			if d.Type()&fs.ModeSymlink != 0 {
+				return nil
+			}
+
+			// Check if file is owned by our UID using root.Stat
+			info, err := root.Stat(path)
+			if err != nil {
+				return nil // Continue on stat errors
+			}
+
+			if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+				if int(stat.Uid) == *rc.uid {
+					if err := root.RemoveAll(path); err != nil {
+						// Log error but continue cleanup
+						return nil
+					}
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+				}
+			}
+
+			return nil
+		})
+
+		// Close the root after processing this directory
+		_ = root.Close()
+
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

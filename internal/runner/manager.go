@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"syscall"
@@ -348,12 +347,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		tmpDir:     tmpDir,
 		uploader:   uploader,
 	}
-	// Only enable forced shutdown for procedure mode
-	var forceShutdown *config.ForceShutdownSignal
-	if m.cfg.UseProcedureMode {
-		forceShutdown = m.cfg.ForceShutdown
-	}
-	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, cogYaml.Concurrency.Max, m.cfg.CleanupTimeout, forceShutdown, m.baseLogger)
+	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, cogYaml.Concurrency.Max, m.cfg, m.baseLogger)
 	if err != nil {
 		return nil, err
 	}
@@ -418,6 +412,35 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 			runner.mu.Lock()
 			delete(runner.pending, req.ID)
 			runner.mu.Unlock()
+
+			// In one-shot mode, stop runner after prediction completes to trigger cleanup
+			if m.cfg.OneShot && finalResponse.Status.IsCompleted() {
+				go func() {
+					logger := m.logger.Sugar()
+					logger.Infow("one-shot mode: stopping runner after prediction completion", "prediction_id", req.ID, "runner_id", runner.runnerCtx.id)
+
+					// Try graceful stop with timeout
+					stopDone := make(chan error, 1)
+					go func() {
+						stopDone <- runner.Stop()
+					}()
+
+					timeout := m.cfg.CleanupTimeout
+					if timeout == 0 {
+						timeout = 10 * time.Second // Default timeout
+					}
+
+					select {
+					case err := <-stopDone:
+						if err != nil {
+							logger.Errorw("failed to stop runner in one-shot mode", "error", err, "runner_id", runner.runnerCtx.id)
+						}
+					case <-time.After(timeout):
+						logger.Warnw("stop timeout exceeded in one-shot mode, falling back to force kill", "timeout", timeout, "runner_id", runner.runnerCtx.id)
+						runner.ForceKill()
+					}
+				}()
+			}
 
 			if cancel != nil {
 				cancel()
@@ -626,20 +649,28 @@ func (m *Manager) createProcedureRunner(runnerName, procedureHash string) (*Runn
 	env = append(env, "TMPDIR="+tmpDir)
 	cmd.Env = env
 
-	// Apply setUID isolation for procedure runners if needed
+	var allocatedUID *int
 	if m.shouldUseSetUID() {
 		uid, err := AllocateUID()
 		if err != nil {
 			runtimeCancel()
 			return nil, fmt.Errorf("failed to allocate UID: %w", err)
 		}
+		allocatedUID = &uid
 
-		// Change ownership of source directory (workingDir)
-		err = filepath.WalkDir(workingDir, func(path string, d fs.DirEntry, err error) error {
+		// Use os.Root for secure ownership changes
+		workingRoot, err := os.OpenRoot(workingDir)
+		if err != nil {
+			runtimeCancel()
+			return nil, fmt.Errorf("failed to open working directory root: %w", err)
+		}
+		defer func() { _ = workingRoot.Close() }()
+
+		err = fs.WalkDir(workingRoot.FS(), ".", func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
-			if lchownErr := os.Lchown(path, uid, NoGroupGID); lchownErr != nil {
+			if lchownErr := workingRoot.Lchown(path, uid, NoGroupGID); lchownErr != nil {
 				log.Errorw("failed to change ownership", "path", path, "uid", uid, "error", lchownErr)
 				return lchownErr
 			}
@@ -650,19 +681,24 @@ func (m *Manager) createProcedureRunner(runnerName, procedureHash string) (*Runn
 			return nil, fmt.Errorf("failed to change ownership of source directory: %w", err)
 		}
 
-		// Make working dir writable by unprivileged Python process
-		if err := os.Lchown(workingDir, uid, NoGroupGID); err != nil {
+		if err := workingRoot.Lchown(".", uid, NoGroupGID); err != nil {
 			log.Errorw("failed to change ownership of working directory", "path", workingDir, "uid", uid, "error", err)
 			runtimeCancel()
 			return nil, fmt.Errorf("failed to change ownership of working directory: %w", err)
 		}
-		// Change ownership of temp directory
-		if err := os.Lchown(tmpDir, uid, NoGroupGID); err != nil {
+
+		tmpRoot, err := os.OpenRoot(tmpDir)
+		if err != nil {
+			runtimeCancel()
+			return nil, fmt.Errorf("failed to open temp directory root: %w", err)
+		}
+		defer func() { _ = tmpRoot.Close() }()
+
+		if err := tmpRoot.Lchown(".", uid, NoGroupGID); err != nil {
 			log.Errorw("failed to change ownership of temp directory", "path", tmpDir, "uid", uid, "error", err)
 			runtimeCancel()
 			return nil, fmt.Errorf("failed to change ownership of temp directory: %w", err)
 		}
-		// Use syscall.Credential to run process as unprivileged user from start
 		cmd.SysProcAttr.Credential = &syscall.Credential{
 			Uid: uint32(uid), //nolint:gosec // this is guarded in isolation .allocate, cannot exceed const MaxUID
 			Gid: uint32(NoGroupGID),
@@ -675,19 +711,17 @@ func (m *Manager) createProcedureRunner(runnerName, procedureHash string) (*Runn
 	if m.cfg.UploadURL != "" {
 		uploader = newUploader(m.cfg.UploadURL)
 	}
+
 	runnerCtx := RunnerContext{
-		id:         runnerName,
-		workingdir: workingDir,
-		tmpDir:     tmpDir,
-		uploader:   uploader,
+		id:                 runnerName,
+		workingdir:         workingDir,
+		tmpDir:             tmpDir,
+		uploader:           uploader,
+		uid:                allocatedUID,
+		cleanupDirectories: m.cfg.CleanupDirectories,
 	}
 
-	// Only enable forced shutdown for procedure mode
-	var forceShutdown *config.ForceShutdownSignal
-	if m.cfg.UseProcedureMode {
-		forceShutdown = m.cfg.ForceShutdown
-	}
-	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, 1, m.cfg.CleanupTimeout, forceShutdown, m.baseLogger)
+	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, 1, m.cfg, m.baseLogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create runner: %w", err)
 	}

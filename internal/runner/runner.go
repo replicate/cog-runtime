@@ -983,7 +983,7 @@ func verifyProcessGroupTerminated(pid int) error {
 }
 
 // NewRunner creates a new runner instance with the given context
-func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx RunnerContext, command *exec.Cmd, maxConcurrency int, cleanupTimeout time.Duration, forceShutdown *config.ForceShutdownSignal, logger *zap.Logger) (*Runner, error) {
+func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx RunnerContext, command *exec.Cmd, maxConcurrency int, cfg config.Config, logger *zap.Logger) (*Runner, error) {
 	if maxConcurrency <= 0 {
 		maxConcurrency = 1
 	}
@@ -1005,8 +1005,8 @@ func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx Runn
 		readyForShutdown:   make(chan struct{}),
 		setupComplete:      make(chan struct{}),
 		logCaptureComplete: make(chan struct{}),
-		cleanupTimeout:     cleanupTimeout,
-		forceShutdown:      forceShutdown,
+		cleanupTimeout:     cfg.CleanupTimeout,
+		forceShutdown:      cfg.ForceShutdown,
 		logger:             runnerLogger,
 	}
 

@@ -789,7 +789,8 @@ func TestNewRunner(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
+		cfg := config.Config{}
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
 		require.NoError(t, err)
 
 		assert.Equal(t, "test-runner", r.runnerCtx.id)
@@ -825,7 +826,8 @@ func TestNewRunner(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
+		cfg := config.Config{}
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
 		require.NoError(t, err)
 
 		// Should store the command correctly
@@ -849,7 +851,8 @@ func TestNewRunner(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
+		cfg := config.Config{}
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
 		require.NoError(t, err)
 		require.NotNil(t, r)
 
@@ -887,7 +890,8 @@ func TestProcedureRunnerCreation(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
+		cfg := config.Config{}
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
 		require.NoError(t, err)
 
 		assert.Equal(t, "proc-runner", r.runnerCtx.id)
