@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -44,7 +44,7 @@ type Service struct {
 	handler       *server.Handler
 	forceShutdown *config.ForceShutdownSignal
 
-	logger *zap.Logger
+	logger *logging.Logger
 }
 
 type ServiceOption interface {
@@ -73,7 +73,7 @@ var (
 )
 
 // New creates a new Service with the given configuration
-func New(cfg config.Config, baseLogger *zap.Logger, opts ...ServiceOption) *Service {
+func New(cfg config.Config, baseLogger *logging.Logger, opts ...ServiceOption) *Service {
 	svc := &Service{
 		cfg:      cfg,
 		started:  make(chan struct{}),

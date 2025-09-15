@@ -9,11 +9,9 @@ import (
 	"time"
 
 	"github.com/alecthomas/kong"
-	"github.com/replicate/go/logging"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/service"
 	"github.com/replicate/cog-runtime/internal/version"
@@ -42,27 +40,12 @@ type CLI struct {
 	Test   TestCmd   `cmd:"" help:"Run model tests to verify functionality"`
 }
 
-// createBaseLogger creates a base logger with configurable level
-func createBaseLogger(name string) *zap.Logger {
-	logLevel := os.Getenv("COG_LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "info"
-	}
-	_, err := zapcore.ParseLevel(logLevel)
-	if err != nil {
-		fmt.Printf("Failed to parse log level \"%s\": %s\n", logLevel, err) //nolint:forbidigo // logger setup error reporting
-	}
-
-	return logging.New(name).WithOptions(zap.IncreaseLevel(zapcore.DebugLevel))
-}
-
 // buildServiceConfig converts CLI ServerCmd to service configuration
 func buildServiceConfig(s *ServerCmd) (config.Config, error) {
-	log := createBaseLogger("cog-config").Sugar()
+	log := logging.New("cog-config").Sugar()
 
 	logLevel := log.Level()
 	log.Infow("log level", "level", logLevel)
-	log.Infow("env log level", "level", os.Getenv("COG_LOG_LEVEL"))
 	// One-shot mode requires procedure mode
 	if s.OneShot && !s.UseProcedureMode {
 		log.Error("one-shot mode requires procedure mode")
@@ -115,7 +98,7 @@ func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 
 func (s *ServerCmd) Run() error {
 	// Create base logger
-	baseLogger := createBaseLogger("cog")
+	baseLogger := logging.New("cog")
 	log := baseLogger.Sugar()
 
 	// Build service configuration
@@ -143,7 +126,7 @@ func (s *ServerCmd) Run() error {
 }
 
 func (s *SchemaCmd) Run() error {
-	log := createBaseLogger("cog-schema").Sugar()
+	log := logging.New("cog-schema").Sugar()
 
 	wd, err := os.Getwd()
 	if err != nil {
@@ -169,7 +152,7 @@ func (s *SchemaCmd) Run() error {
 }
 
 func (t *TestCmd) Run() error {
-	log := createBaseLogger("cog-test").Sugar()
+	log := logging.New("cog-test").Sugar()
 
 	wd, err := os.Getwd()
 	if err != nil {

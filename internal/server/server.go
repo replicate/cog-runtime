@@ -14,12 +14,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/replicate/go/httpclient"
 	"github.com/replicate/go/uuid"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/runner"
 )
 
@@ -50,10 +49,10 @@ type Handler struct {
 
 	cwd string
 
-	logger *zap.Logger
+	logger *logging.Logger
 }
 
-func NewHandler(ctx context.Context, cfg config.Config, baseLogger *zap.Logger) (*Handler, error) {
+func NewHandler(ctx context.Context, cfg config.Config, baseLogger *logging.Logger) (*Handler, error) {
 	runnerManager := runner.NewManager(ctx, cfg, baseLogger)
 
 	h := &Handler{

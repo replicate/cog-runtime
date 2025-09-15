@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/loggingtest"
 )
 
 func TestNewManager(t *testing.T) {
@@ -55,7 +55,7 @@ func TestNewManager(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 
-				logger := zaptest.NewLogger(t)
+				logger := loggingtest.NewTestLogger(t)
 				m := newManager(t.Context(), tt.cfg, logger)
 
 				assert.True(t, m.cfg.UseProcedureMode)
@@ -75,7 +75,7 @@ func TestNewManager(t *testing.T) {
 			MaxRunners:       10, // Should be ignored
 		}
 
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		assert.False(t, m.cfg.UseProcedureMode)
@@ -90,7 +90,7 @@ func TestManager(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		assert.False(t, m.IsStopped())
@@ -105,7 +105,7 @@ func TestManager(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: true}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		exitCode := m.ExitCode()
@@ -116,7 +116,7 @@ func TestManager(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: false}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		exitCode := m.ExitCode()
@@ -134,7 +134,7 @@ func TestManagerSlots(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       10,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// Pre-fill some runners to force name collision checks
@@ -164,7 +164,7 @@ func TestManagerSlots(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       2,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// Fill to capacity with idle runners
@@ -196,7 +196,7 @@ func TestManagerSlots(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{MaxRunners: 2, UseProcedureMode: true}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		err := m.claimSlot()
@@ -208,7 +208,7 @@ func TestManagerSlots(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{MaxRunners: 1}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// Claim the only slot
@@ -224,7 +224,7 @@ func TestManagerSlots(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{MaxRunners: 2, UseProcedureMode: true}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// Claim a slot
@@ -241,7 +241,7 @@ func TestManagerSlots(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{MaxRunners: 1}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// Channel starts full, try to release
@@ -259,7 +259,7 @@ func TestManagerRunnerManagement(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       4,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		runner1 := &Runner{
@@ -287,7 +287,7 @@ func TestManagerRunnerManagement(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       4,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		killCalled1 := false
@@ -296,12 +296,12 @@ func TestManagerRunnerManagement(t *testing.T) {
 		runner1 := &Runner{
 			runnerCtx: RunnerContext{id: "runner1"},
 			killFn:    func(pid int) error { killCalled1 = true; return nil },
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 		runner2 := &Runner{
 			runnerCtx: RunnerContext{id: "runner2"},
 			killFn:    func(pid int) error { killCalled2 = true; return nil },
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		// Mock running processes
@@ -328,7 +328,7 @@ func TestManagerCapacity(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       5,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		capacity := m.Capacity()
@@ -356,7 +356,7 @@ func TestManagerCapacity(t *testing.T) {
 			UseProcedureMode: false,
 			MaxRunners:       5,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		capacity := m.Capacity()
@@ -379,7 +379,7 @@ func TestManagerCapacity(t *testing.T) {
 			UseProcedureMode: false,
 			WorkingDirectory: tempDir,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// In non-procedure mode, newManager should read cog.yaml and set capacity accordingly
@@ -395,7 +395,7 @@ func TestManagerCapacity(t *testing.T) {
 			UseProcedureMode: false,
 			WorkingDirectory: tempDir,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// In non-procedure mode, newManager should use fallback concurrency when cog.yaml missing
@@ -413,7 +413,7 @@ func TestManagerCapacity(t *testing.T) {
 			UseProcedureMode: false,
 			WorkingDirectory: tempDir,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// In non-procedure mode, newManager should use fallback concurrency when cog.yaml invalid
@@ -425,7 +425,7 @@ func TestManagerConcurrency(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.Config{MaxRunners: 4, UseProcedureMode: true}
-	logger := zaptest.NewLogger(t)
+	logger := loggingtest.NewTestLogger(t)
 	m := newManager(t.Context(), cfg, logger)
 
 	// Claim 2 slots
@@ -446,7 +446,7 @@ func TestManagerStatusNonProcedureMode(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: false}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		status := m.Status()
@@ -457,7 +457,7 @@ func TestManagerStatusNonProcedureMode(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: false}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 		runner := &Runner{
 			runnerCtx: RunnerContext{id: DefaultRunnerName},
@@ -480,7 +480,7 @@ func TestManagerStatusProcedureMode(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       2,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		status := m.Status()
@@ -494,7 +494,7 @@ func TestManagerStatusProcedureMode(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       1,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := NewManager(t.Context(), cfg, logger)
 
 		// Claim the only slot
@@ -513,7 +513,7 @@ func TestManagerSetupResult(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: true}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := NewManager(t.Context(), cfg, logger)
 
 		result := m.SetupResult()
@@ -531,7 +531,7 @@ func TestManagerPredictionHandling(t *testing.T) {
 		cfg := config.Config{
 			WorkingDirectory: tempDir,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -541,7 +541,7 @@ func TestManagerPredictionHandling(t *testing.T) {
 			runnerCtx:   RunnerContext{id: "test-runner", workingdir: tempDir},
 			pending:     make(map[string]*PendingPrediction),
 			cleanupSlot: make(chan struct{}, 1),
-			logger:      zaptest.NewLogger(t),
+			logger:      loggingtest.NewTestLogger(t),
 		}
 		m.runners[0] = runner
 
@@ -555,7 +555,7 @@ func TestManagerPredictionHandling(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		runner := &Runner{
@@ -571,7 +571,7 @@ func TestManagerPredictionHandling(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{MaxRunners: 1}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		// Claim the only slot
@@ -592,7 +592,7 @@ func TestManagerRunnerIPC(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		tempDir := t.TempDir()
@@ -604,7 +604,7 @@ func TestManagerRunnerIPC(t *testing.T) {
 			status:        StatusStarting,
 			pending:       make(map[string]*PendingPrediction),
 			cleanupSlot:   make(chan struct{}, 1),
-			logger:        zaptest.NewLogger(t),
+			logger:        loggingtest.NewTestLogger(t),
 			setupComplete: make(chan struct{}),
 		}
 		m.runners[0] = runner
@@ -618,7 +618,7 @@ func TestManagerRunnerIPC(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		err := m.HandleRunnerIPC("nonexistent", "READY")
@@ -637,7 +637,7 @@ func TestManagerStop(t *testing.T) {
 			UseProcedureMode: true,
 			MaxRunners:       4,
 		}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		runner1 := &Runner{
@@ -646,7 +646,7 @@ func TestManagerStop(t *testing.T) {
 			pending:   make(map[string]*PendingPrediction),
 			killFn:    func(pid int) error { return nil },
 			stopped:   make(chan bool),
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 		runner2 := &Runner{
 			runnerCtx: RunnerContext{id: "runner2"},
@@ -654,7 +654,7 @@ func TestManagerStop(t *testing.T) {
 			pending:   make(map[string]*PendingPrediction),
 			killFn:    func(pid int) error { return nil },
 			stopped:   make(chan bool),
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		m.runners[0] = runner1
@@ -675,7 +675,7 @@ func TestManagerStop(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		err1 := m.Stop()
@@ -695,7 +695,7 @@ func TestManagerSchema(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: true}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		schema, ok := m.Schema()
@@ -707,7 +707,7 @@ func TestManagerSchema(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: false}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		schema, ok := m.Schema()
@@ -719,7 +719,7 @@ func TestManagerSchema(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: false}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		runner := &Runner{
@@ -737,7 +737,7 @@ func TestManagerSchema(t *testing.T) {
 		t.Parallel()
 
 		cfg := config.Config{UseProcedureMode: false}
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		m := newManager(t.Context(), cfg, logger)
 
 		runner := &Runner{

@@ -23,6 +23,7 @@ linters:
   - containedctx
   - contextcheck
   - copyloopvar
+  - depguard
   - dogsled
   - errcheck
   - errchkjson
@@ -58,6 +59,7 @@ linters:
       - errcheck
       - forcetypeassert
       - gosec
+      - depguard
     - path: 'cmd/(.+)/main\.go'
       linters:
       - forbidigo
@@ -77,6 +79,12 @@ linters:
       allow-no-explanation: []
       require-explanation: true
       require-specific: true
+    depguard:
+      rules:
+        test-only:
+          deny:
+            - pkg: github.com/replicate/cog-runtime/internal/loggingtest
+              desc: "loggingtest is test-only"
     revive:
       confidence: 0.8
       severity: warning

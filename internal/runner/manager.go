@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -45,12 +46,12 @@ type Manager struct {
 
 	mu sync.RWMutex
 
-	baseLogger *zap.Logger // base logger passed from parent, used to create named loggers for runners
-	logger     *zap.Logger
+	baseLogger *logging.Logger // base logger passed from parent, used to create named loggers for runners
+	logger     *logging.Logger
 }
 
 // NewManager creates a new runner manager with channel-based capacity control
-func NewManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Manager {
+func NewManager(ctx context.Context, cfg config.Config, logger *logging.Logger) *Manager {
 	m := newManager(ctx, cfg, logger)
 	// Pre-load default runner in non-procedure mode
 	if !cfg.UseProcedureMode {
@@ -62,7 +63,7 @@ func NewManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Man
 	return m
 }
 
-func newManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Manager {
+func newManager(ctx context.Context, cfg config.Config, logger *logging.Logger) *Manager {
 	maxRunners := cfg.MaxRunners
 	if cfg.UseProcedureMode {
 		if cfg.OneShot {
@@ -327,6 +328,14 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	env := mergeEnv(os.Environ(), m.cfg.EnvSet, m.cfg.EnvUnset)
 	env = append(env, "TMPDIR="+tmpDir)
+
+	// Ensure Python processes never receive trace level logs
+	if logLevel := os.Getenv("COG_LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "COG_LOG_LEVEL=debug")
+	} else if logLevel := os.Getenv("LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "LOG_LEVEL=debug")
+	}
+
 	cmd.Env = env
 
 	// Read cog.yaml for runner configuration (capacity was already set in newManager)
@@ -648,6 +657,14 @@ func (m *Manager) createProcedureRunner(runnerName, procedureHash string) (*Runn
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	env := mergeEnv(os.Environ(), m.cfg.EnvSet, m.cfg.EnvUnset)
 	env = append(env, "TMPDIR="+tmpDir)
+
+	// Ensure Python processes never receive trace level logs
+	if logLevel := os.Getenv("COG_LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "COG_LOG_LEVEL=debug")
+	} else if logLevel := os.Getenv("LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "LOG_LEVEL=debug")
+	}
+
 	cmd.Env = env
 
 	var allocatedUID *int

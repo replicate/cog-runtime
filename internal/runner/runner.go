@@ -25,6 +25,7 @@ import (
 	"github.com/replicate/go/httpclient"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/version"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
@@ -92,7 +93,7 @@ func (r *Runner) watchPredictionResponses(ctx context.Context, predictionID stri
 }
 
 // processResponseFiles handles response file processing for a specific prediction
-func (r *Runner) processResponseFiles(predictionID string, pending *PendingPrediction, responsePattern string, log *zap.SugaredLogger) error {
+func (r *Runner) processResponseFiles(predictionID string, pending *PendingPrediction, responsePattern string, log *logging.SugaredLogger) error {
 	entries, err := os.ReadDir(r.runnerCtx.workingdir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory: %w", err)
@@ -118,7 +119,7 @@ func (r *Runner) processResponseFiles(predictionID string, pending *PendingPredi
 }
 
 // handleSingleResponse processes a single response file for a prediction
-func (r *Runner) handleSingleResponse(filename, predictionID string, pending *PendingPrediction, log *zap.SugaredLogger) error {
+func (r *Runner) handleSingleResponse(filename, predictionID string, pending *PendingPrediction, log *logging.SugaredLogger) error {
 	filePath := path.Join(r.runnerCtx.workingdir, filename)
 
 	// Read and parse response file
@@ -162,7 +163,7 @@ func (r *Runner) handleSingleResponse(filename, predictionID string, pending *Pe
 }
 
 // processResponseOutput handles output path processing for a response
-func (r *Runner) processResponseOutput(response *PredictionResponse, pending *PendingPrediction, log *zap.SugaredLogger) error {
+func (r *Runner) processResponseOutput(response *PredictionResponse, pending *PendingPrediction, log *logging.SugaredLogger) error {
 	if response.Output == nil {
 		return nil
 	}
@@ -213,7 +214,7 @@ func (r *Runner) processResponseOutput(response *PredictionResponse, pending *Pe
 }
 
 // handleResponseWebhooksAndCompletion sends webhooks and handles prediction completion
-func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionResponse, predictionID string, pending *PendingPrediction, log *zap.SugaredLogger) {
+func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionResponse, predictionID string, pending *PendingPrediction, log *logging.SugaredLogger) {
 	// Update pending prediction's response data, preserving accumulated logs
 	pending.mu.Lock()
 	existingLogs := pending.response.Logs
@@ -316,7 +317,7 @@ type Runner struct {
 	cleanupTimeout     time.Duration
 	forceShutdown      *config.ForceShutdownSignal
 
-	logger *zap.Logger
+	logger *logging.Logger
 }
 
 func (r *Runner) String() string {
@@ -1036,7 +1037,7 @@ func verifyProcessGroupTerminated(pid int) error {
 }
 
 // NewRunner creates a new runner instance with the given context
-func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx RunnerContext, command *exec.Cmd, maxConcurrency int, cfg config.Config, logger *zap.Logger) (*Runner, error) {
+func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx RunnerContext, command *exec.Cmd, maxConcurrency int, cfg config.Config, logger *logging.Logger) (*Runner, error) {
 	if maxConcurrency <= 0 {
 		maxConcurrency = 1
 	}

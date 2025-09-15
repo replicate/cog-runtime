@@ -11,7 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
+
+	"github.com/replicate/cog-runtime/internal/loggingtest"
 )
 
 // Helper function to create a JSON reader from any payload
@@ -25,7 +26,7 @@ func jsonReader(t *testing.T, payload any) io.Reader {
 func TestNewSender(t *testing.T) {
 	t.Parallel()
 
-	logger := zaptest.NewLogger(t)
+	logger := loggingtest.NewTestLogger(t)
 	sender := NewSender(logger)
 
 	require.NotNil(t, sender)
@@ -63,7 +64,7 @@ func TestSenderSend(t *testing.T) {
 		payloadBytes, err := json.Marshal(payload)
 		require.NoError(t, err)
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		err = sender.Send(server.URL, bytes.NewReader(payloadBytes))
 
 		require.NoError(t, err)
@@ -80,7 +81,7 @@ func TestSenderSend(t *testing.T) {
 
 		// Use a sender with regular HTTP client for faster test
 		sender := &DefaultSender{
-			logger: zaptest.NewLogger(t).Named("webhook"),
+			logger: loggingtest.NewTestLogger(t).Named("webhook"),
 			client: &http.Client{},
 		}
 		err := sender.Send(server.URL, jsonReader(t, map[string]string{"test": "data"}))
@@ -94,7 +95,7 @@ func TestSenderSend(t *testing.T) {
 
 		// Use a sender with regular HTTP client for faster test
 		sender := &DefaultSender{
-			logger: zaptest.NewLogger(t).Named("webhook"),
+			logger: loggingtest.NewTestLogger(t).Named("webhook"),
 			client: &http.Client{},
 		}
 		payload := map[string]string{"test": "data"}
@@ -107,7 +108,7 @@ func TestSenderSend(t *testing.T) {
 	t.Run("handles invalid URLs", func(t *testing.T) {
 		t.Parallel()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		err := sender.Send(":", jsonReader(t, map[string]string{"test": "data"}))
 
 		require.Error(t, err)
@@ -128,7 +129,7 @@ func TestSenderSendConditional(t *testing.T) {
 		}))
 		defer server.Close()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventStart, nil, nil)
 
 		require.NoError(t, err)
@@ -145,7 +146,7 @@ func TestSenderSendConditional(t *testing.T) {
 		}))
 		defer server.Close()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		allowedEvents := []Event{EventStart, EventCompleted}
 		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventStart, allowedEvents, nil)
 
@@ -163,7 +164,7 @@ func TestSenderSendConditional(t *testing.T) {
 		}))
 		defer server.Close()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		allowedEvents := []Event{EventStart, EventCompleted}
 		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, allowedEvents, nil)
 
@@ -174,7 +175,7 @@ func TestSenderSendConditional(t *testing.T) {
 	t.Run("skips when URL is empty", func(t *testing.T) {
 		t.Parallel()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		err := sender.SendConditional("", jsonReader(t, map[string]string{"test": "data"}), EventStart, nil, nil)
 
 		require.NoError(t, err)
@@ -190,7 +191,7 @@ func TestSenderSendConditional(t *testing.T) {
 		}))
 		defer server.Close()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		lastUpdated := time.Now().Add(-time.Second) // Start with old timestamp
 
 		// First call should go through
@@ -220,7 +221,7 @@ func TestSenderSendConditional(t *testing.T) {
 		}))
 		defer server.Close()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		lastUpdated := time.Now().Add(-time.Second) // Start with old timestamp
 
 		// First call should go through
@@ -244,7 +245,7 @@ func TestSenderSendConditional(t *testing.T) {
 		}))
 		defer server.Close()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 		lastUpdated := time.Now()
 
 		// Start event should go through
@@ -268,7 +269,7 @@ func TestSenderSendConditional(t *testing.T) {
 		}))
 		defer server.Close()
 
-		sender := NewSender(zaptest.NewLogger(t))
+		sender := NewSender(loggingtest.NewTestLogger(t))
 
 		// Should work with nil lastUpdated
 		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, nil, nil)

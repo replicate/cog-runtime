@@ -15,9 +15,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/loggingtest"
 )
 
 func TestRunnerCapacity(t *testing.T) {
@@ -56,7 +56,7 @@ func TestRunnerCapacity(t *testing.T) {
 			r := &Runner{
 				maxConcurrency: tt.maxConcurrency,
 				pending:        make(map[string]*PendingPrediction),
-				logger:         zaptest.NewLogger(t),
+				logger:         loggingtest.NewTestLogger(t),
 			}
 
 			// Add pending predictions
@@ -96,7 +96,7 @@ func TestRunnerIdle(t *testing.T) {
 
 			r := &Runner{
 				pending: make(map[string]*PendingPrediction),
-				logger:  zaptest.NewLogger(t),
+				logger:  loggingtest.NewTestLogger(t),
 			}
 
 			for i := 0; i < tt.pendingCount; i++ {
@@ -123,7 +123,7 @@ func TestRunnerStart(t *testing.T) {
 				Args: []string{"sleep", "0.1"},
 				Dir:  tempDir,
 			},
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -143,7 +143,7 @@ func TestRunnerStart(t *testing.T) {
 
 		r := &Runner{
 			status:             StatusReady,
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -162,7 +162,7 @@ func TestRunnerStart(t *testing.T) {
 				Path: "/nonexistent/command",
 				Args: []string{"nonexistent"},
 			},
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -178,7 +178,7 @@ func TestRunnerStart(t *testing.T) {
 		r := &Runner{
 			status:             StatusStarting,
 			cmd:                nil,
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -213,7 +213,7 @@ func TestRunnerConfig(t *testing.T) {
 				workingdir: tempDir,
 			},
 			mu:                 sync.RWMutex{},
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -237,7 +237,7 @@ func TestRunnerConfig(t *testing.T) {
 				workingdir: tempDir,
 			},
 			mu:                 sync.RWMutex{},
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -266,7 +266,7 @@ func TestRunnerConfig(t *testing.T) {
 				workingdir: tempDir,
 			},
 			mu:                 sync.RWMutex{},
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -282,7 +282,7 @@ func TestRunnerConfig(t *testing.T) {
 
 		r := &Runner{
 			status:             StatusStarting,
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -306,7 +306,7 @@ func TestRunnerStop(t *testing.T) {
 			pending: make(map[string]*PendingPrediction),
 			killFn:  func(pid int) error { return nil },
 			stopped: make(chan bool),
-			logger:  zaptest.NewLogger(t),
+			logger:  loggingtest.NewTestLogger(t),
 		}
 
 		// Add pending predictions
@@ -335,7 +335,7 @@ func TestRunnerStop(t *testing.T) {
 
 		r := &Runner{
 			status:             StatusDefunct,
-			logger:             zaptest.NewLogger(t),
+			logger:             loggingtest.NewTestLogger(t),
 			logCaptureComplete: make(chan struct{}),
 		}
 
@@ -357,7 +357,7 @@ func TestRunnerStop(t *testing.T) {
 				return nil
 			},
 			stopped: make(chan bool),
-			logger:  zaptest.NewLogger(t),
+			logger:  loggingtest.NewTestLogger(t),
 		}
 
 		// Mock a running process
@@ -384,7 +384,7 @@ func TestRunnerForceKill(t *testing.T) {
 				killCalled = true
 				return nil
 			},
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 		}
 
 		// Mock a running process
@@ -407,7 +407,7 @@ func TestRunnerForceKill(t *testing.T) {
 				killCallCount++
 				return nil
 			},
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 		}
 
 		r.cmd.Process = &os.Process{Pid: 12345}
@@ -424,7 +424,7 @@ func TestRunnerForceKill(t *testing.T) {
 				killCallCount++
 				return nil
 			},
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 		}
 
 		r.ForceKill()
@@ -442,7 +442,7 @@ func TestRunnerForceKill(t *testing.T) {
 				return nil
 			},
 			cleanupSlot: make(chan struct{}, 1),
-			logger:      zaptest.NewLogger(t),
+			logger:      loggingtest.NewTestLogger(t),
 		}
 		r.cleanupSlot <- struct{}{} // Initialize with token
 		r.cmd = exec.Command("echo", "test")
@@ -469,7 +469,7 @@ func TestRunnerForceKill(t *testing.T) {
 				killCalled = true
 				return nil
 			},
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 		}
 
 		r.ForceKill()
@@ -490,7 +490,7 @@ func TestRunnerPredict(t *testing.T) {
 			status:    StatusReady,
 			pending:   make(map[string]*PendingPrediction),
 			runnerCtx: RunnerContext{workingdir: tempDir},
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		// Pre-allocate prediction
@@ -519,7 +519,7 @@ func TestRunnerPredict(t *testing.T) {
 		r := &Runner{
 			status:  StatusReady,
 			pending: make(map[string]*PendingPrediction),
-			logger:  zaptest.NewLogger(t),
+			logger:  loggingtest.NewTestLogger(t),
 		}
 
 		req := PredictionRequest{ID: "test-id"}
@@ -539,7 +539,7 @@ func TestRunnerCancel(t *testing.T) {
 		r := &Runner{
 			pending:   make(map[string]*PendingPrediction),
 			runnerCtx: RunnerContext{workingdir: tempDir, id: "test-runner", tmpDir: tempDir},
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		r.pending["test-id"] = &PendingPrediction{}
@@ -558,7 +558,7 @@ func TestRunnerCancel(t *testing.T) {
 
 		r := &Runner{
 			pending: make(map[string]*PendingPrediction),
-			logger:  zaptest.NewLogger(t),
+			logger:  loggingtest.NewTestLogger(t),
 		}
 
 		err := r.Cancel("nonexistent")
@@ -576,7 +576,7 @@ func TestRunnerString(t *testing.T) {
 		r := &Runner{
 			runnerCtx: RunnerContext{id: "test-runner"},
 			status:    StatusReady,
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		got := r.String()
@@ -593,7 +593,7 @@ func TestRunnerIPC(t *testing.T) {
 
 		r := &Runner{
 			status: StatusStarting,
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 			runnerCtx: RunnerContext{
 				id:         "test-runner",
 				workingdir: t.TempDir(),
@@ -611,7 +611,7 @@ func TestRunnerIPC(t *testing.T) {
 
 		r := &Runner{
 			status: StatusReady,
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 		}
 
 		err := r.HandleIPC("READY")
@@ -624,7 +624,7 @@ func TestRunnerIPC(t *testing.T) {
 
 		r := &Runner{
 			status: StatusReady,
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 		}
 
 		err := r.HandleIPC("BUSY")
@@ -639,7 +639,7 @@ func TestRunnerIPC(t *testing.T) {
 		r := &Runner{
 			runnerCtx: RunnerContext{workingdir: tempDir},
 			pending:   make(map[string]*PendingPrediction),
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		err := r.HandleIPC("OUTPUT")
@@ -650,7 +650,7 @@ func TestRunnerIPC(t *testing.T) {
 		t.Parallel()
 
 		r := &Runner{
-			logger: zaptest.NewLogger(t),
+			logger: loggingtest.NewTestLogger(t),
 		}
 
 		err := r.HandleIPC("UNKNOWN")
@@ -721,7 +721,7 @@ func TestWaitForStop(t *testing.T) {
 
 		r := &Runner{
 			stopped: make(chan bool),
-			logger:  zaptest.NewLogger(t),
+			logger:  loggingtest.NewTestLogger(t),
 		}
 		close(r.stopped)
 
@@ -743,7 +743,7 @@ func TestWaitForStop(t *testing.T) {
 
 		r := &Runner{
 			stopped: make(chan bool),
-			logger:  zaptest.NewLogger(t),
+			logger:  loggingtest.NewTestLogger(t),
 		}
 
 		done := make(chan struct{})
@@ -790,7 +790,7 @@ func TestNewRunner(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		cfg := config.Config{}
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, loggingtest.NewTestLogger(t))
 		require.NoError(t, err)
 
 		assert.Equal(t, "test-runner", r.runnerCtx.id)
@@ -827,7 +827,7 @@ func TestNewRunner(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		cfg := config.Config{}
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, loggingtest.NewTestLogger(t))
 		require.NoError(t, err)
 
 		// Should store the command correctly
@@ -852,7 +852,7 @@ func TestNewRunner(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		cfg := config.Config{}
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, loggingtest.NewTestLogger(t))
 		require.NoError(t, err)
 		require.NotNil(t, r)
 
@@ -891,7 +891,7 @@ func TestProcedureRunnerCreation(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		cfg := config.Config{}
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, cfg, loggingtest.NewTestLogger(t))
 		require.NoError(t, err)
 
 		assert.Equal(t, "proc-runner", r.runnerCtx.id)
@@ -995,7 +995,7 @@ func TestRunnerTempDirectoryCleanup(t *testing.T) {
 			pending:   make(map[string]*PendingPrediction),
 			killFn:    func(pid int) error { return nil },
 			stopped:   make(chan bool),
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		tmpDir, err := os.MkdirTemp("", "test-cog-runner-tmp-")
@@ -1034,7 +1034,7 @@ func TestRunnerTempDirectoryCleanup(t *testing.T) {
 			pending:   make(map[string]*PendingPrediction),
 			killFn:    func(pid int) error { return nil },
 			stopped:   make(chan bool),
-			logger:    zaptest.NewLogger(t),
+			logger:    loggingtest.NewTestLogger(t),
 		}
 
 		err := r.Stop()
@@ -1074,7 +1074,7 @@ func TestRunnerConfigCreatesConfigJSON(t *testing.T) {
 		pending:        make(map[string]*PendingPrediction),
 		killFn:         func(pid int) error { return nil },
 		stopped:        make(chan bool),
-		logger:         zaptest.NewLogger(t),
+		logger:         loggingtest.NewTestLogger(t),
 	}
 
 	// Call Config method
@@ -1133,7 +1133,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		require.NoError(t, err)
 
 		// Setup runner with mock working directory
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		runner := &Runner{
 			runnerCtx: RunnerContext{workingdir: tempDir},
 			logger:    logger,
@@ -1178,7 +1178,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		require.NoError(t, err)
 
 		// Setup runner
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		runner := &Runner{
 			runnerCtx: RunnerContext{workingdir: tempDir},
 			logger:    logger,
@@ -1219,7 +1219,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		predictionID := "test-prediction-789"
 
 		// Setup runner
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		runner := &Runner{
 			runnerCtx: RunnerContext{workingdir: tempDir},
 			logger:    logger,
@@ -1286,7 +1286,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		predictionID := "test-prediction-abc"
 
 		// Setup runner
-		logger := zaptest.NewLogger(t)
+		logger := loggingtest.NewTestLogger(t)
 		runner := &Runner{
 			runnerCtx: RunnerContext{workingdir: tempDir},
 			logger:    logger,
@@ -1385,7 +1385,7 @@ func TestForceKillCleanupFailures(t *testing.T) {
 			},
 			status:        StatusReady,
 			forceShutdown: nil, // Non-procedure mode
-			logger:        zaptest.NewLogger(t),
+			logger:        loggingtest.NewTestLogger(t),
 		}
 
 		r.ForceKill()
@@ -1411,7 +1411,7 @@ func TestForceKillCleanupFailures(t *testing.T) {
 			status:        StatusReady,
 			cleanupSlot:   make(chan struct{}, 1),
 			forceShutdown: forceShutdown,
-			logger:        zaptest.NewLogger(t),
+			logger:        loggingtest.NewTestLogger(t),
 		}
 
 		// Initialize cleanup slot with token
@@ -1434,7 +1434,7 @@ func TestForceKillCleanupFailures(t *testing.T) {
 			forceShutdown:  forceShutdown,
 			cleanupSlot:    make(chan struct{}, 1),
 			stopped:        make(chan bool),
-			logger:         zaptest.NewLogger(t),
+			logger:         loggingtest.NewTestLogger(t),
 		}
 
 		// Start verification process
