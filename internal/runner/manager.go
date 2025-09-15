@@ -1,8 +1,10 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -250,16 +252,24 @@ func (m *Manager) predict(ctx context.Context, req PredictionRequest) (chan Pred
 }
 
 // sendTerminalWebhook sends a terminal webhook synchronously for a completed prediction
-func (m *Manager) sendTerminalWebhook(req PredictionRequest, resp PredictionResponse) {
+func (m *Manager) sendTerminalWebhook(req PredictionRequest, resp PredictionResponse) error {
 	log := m.logger.Sugar()
 
 	// Send synchronously using SendConditional to respect filters
 	// Send the actual PredictionResponse object, not a custom map
-	if err := m.webhookSender.SendConditional(req.Webhook, resp, webhook.EventCompleted, req.WebhookEventsFilter, nil); err != nil {
+
+	body, err := json.Marshal(resp)
+	if err != nil {
+		log.Errorw("failed to marshal prediction response", "error", err)
+		return fmt.Errorf("failed to marshal prediction response: %w", err)
+	}
+
+	if err := m.webhookSender.SendConditional(req.Webhook, bytes.NewReader(body), webhook.EventCompleted, req.WebhookEventsFilter, nil); err != nil {
 		log.Errorw("failed to send terminal webhook", "prediction_id", resp.ID, "webhook_url", req.Webhook, "error", err)
-		return
+		return fmt.Errorf("failed to send terminal webhook: %w", err)
 	}
 	log.Infow("sent terminal webhook", "prediction_id", resp.ID, "webhook_url", req.Webhook, "status", resp.Status)
+	return nil
 }
 
 func (m *Manager) assignReqToRunnerWait(ctx context.Context, req PredictionRequest) (*Runner, error) {
@@ -393,12 +403,12 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 			// When watcher exits, handle terminal webhook and cleanup
 			pending.mu.Lock()
 			finalResponse := pending.response
-			pending.mu.Unlock()
 
 			// Send terminal webhook if prediction completed
 			if finalResponse.Status.IsCompleted() && pending.terminalWebhookSent.CompareAndSwap(false, true) {
-				m.sendTerminalWebhook(pending.request, finalResponse)
+				_ = m.sendTerminalWebhook(pending.request, finalResponse)
 			}
+			pending.mu.Unlock()
 
 			// Remove from pending map and cancel context
 			runner.mu.Lock()
@@ -1030,7 +1040,7 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 
 			// Send terminal webhook since we're canceling the watcher
 			if pending.terminalWebhookSent.CompareAndSwap(false, true) {
-				pending.sendWebhookSync(m.webhookSender, pending.request.Webhook, webhook.EventCompleted, pending.request.WebhookEventsFilter)
+				_ = pending.sendWebhookSync(webhook.EventCompleted)
 			}
 
 			for _, inputPath := range pending.inputPaths {
@@ -1085,7 +1095,7 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 
 			// Send terminal webhook since we're canceling the watcher
 			if pending.terminalWebhookSent.CompareAndSwap(false, true) {
-				pending.sendWebhookSync(m.webhookSender, pending.request.Webhook, webhook.EventCompleted, pending.request.WebhookEventsFilter)
+				_ = pending.sendWebhookSync(webhook.EventCompleted)
 			}
 
 			for _, inputPath := range pending.inputPaths {

@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,6 +13,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
+
+// Helper function to create a JSON reader from any payload
+func jsonReader(t *testing.T, payload any) io.Reader {
+	t.Helper()
+	data, err := json.Marshal(payload)
+	require.NoError(t, err)
+	return bytes.NewReader(data)
+}
 
 func TestNewSender(t *testing.T) {
 	t.Parallel()
@@ -50,8 +59,12 @@ func TestSenderSend(t *testing.T) {
 		}))
 		defer server.Close()
 
+		// Serialize payload to bytes and create reader
+		payloadBytes, err := json.Marshal(payload)
+		require.NoError(t, err)
+
 		sender := NewSender(zaptest.NewLogger(t))
-		err := sender.Send(server.URL, payload)
+		err = sender.Send(server.URL, bytes.NewReader(payloadBytes))
 
 		require.NoError(t, err)
 		assert.Equal(t, payload, receivedPayload)
@@ -70,7 +83,7 @@ func TestSenderSend(t *testing.T) {
 			logger: zaptest.NewLogger(t).Named("webhook"),
 			client: &http.Client{},
 		}
-		err := sender.Send(server.URL, map[string]string{"test": "data"})
+		err := sender.Send(server.URL, jsonReader(t, map[string]string{"test": "data"}))
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "webhook returned status 500")
@@ -84,7 +97,8 @@ func TestSenderSend(t *testing.T) {
 			logger: zaptest.NewLogger(t).Named("webhook"),
 			client: &http.Client{},
 		}
-		err := sender.Send("http://localhost:99999/webhook", map[string]string{"test": "data"})
+		payload := map[string]string{"test": "data"}
+		err := sender.Send("http://localhost:99999/webhook", jsonReader(t, payload))
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to send webhook")
@@ -94,20 +108,10 @@ func TestSenderSend(t *testing.T) {
 		t.Parallel()
 
 		sender := NewSender(zaptest.NewLogger(t))
-		err := sender.Send(":", map[string]string{"test": "data"})
+		err := sender.Send(":", jsonReader(t, map[string]string{"test": "data"}))
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create webhook request")
-	})
-
-	t.Run("handles invalid JSON payload", func(t *testing.T) {
-		t.Parallel()
-
-		sender := NewSender(zaptest.NewLogger(t))
-		err := sender.Send("http://example.com", make(chan int))
-
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to marshal webhook payload")
 	})
 }
 
@@ -125,7 +129,7 @@ func TestSenderSendConditional(t *testing.T) {
 		defer server.Close()
 
 		sender := NewSender(zaptest.NewLogger(t))
-		err := sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventStart, nil, nil)
+		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventStart, nil, nil)
 
 		require.NoError(t, err)
 		assert.True(t, webhookCalled)
@@ -143,7 +147,7 @@ func TestSenderSendConditional(t *testing.T) {
 
 		sender := NewSender(zaptest.NewLogger(t))
 		allowedEvents := []Event{EventStart, EventCompleted}
-		err := sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventStart, allowedEvents, nil)
+		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventStart, allowedEvents, nil)
 
 		require.NoError(t, err)
 		assert.True(t, webhookCalled)
@@ -161,7 +165,7 @@ func TestSenderSendConditional(t *testing.T) {
 
 		sender := NewSender(zaptest.NewLogger(t))
 		allowedEvents := []Event{EventStart, EventCompleted}
-		err := sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventLogs, allowedEvents, nil)
+		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, allowedEvents, nil)
 
 		require.NoError(t, err)
 		assert.False(t, webhookCalled)
@@ -171,7 +175,7 @@ func TestSenderSendConditional(t *testing.T) {
 		t.Parallel()
 
 		sender := NewSender(zaptest.NewLogger(t))
-		err := sender.SendConditional("", map[string]string{"test": "data"}, EventStart, nil, nil)
+		err := sender.SendConditional("", jsonReader(t, map[string]string{"test": "data"}), EventStart, nil, nil)
 
 		require.NoError(t, err)
 	})
@@ -190,18 +194,18 @@ func TestSenderSendConditional(t *testing.T) {
 		lastUpdated := time.Now().Add(-time.Second) // Start with old timestamp
 
 		// First call should go through
-		err := sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventLogs, nil, &lastUpdated)
+		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, nil, &lastUpdated)
 		require.NoError(t, err)
 		assert.Equal(t, 1, callCount)
 
 		// Immediate second call should be rate limited (lastUpdated was just updated)
-		err = sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventLogs, nil, &lastUpdated)
+		err = sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, nil, &lastUpdated)
 		require.NoError(t, err)
 		assert.Equal(t, 1, callCount) // Still 1, not incremented
 
 		// After waiting, should go through
 		lastUpdated = time.Now().Add(-time.Second)
-		err = sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventLogs, nil, &lastUpdated)
+		err = sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, nil, &lastUpdated)
 		require.NoError(t, err)
 		assert.Equal(t, 2, callCount)
 	})
@@ -220,12 +224,12 @@ func TestSenderSendConditional(t *testing.T) {
 		lastUpdated := time.Now().Add(-time.Second) // Start with old timestamp
 
 		// First call should go through
-		err := sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventOutput, nil, &lastUpdated)
+		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventOutput, nil, &lastUpdated)
 		require.NoError(t, err)
 		assert.Equal(t, 1, callCount)
 
 		// Immediate second call should be rate limited (lastUpdated was just updated)
-		err = sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventOutput, nil, &lastUpdated)
+		err = sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventOutput, nil, &lastUpdated)
 		require.NoError(t, err)
 		assert.Equal(t, 1, callCount) // Still 1, not incremented
 	})
@@ -244,12 +248,12 @@ func TestSenderSendConditional(t *testing.T) {
 		lastUpdated := time.Now()
 
 		// Start event should go through
-		err := sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventStart, nil, &lastUpdated)
+		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventStart, nil, &lastUpdated)
 		require.NoError(t, err)
 		assert.Equal(t, 1, callCount)
 
 		// Immediate completed event should also go through (no rate limiting)
-		err = sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventCompleted, nil, &lastUpdated)
+		err = sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventCompleted, nil, &lastUpdated)
 		require.NoError(t, err)
 		assert.Equal(t, 2, callCount)
 	})
@@ -267,12 +271,12 @@ func TestSenderSendConditional(t *testing.T) {
 		sender := NewSender(zaptest.NewLogger(t))
 
 		// Should work with nil lastUpdated
-		err := sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventLogs, nil, nil)
+		err := sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, 1, callCount)
 
 		// Multiple calls with nil lastUpdated should all go through
-		err = sender.SendConditional(server.URL, map[string]string{"test": "data"}, EventLogs, nil, nil)
+		err = sender.SendConditional(server.URL, jsonReader(t, map[string]string{"test": "data"}), EventLogs, nil, nil)
 		require.NoError(t, err)
 		assert.Equal(t, 2, callCount)
 	})

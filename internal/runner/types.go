@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base32"
@@ -185,14 +186,14 @@ type RunnerID string
 
 // GenerateRunnerID generates a new random runner ID
 func GenerateRunnerID() RunnerID {
-	// 5 bytes = 40 bits = 8 base32 chars
-	bytes := make([]byte, 5)
-	if _, err := rand.Read(bytes); err != nil {
+	// 5 buf = 40 bits = 8 base32 chars
+	buf := make([]byte, 5)
+	if _, err := rand.Read(buf); err != nil {
 		// Fallback to timestamp-based ID if crypto/rand fails
 		return RunnerID(fmt.Sprintf("%08x", time.Now().UnixNano()&0xffffffff))
 	}
 
-	encoded := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(bytes)
+	encoded := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(buf)
 	id := strings.ToLower(encoded[:8]) // Take first 8 chars
 
 	// Replace leading zero with 'a'
@@ -269,23 +270,39 @@ func (p *PendingPrediction) safeClose() bool {
 }
 
 // sendWebhook sends a webhook asynchronously
-func (p *PendingPrediction) sendWebhook(webhookSender webhook.Sender, webhookURL string, event webhook.Event, webhookEvents []webhook.Event) {
-	if webhookURL == "" || webhookSender == nil {
-		return
+func (p *PendingPrediction) sendWebhook(event webhook.Event) error {
+	if p.request.Webhook == "" || p.webhookSender == nil {
+		return nil
 	}
+
+	p.mu.Lock()
+	body, err := json.Marshal(p.response)
+	if err != nil {
+		return fmt.Errorf("failed to marshal prediction response: %w", err)
+	}
+	p.mu.Unlock()
 
 	// Use the prediction response as the webhook payload
 	go func() {
-		_ = webhookSender.SendConditional(webhookURL, p.response, event, webhookEvents, &p.lastUpdated)
+		_ = p.webhookSender.SendConditional(p.request.Webhook, bytes.NewReader(body), event, p.request.WebhookEventsFilter, &p.lastUpdated)
 	}()
+	return nil
 }
 
 // sendWebhookSync sends a webhook synchronously
-func (p *PendingPrediction) sendWebhookSync(webhookSender webhook.Sender, webhookURL string, event webhook.Event, webhookEvents []webhook.Event) {
-	if webhookURL == "" || webhookSender == nil {
-		return
+func (p *PendingPrediction) sendWebhookSync(event webhook.Event) error {
+	if p.request.Webhook == "" || p.webhookSender == nil {
+		return nil
 	}
 
+	p.mu.Lock()
+	body, err := json.Marshal(p.response)
+	if err != nil {
+		return fmt.Errorf("failed to marshal prediction response: %w", err)
+	}
+	p.mu.Unlock()
+
 	// Send webhook synchronously for terminal events
-	_ = webhookSender.SendConditional(webhookURL, p.response, event, webhookEvents, &p.lastUpdated)
+	_ = p.webhookSender.SendConditional(p.request.Webhook, bytes.NewReader(body), event, p.request.WebhookEventsFilter, &p.lastUpdated)
+	return nil
 }

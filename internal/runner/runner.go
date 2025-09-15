@@ -223,7 +223,7 @@ func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionRespons
 	case PredictionStarting:
 		log.Infow("prediction started", "id", response.ID, "status", response.Status)
 		// Send start webhook async (intermediary)
-		go pending.sendWebhook(r.webhookSender, pending.request.Webhook, webhook.EventStart, pending.request.WebhookEventsFilter)
+		go func() { _ = pending.sendWebhook(webhook.EventStart) }()
 
 		// Compat: legacy Cog never sends "start" event - change status to processing
 		response.Status = PredictionProcessing
@@ -235,9 +235,9 @@ func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionRespons
 		log.Infow("prediction processing", "id", response.ID, "status", response.Status)
 		// Send output/logs webhook async (intermediary)
 		if response.Output != nil {
-			go pending.sendWebhook(r.webhookSender, pending.request.Webhook, webhook.EventOutput, pending.request.WebhookEventsFilter)
+			go func() { _ = pending.sendWebhook(webhook.EventOutput) }()
 		} else {
-			go pending.sendWebhook(r.webhookSender, pending.request.Webhook, webhook.EventLogs, pending.request.WebhookEventsFilter)
+			go func() { _ = pending.sendWebhook(webhook.EventLogs) }()
 		}
 	}
 
@@ -460,7 +460,7 @@ func (r *Runner) captureLogLine(line string) {
 				pending.mu.Unlock()
 				// Send webhook if prediction has started
 				if pending.response.Status != "" {
-					pending.sendWebhook(r.webhookSender, pending.request.Webhook, webhook.EventLogs, pending.request.WebhookEventsFilter)
+					go func() { _ = pending.sendWebhook(webhook.EventLogs) }()
 				}
 			} else {
 				log.Errorw("received log for non-existent prediction", "id", pid, "message", msg)
@@ -481,7 +481,7 @@ func (r *Runner) captureLogLine(line string) {
 				pending.mu.Unlock()
 				// Send webhook if prediction has started
 				if pending.response.Status != "" {
-					pending.sendWebhook(r.webhookSender, pending.request.Webhook, webhook.EventLogs, pending.request.WebhookEventsFilter)
+					go func() { _ = pending.sendWebhook(webhook.EventLogs) }()
 				}
 			}
 		} else {

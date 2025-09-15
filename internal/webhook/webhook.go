@@ -1,9 +1,8 @@
 package webhook
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"time"
@@ -25,8 +24,8 @@ const (
 
 // Sender handles webhook delivery
 type Sender interface {
-	Send(url string, payload any) error
-	SendConditional(url string, payload any, event Event, allowedEvents []Event, lastUpdated *time.Time) error
+	Send(url string, payload io.Reader) error
+	SendConditional(url string, payload io.Reader, event Event, allowedEvents []Event, lastUpdated *time.Time) error
 }
 
 // Build time assertion that DefaultSender implements the Sender interface
@@ -47,18 +46,13 @@ func NewSender(logger *zap.Logger) *DefaultSender {
 }
 
 // Send delivers a webhook with the given payload
-func (s *DefaultSender) Send(url string, payload any) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal webhook payload: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(body))
+func (s *DefaultSender) Send(url string, payload io.Reader) error {
+	req, err := http.NewRequest(http.MethodPost, url, payload)
 	if err != nil {
 		return fmt.Errorf("failed to create webhook request: %w", err)
 	}
 
-	req.Header.Add("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -74,7 +68,7 @@ func (s *DefaultSender) Send(url string, payload any) error {
 }
 
 // SendConditional sends webhook if conditions are met
-func (s *DefaultSender) SendConditional(url string, payload any, event Event, allowedEvents []Event, lastUpdated *time.Time) error {
+func (s *DefaultSender) SendConditional(url string, payload io.Reader, event Event, allowedEvents []Event, lastUpdated *time.Time) error {
 	log := s.logger.Sugar()
 	log.Debugw("sending webhook", "url", url, "event", string(event), "allowed_events", allowedEvents, "last_updated", lastUpdated)
 	if url == "" {
