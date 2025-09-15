@@ -19,6 +19,12 @@ import (
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
+// HTTPServer interface allows for mocking the HTTP server in tests
+type HTTPServer interface {
+	ListenAndServe() error
+	Close() error
+}
+
 // Package-level variable for os.Exit to enable testing
 var osExit = func(code int) {
 	os.Exit(code)
@@ -34,30 +40,87 @@ type Service struct {
 	shutdown        chan struct{}
 	shutdownStarted atomic.Bool
 
-	httpServer    *http.Server
+	httpServer    HTTPServer
 	handler       *server.Handler
 	forceShutdown *config.ForceShutdownSignal
 
 	logger *zap.Logger
 }
 
+type ServiceOption interface {
+	Apply(s *Service)
+}
+
+type HTTPServerOption struct {
+	HTTPServer HTTPServer
+}
+
+func (o HTTPServerOption) Apply(s *Service) {
+	s.httpServer = o.HTTPServer
+}
+
+type HandlerOption struct {
+	Handler *server.Handler
+}
+
+func (o HandlerOption) Apply(s *Service) {
+	s.handler = o.Handler
+}
+
+var (
+	_ ServiceOption = (*HTTPServerOption)(nil)
+	_ ServiceOption = (*HandlerOption)(nil)
+)
+
 // New creates a new Service with the given configuration
-func New(cfg config.Config, baseLogger *zap.Logger) *Service {
-	return &Service{
+func New(cfg config.Config, baseLogger *zap.Logger, opts ...ServiceOption) *Service {
+	svc := &Service{
 		cfg:      cfg,
 		started:  make(chan struct{}),
 		stopped:  make(chan struct{}),
 		shutdown: make(chan struct{}),
 		logger:   baseLogger.Named("service"),
 	}
+	for _, opt := range opts {
+		opt.Apply(svc)
+	}
+	return svc
 }
 
 // Initialize sets up the service components (idempotent)
 func (s *Service) Initialize(ctx context.Context) error {
+	// Always create force shutdown signal, even if handler is already set
+	if s.forceShutdown == nil {
+		s.forceShutdown = config.NewForceShutdownSignal()
+		s.cfg.ForceShutdown = s.forceShutdown
+	}
+
+	if err := s.initializeHandler(ctx); err != nil {
+		return err
+	}
+
 	if err := s.initializeHTTPServer(ctx); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// initializeHandler sets up the handler and force shutdown signal (always runs)
+func (s *Service) initializeHandler(ctx context.Context) error {
+	if s.handler != nil {
+		return nil
+	}
+
+	log := s.logger.Sugar()
+	log.Info("initializing handler")
+
+	h, err := server.NewHandler(ctx, s.cfg, s.logger)
+	if err != nil {
+		return fmt.Errorf("failed to create server handler: %w", err)
+	}
+
+	s.handler = h
 	return nil
 }
 
@@ -70,42 +133,15 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 	log := s.logger.Sugar()
 	log.Info("initializing HTTP server")
 
-	s.forceShutdown = config.NewForceShutdownSignal()
-	serverCfg := config.Config{
-		UseProcedureMode:          s.cfg.UseProcedureMode,
-		AwaitExplicitShutdown:     s.cfg.AwaitExplicitShutdown,
-		OneShot:                   s.cfg.OneShot,
-		IPCUrl:                    s.cfg.IPCUrl,
-		UploadURL:                 s.cfg.UploadURL,
-		WorkingDirectory:          s.cfg.WorkingDirectory,
-		RunnerShutdownGracePeriod: s.cfg.RunnerShutdownGracePeriod,
-		CleanupTimeout:            s.cfg.CleanupTimeout,
-		ForceShutdown:             s.forceShutdown,
-		MaxRunners:                s.cfg.MaxRunners,
-	}
-
-	tempCancel := func() {
-		select {
-		case <-s.shutdown:
-		default:
-			close(s.shutdown)
-		}
-	}
-
-	h, err := server.NewHandler(ctx, serverCfg, tempCancel, s.logger) //nolint:contextcheck // context passing will come as we refactor
-	if err != nil {
-		return fmt.Errorf("failed to create server handler: %w", err)
-	}
-
-	s.handler = h
-
-	mux := server.NewServeMux(h, s.cfg.UseProcedureMode)
+	mux := server.NewServeMux(s.handler, s.cfg.UseProcedureMode)
 	s.httpServer = &http.Server{
 		Addr:              fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 		BaseContext:       func(l net.Listener) context.Context { return ctx },
 	}
+
+	mux.HandleFunc("POST /shutdown", s.HandleShutdown)
 
 	return nil
 }
@@ -145,7 +181,7 @@ func (s *Service) Run(ctx context.Context) error {
 		return nil
 	})
 
-	eg.Go(func() error {
+	eg.Go(func() error { //nolint:contextcheck // uses long-lived errgroup context, not request context
 		<-s.shutdown
 		log.Info("initiating graceful shutdown")
 
@@ -157,8 +193,15 @@ func (s *Service) Run(ctx context.Context) error {
 			}
 		}
 
-		log.Info("closing HTTP server")
-		return s.httpServer.Close()
+		// Close HTTP server to unblock the HTTP server goroutine
+		if s.httpServer != nil {
+			log.Info("closing HTTP server")
+			if err := s.httpServer.Close(); err != nil {
+				log.Errorw("error closing HTTP server", "error", err)
+			}
+		}
+
+		return nil
 	})
 
 	// Monitor for context cancellation (handles external cancellation)
@@ -168,14 +211,14 @@ func (s *Service) Run(ctx context.Context) error {
 			// Shutdown was called, let shutdown handler deal with it
 			return nil
 		case <-egCtx.Done():
-			log.Info("context canceled, forcing immediate shutdown")
-			// Signal shutdown first to unblock the shutdown handler
+			// Only force immediate shutdown if graceful shutdown hasn't started
 			if s.shutdownStarted.CompareAndSwap(false, true) {
+				log.Info("context canceled, forcing immediate shutdown")
 				close(s.shutdown)
-			}
-			// Context canceled = immediate hard shutdown, no grace period
-			if err := s.httpServer.Close(); err != nil {
-				log.Errorw("failed to close HTTP server", "error", err)
+				// Context canceled = immediate hard shutdown, no grace period
+				if err := s.httpServer.Close(); err != nil {
+					log.Errorw("failed to close HTTP server", "error", err)
+				}
 			}
 			return egCtx.Err()
 		}
@@ -190,11 +233,15 @@ func (s *Service) Run(ctx context.Context) error {
 
 	// Monitor for forced shutdown from cleanup failures
 	eg.Go(func() error {
+		defer log.Debug("force shutdown goroutine exiting")
 		select {
 		case <-s.forceShutdown.WatchForForceShutdown():
 			log.Errorw("process cleanup failed, forcing immediate exit")
 			osExit(1)
 			return nil // This won't be reached, but needed for compile
+		case <-s.shutdown:
+			// Graceful shutdown initiated, exit normally
+			return nil
 		case <-egCtx.Done():
 			return egCtx.Err()
 		}
@@ -209,8 +256,14 @@ func (s *Service) Run(ctx context.Context) error {
 	return err
 }
 
+func (s *Service) HandleShutdown(w http.ResponseWriter, r *http.Request) {
+	// Trigger graceful service shutdown - this will handle stopping runners gracefully
+	s.Shutdown()
+	w.WriteHeader(http.StatusOK)
+}
+
 // Shutdown initiates graceful shutdown of the service (non-blocking)
-func (s *Service) Shutdown(ctx context.Context) {
+func (s *Service) Shutdown() {
 	log := s.logger.Sugar()
 	log.Info("shutdown requested")
 
@@ -274,7 +327,7 @@ func (s *Service) handleSignals(ctx context.Context) error {
 		return nil
 	case <-ch:
 		log.Info("received SIGTERM, starting graceful shutdown")
-		s.Shutdown(ctx)
+		s.Shutdown()
 		return nil
 	}
 }

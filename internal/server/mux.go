@@ -18,7 +18,6 @@ func NewServeMux(handler *Handler, useProcedureMode bool) *http.ServeMux {
 	serveMux.HandleFunc("GET /{$}", handler.Root)
 	serveMux.HandleFunc("GET /health-check", handler.HealthCheck)
 	serveMux.HandleFunc("GET /openapi.json", handler.OpenAPI)
-	serveMux.HandleFunc("POST /shutdown", handler.Shutdown)
 
 	if useProcedureMode {
 		serveMux.HandleFunc("POST /procedures", handler.Predict)
