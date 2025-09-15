@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -22,10 +23,10 @@ func TestPredictionSecretSucceeded(t *testing.T) {
 		module:           "secret",
 		predictorClass:   "Predictor",
 	})
-	waitForSetupComplete(t, runtimeServer, server.StatusReady, server.SetupSucceeded)
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"s": "bar"}
-	req := httpPredictionRequest(t, runtimeServer, server.PredictionRequest{Input: input})
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
@@ -37,7 +38,7 @@ func TestPredictionSecretSucceeded(t *testing.T) {
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
-	assert.Equal(t, server.PredictionSucceeded, predictionResponse.Status)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
 	assert.Equal(t, "**********", predictionResponse.Output)
 	assert.Contains(t, predictionResponse.Logs, "reading secret\nwriting secret\n")
 }

@@ -27,7 +27,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 
+	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -162,6 +165,40 @@ func setupCogRuntime(t *testing.T, cfg cogRuntimeServerConfig) *httptest.Server 
 	return s
 }
 
+// NewTestLogger returns a zap logger that writes JSON to `t.Logf`
+// and uses your preferred field names/order.
+// func NewTestLogger(t *testing.T, name string) *zap.Logger {
+// 	t.Helper()
+
+// 	encCfg := zapcore.EncoderConfig{
+// 		// keys in the order you want them to appear
+// 		LevelKey:      "severity",
+// 		TimeKey:       "timestamp",
+// 		NameKey:       "logger",
+// 		CallerKey:     "caller",
+// 		MessageKey:    "message",
+// 		StacktraceKey: "stacktrace",
+
+// 		LineEnding:     zapcore.DefaultLineEnding,
+// 		EncodeLevel:    zapcore.LowercaseLevelEncoder, // "info","error",...
+// 		EncodeCaller:   zapcore.ShortCallerEncoder,    // "file.go:123"
+// 		EncodeDuration: zapcore.StringDurationEncoder,
+
+// 		// zulu time
+// 		EncodeTime: zapcore.TimeEncoderOfLayout("2006-01-02T15:04:05.000Z07:00"),
+// 	}
+
+// 	w := zapcore.AddSync(zaptest.NewTestingWriter(t))
+// 	core := zapcore.NewCore(zapcore.NewJSONEncoder(encCfg), w, zapcore.DebugLevel)
+
+// 	logger := zap.New(core,
+// 		zap.AddCaller(),
+// 		zap.AddStacktrace(zapcore.ErrorLevel),
+// 	).Named(name)
+
+// 	return logger
+// }
+
 func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.Server, *server.Handler) {
 	t.Helper()
 	cfg.validate(t)
@@ -203,7 +240,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		envSet[k] = v
 	}
 
-	serverCfg := server.Config{
+	serverCfg := config.Config{
 		UseProcedureMode:          cfg.procedureMode,
 		AwaitExplicitShutdown:     cfg.explicitShutdown,
 		UploadURL:                 cfg.uploadURL,
@@ -264,9 +301,17 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		s.Config.Handler = handler
 		return s, nil
 	}
+
+	// logger := NewTestLogger(t, "harness-test")
+	logger := zaptest.NewLogger(t).Named("harness-test")
 	// In non-Legacy cog mode we create the go-handler
-	handler, err := server.NewHandler(serverCfg, cancel)
+	handler, err := server.NewHandler(t.Context(), serverCfg, cancel, logger)
 	require.NoError(t, err)
+
+	// Start the handler so runner manager initializes
+	err = handler.Start(ctx)
+	require.NoError(t, err)
+
 	mux := server.NewServeMux(handler, serverCfg.UseProcedureMode)
 	s.Config.Handler = mux
 
@@ -387,8 +432,13 @@ func writeCogConfig(t *testing.T, tempDir, predictorClass string, concurrencyMax
 		}{Max: concurrencyMax}
 	}
 	cogConfigFilePath := path.Join(tempDir, "cog.yaml")
+
+	// Debug logging
+
 	cogConfigFile, err := os.OpenFile(cogConfigFilePath, os.O_CREATE|os.O_WRONLY, 0o644)
 	require.NoError(t, err)
+	defer cogConfigFile.Close()
+
 	err = json.NewEncoder(cogConfigFile).Encode(conf)
 	require.NoError(t, err)
 }
@@ -398,7 +448,12 @@ func writeCogConfig(t *testing.T, tempDir, predictorClass string, concurrencyMax
 func linkPythonModule(t *testing.T, basePath, tempDir, module string) {
 	t.Helper()
 	runnersPath := path.Join(basePath, "python", "tests", "runners")
-	err := os.Symlink(path.Join(runnersPath, fmt.Sprintf("%s.py", module)), path.Join(tempDir, "predict.py"))
+	srcPath := path.Join(runnersPath, fmt.Sprintf("%s.py", module))
+	dstPath := path.Join(tempDir, "predict.py")
+
+	// Debug logging
+	t.Logf("Linking Python module: %s -> %s\n", srcPath, dstPath)
+	err := os.Symlink(srcPath, dstPath)
 	require.NoError(t, err)
 }
 
@@ -416,7 +471,7 @@ func healthCheck(t *testing.T, testServer *httptest.Server) server.HealthCheck {
 	return hc
 }
 
-func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedStatus server.Status, expectedSetupStatus server.SetupStatus) server.HealthCheck {
+func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedStatus runner.Status, expectedSetupStatus runner.SetupStatus) server.HealthCheck {
 	t.Helper()
 
 	timer := time.NewTicker(10 * time.Millisecond)
@@ -424,7 +479,7 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedSta
 
 	for range timer.C {
 		hc := healthCheck(t, testServer)
-		if hc.Status != server.StatusStarting.String() {
+		if hc.Status != runner.StatusStarting.String() {
 			assert.Equal(t, expectedStatus.String(), hc.Status)
 			assert.Equal(t, expectedSetupStatus, hc.Setup.Status)
 			return hc
@@ -433,19 +488,32 @@ func waitForSetupComplete(t *testing.T, testServer *httptest.Server, expectedSta
 	return server.HealthCheck{}
 }
 
-func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
+func waitForReady(t *testing.T, testServer *httptest.Server) server.HealthCheck {
+	t.Helper()
+	timer := time.NewTicker(10 * time.Millisecond)
+	defer timer.Stop()
+	for range timer.C {
+		hc := healthCheck(t, testServer)
+		if hc.Status == runner.StatusReady.String() {
+			return hc
+		}
+	}
+	return server.HealthCheck{}
+}
+
+func httpPredictionRequest(t *testing.T, runtimeServer *httptest.Server, prediction runner.PredictionRequest) *http.Request {
 	t.Helper()
 	assert.Empty(t, prediction.ID)
 	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
-func httpPredictionRequestWithID(t *testing.T, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
+func httpPredictionRequestWithID(t *testing.T, runtimeServer *httptest.Server, prediction runner.PredictionRequest) *http.Request {
 	t.Helper()
 	assert.NotEmpty(t, prediction.ID)
 	return httpPredictionReq(t, http.MethodPost, runtimeServer, prediction)
 }
 
-func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Server, prediction server.PredictionRequest) *http.Request {
+func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Server, prediction runner.PredictionRequest) *http.Request {
 	t.Helper()
 	if prediction.CreatedAt != "" {
 		t.Logf("using existing created_at: %s", prediction.CreatedAt)

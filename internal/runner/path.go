@@ -1,4 +1,4 @@
-package server
+package runner
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/getkin/kin-openapi/openapi3"
@@ -24,9 +25,9 @@ func isURI(s *openapi3.SchemaRef) bool {
 	return s.Value.Type.Is("string") && s.Value.Format == "uri"
 }
 
-// processInputPaths processes the input paths and discards the now unused paths from the input.
+// ProcessInputPaths processes the input paths and discards the now unused paths from the input.
 // Note that we return the input, but the expectation is that input will be mutated in-place.
-func processInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
+func ProcessInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
 	if doc == nil {
 		return input, nil
 	}
@@ -124,7 +125,8 @@ func handlePath(json any, paths *[]string, fn func(string, *[]string) (string, e
 	return json, nil
 }
 
-func base64ToInput(s string, paths *[]string) (string, error) {
+// Base64ToInput converts base64 data URLs to temporary files
+func Base64ToInput(s string, paths *[]string) (string, error) {
 	m := Base64Regex.FindStringSubmatch(s)
 	if m == nil {
 		return s, nil
@@ -148,7 +150,8 @@ func base64ToInput(s string, paths *[]string) (string, error) {
 	return f.Name(), nil
 }
 
-func urlToInput(s string, paths *[]string) (string, error) {
+// URLToInput downloads HTTP URLs to temporary files
+func URLToInput(s string, paths *[]string) (string, error) {
 	u, err := url.Parse(s)
 	if err != nil {
 		return s, nil
@@ -161,7 +164,7 @@ func urlToInput(s string, paths *[]string) (string, error) {
 		return "", err
 	}
 	defer f.Close() //nolint:errcheck // in error case, there isn't anything we can do.
-	resp, err := util.HTTPClientWithRetry().Get(s)
+	resp, err := http.DefaultClient.Get(s)
 	if err != nil {
 		return "", err
 	}
@@ -176,7 +179,8 @@ func urlToInput(s string, paths *[]string) (string, error) {
 	return f.Name(), nil
 }
 
-func outputToBase64(s string, paths *[]string) (string, error) {
+// OutputToBase64 converts file paths to base64 data URLs
+func OutputToBase64(s string, paths *[]string) (string, error) {
 	u, err := url.Parse(s)
 	if err != nil {
 		return s, nil
@@ -197,46 +201,61 @@ func outputToBase64(s string, paths *[]string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mt, b64), nil
 }
 
-func outputToUpload(uploadURL, predictionID string) func(s string, paths *[]string) (string, error) {
-	return func(s string, paths *[]string) (string, error) {
-		u, err := url.Parse(s)
-		if err != nil {
-			return s, nil
-		}
-		if u.Scheme != "file" {
-			return s, nil
-		}
-		p := u.Path
+// uploader handles file uploads with a long-lived HTTP client
+type uploader struct {
+	client    *http.Client
+	uploadURL string
+}
 
-		bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
-		if err != nil {
-			return "", err
-		}
-		*paths = append(*paths, p)
-		filename := path.Base(p)
-		uUpload, err := url.JoinPath(uploadURL, filename)
-		if err != nil {
-			return "", err
-		}
-		req, err := http.NewRequest(http.MethodPut, uUpload, bytes.NewReader(bs))
-		if err != nil {
-			return "", err
-		}
-		req.Header.Set("X-Prediction-ID", predictionID)
-		req.Header.Set("Content-Type", mimetype.Detect(bs).String())
-		resp, err := util.HTTPClientWithRetry().Do(req)
-		if err != nil {
-			return "", err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
-			return "", fmt.Errorf("failed to upload file: status %s", resp.Status)
-		}
-		location := resp.Header.Get("Location")
-		if location == "" {
-			// In case upload server does not respond with Location
-			location = uUpload
-		}
-		return location, nil
+// newUploader creates a new uploader instance
+func newUploader(uploadURL string) *uploader {
+	return &uploader{
+		client:    util.HTTPClientWithRetry(),
+		uploadURL: uploadURL,
 	}
+}
+
+// processOutput uploads a file and returns the upload URL
+func (u *uploader) processOutput(s, predictionID string, paths *[]string) (string, error) {
+	if u.client == nil {
+		return "", fmt.Errorf("uploader client not initialized")
+	}
+
+	parsedURL, err := url.Parse(s)
+	if err != nil {
+		return s, nil
+	}
+	if parsedURL.Scheme != "file" {
+		return s, nil
+	}
+	p := parsedURL.Path
+
+	bs, err := os.ReadFile(p) //nolint:gosec // expected dynamic path
+	if err != nil {
+		return "", err
+	}
+	*paths = append(*paths, p)
+	filename := path.Base(p)
+	uploadURL := strings.TrimSuffix(u.uploadURL, "/")
+	uUpload := uploadURL + "/" + filename
+	req, err := http.NewRequest(http.MethodPut, uUpload, bytes.NewReader(bs))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("X-Prediction-ID", predictionID)
+	req.Header.Set("Content-Type", mimetype.Detect(bs).String())
+	resp, err := u.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusAccepted {
+		return "", fmt.Errorf("failed to upload file: status %s", resp.Status)
+	}
+	location := resp.Header.Get("Location")
+	if location == "" {
+		// In case upload server does not respond with Location
+		location = uUpload
+	}
+	return location, nil
 }

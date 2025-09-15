@@ -1,4 +1,4 @@
-package server
+package runner
 
 import (
 	"errors"
@@ -35,4 +35,12 @@ func (u *uidCounter) allocate() (int, error) {
 	}
 	// NoBodyUID is used here to ensure we do not accidentally send back root's UID in a posix system
 	return NoBodyUID, errors.New("failed to find unused UID after max attempts")
+}
+
+// Global UID counter for process isolation
+var globalUIDCounter = &uidCounter{}
+
+// AllocateUID allocates a unique UID for process isolation
+func AllocateUID() (int, error) {
+	return globalUIDCounter.allocate()
 }
