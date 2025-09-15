@@ -1013,7 +1013,7 @@ func TestRunnerTempDirectoryCleanup(t *testing.T) {
 		err = r.Stop()
 		require.NoError(t, err, "Runner.Stop() should not error")
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 
 		_, err = os.Stat(tmpDir)
 		assert.True(t, os.IsNotExist(err), "Temp directory should be cleaned up after Stop()")
@@ -1424,30 +1424,25 @@ func TestForceKillCleanupFailures(t *testing.T) {
 
 	t.Run("procedure mode cleanup success returns token", func(t *testing.T) {
 		forceShutdown := config.NewForceShutdownSignal()
-		verifyCallCount := 0
 
 		r := &Runner{
-			cleanupTimeout: 100 * time.Millisecond,
+			cleanupTimeout: 1 * time.Millisecond,
 			forceShutdown:  forceShutdown,
 			cleanupSlot:    make(chan struct{}, 1),
-			verifyFn: func(pid int) error {
-				verifyCallCount++
-				if verifyCallCount >= 3 {
-					return nil // Success after a few attempts
-				}
-				return fmt.Errorf("process still exists")
-			},
-			logger: zaptest.NewLogger(t),
+			stopped:        make(chan bool),
+			logger:         zaptest.NewLogger(t),
 		}
 
 		// Start verification process
 		go r.verifyProcessCleanup(12345)
 
-		// Wait for verification to complete
-		time.Sleep(150 * time.Millisecond)
+		// Signal process stopped to trigger cleanup completion
+		close(r.stopped)
+
+		// Give a moment for cleanup to complete
+		time.Sleep(1 * time.Millisecond)
 
 		// Verify cleanup token was returned
 		assert.Len(t, r.cleanupSlot, 1)
-		assert.GreaterOrEqual(t, verifyCallCount, 3)
 	})
 }

@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/webhook"
@@ -747,43 +746,48 @@ func (m *Manager) Stop() error {
 		log.Info("stopping runner manager")
 
 		m.mu.Lock()
-		defer m.mu.Unlock()
-
-		// Stop all runners
-		for i, runner := range m.runners {
+		runnerList := make([]*Runner, 0, len(m.runners))
+		for _, runner := range m.runners {
 			if runner != nil {
-				log.Infow("stopping runner", "name", runner.runnerCtx.id, "slot", i)
-				if err := runner.Stop(); err != nil {
-					log.Errorw("error stopping runner", "name", runner.runnerCtx.id, "error", err)
-					if stopErr == nil {
-						stopErr = err
-					}
+				runnerList = append(runnerList, runner)
+			}
+		}
+		m.mu.Unlock()
+
+		// Signal all runners for graceful shutdown
+		for _, runner := range runnerList {
+			runner.GracefulShutdown()
+		}
+
+		// Wait for runners to become idle or timeout using WaitGroup
+		gracePeriod := m.cfg.RunnerShutdownGracePeriod
+		log.Infow("grace period configuration", "grace_period", gracePeriod)
+		graceCtx, cancel := context.WithTimeout(m.ctx, gracePeriod)
+		defer cancel()
+
+		var wg sync.WaitGroup
+		for _, runner := range runnerList {
+			wg.Go(func() {
+				log.Debugw("waiting for runner to become idle", "name", runner.runnerCtx.id, "grace_period", gracePeriod)
+				// Wait for this runner to become idle OR timeout
+				select {
+				case <-runner.readyForShutdown:
+					log.Infow("runner became idle naturally", "name", runner.runnerCtx.id)
+				case <-graceCtx.Done():
+					log.Warnw("grace period expired for runner", "name", runner.runnerCtx.id, "context_err", graceCtx.Err())
 				}
-			}
+
+				// Always try to stop, handle errors independently
+				if err := runner.Stop(); err != nil {
+					log.Errorw("failed to stop runner gracefully", "name", runner.runnerCtx.id, "error", err)
+				}
+			})
 		}
 
-		// Wait for runners to stop concurrently
-		eg := errgroup.Group{}
-		for i, runner := range m.runners {
-			if runner != nil {
-				name := runner.runnerCtx.id
-				eg.Go(func() error {
-					log.Infow("waiting for runner to stop", "name", name, "slot", i)
-					runner.WaitForStop()
-					return nil
-				})
-			}
-		}
+		// Wait for all runners to complete shutdown (success or failure)
+		wg.Wait()
 
-		if err := eg.Wait(); err != nil {
-			log.Errorw("error waiting for runners to stop", "error", err)
-			if stopErr == nil {
-				stopErr = err
-			}
-		} else {
-			log.Info("all runners stopped successfully")
-		}
-
+		log.Info("all runners stopped successfully")
 		close(m.stopped)
 	})
 

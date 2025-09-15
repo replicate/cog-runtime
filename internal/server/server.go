@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -37,22 +38,21 @@ type IPC struct {
 }
 
 type Handler struct {
-	cfg           config.Config
-	shutdown      context.CancelFunc
-	startedAt     time.Time
-	runnerManager *runner.Manager
+	cfg              config.Config
+	startedAt        time.Time
+	runnerManager    *runner.Manager
+	gracefulShutdown atomic.Bool
 
 	cwd string
 
 	logger *zap.Logger
 }
 
-func NewHandler(ctx context.Context, cfg config.Config, shutdown context.CancelFunc, baseLogger *zap.Logger) (*Handler, error) {
+func NewHandler(ctx context.Context, cfg config.Config, baseLogger *zap.Logger) (*Handler, error) {
 	runnerManager := runner.NewManager(ctx, cfg, baseLogger)
 
 	h := &Handler{
 		cfg:           cfg,
-		shutdown:      shutdown,
 		startedAt:     time.Now(),
 		runnerManager: runnerManager,
 		cwd:           cfg.WorkingDirectory,
@@ -133,30 +133,21 @@ func (h *Handler) OpenAPI(w http.ResponseWriter, r *http.Request) {
 	h.writeBytes(w, []byte(schema))
 }
 
-func (h *Handler) Shutdown(w http.ResponseWriter, r *http.Request) {
-	err := h.Stop()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	} else {
-		w.WriteHeader(http.StatusOK)
-	}
-}
-
 // ForceKillAll immediately force-kills all runners (for test cleanup)
 func (h *Handler) ForceKillAll() {
 	h.runnerManager.ForceKillAll()
 }
 
 func (h *Handler) Stop() error {
-	// Stop the runner manager and handle shutdown in background
-	go func() {
-		log := h.logger.Sugar()
-		if err := h.runnerManager.Stop(); err != nil {
-			log.Errorw("failed to stop runner manager", "error", err)
-			os.Exit(1)
-		}
-		h.shutdown()
-	}()
+	// Set graceful shutdown flag to reject new predictions
+	h.gracefulShutdown.Store(true)
+
+	// Stop the runner manager synchronously
+	log := h.logger.Sugar()
+	if err := h.runnerManager.Stop(); err != nil {
+		log.Errorw("failed to stop runner manager", "error", err)
+		return err
+	}
 	return nil
 }
 
@@ -207,6 +198,13 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.Sugar()
+
+	// Reject new predictions during graceful shutdown
+	if h.gracefulShutdown.Load() {
+		http.Error(w, "server shutting down", http.StatusServiceUnavailable)
+		return
+	}
+
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "invalid content type", http.StatusUnsupportedMediaType)
 		return

@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -303,6 +304,8 @@ type Runner struct {
 	procedureHash      string
 	mu                 sync.RWMutex
 	stopped            chan bool
+	shutdownWhenIdle   atomic.Bool
+	readyForShutdown   chan struct{} // closed when idle and ready to be stopped
 	setupComplete      chan struct{} // closed on first READY after setup
 	webhookSender      webhook.Sender
 	logCaptureComplete chan struct{} // closed when both stdout/stderr capture complete
@@ -343,6 +346,34 @@ func (r *Runner) Idle() bool {
 
 func (r *Runner) WaitForStop() {
 	<-r.stopped
+}
+
+func (r *Runner) GracefulShutdown() {
+	log := r.logger.Sugar()
+	if !r.shutdownWhenIdle.CompareAndSwap(false, true) {
+		log.Debugw("graceful shutdown already initiated", "runner_id", r.runnerCtx.id)
+		return
+	}
+
+	r.mu.RLock()
+	shouldSignal := (r.status == StatusReady && len(r.pending) == 0)
+	r.mu.RUnlock()
+
+	log.Debugw("graceful shutdown initiated", "runner_id", r.runnerCtx.id, "status", r.status, "pending_count", len(r.pending), "should_signal", shouldSignal)
+
+	if shouldSignal {
+		if r.readyForShutdown == nil {
+			log.Warnw("readyForShutdown channel is nil, cannot signal shutdown readiness", "runner_id", r.runnerCtx.id)
+		} else {
+			select {
+			case <-r.readyForShutdown:
+				log.Debugw("readyForShutdown already closed", "runner_id", r.runnerCtx.id)
+			default:
+				log.Debugw("closing readyForShutdown channel", "runner_id", r.runnerCtx.id)
+				close(r.readyForShutdown)
+			}
+		}
+	}
 }
 
 func (r *Runner) Start(ctx context.Context) error {
@@ -676,44 +707,32 @@ func (r *Runner) ForceKill() {
 
 func (r *Runner) verifyProcessCleanup(pid int) {
 	log := r.logger.Sugar()
-	const checkInterval = 10 * time.Millisecond
-
 	log.Infow("starting process cleanup verification", "pid", pid)
 
 	timeout := r.cleanupTimeout
 	if timeout == 0 {
-		timeout = 10 * time.Second // Default fallback
+		timeout = 10 * time.Second
 	}
 
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
-	ticker := time.NewTicker(checkInterval)
-	defer ticker.Stop()
-
-	for {
+	select {
+	case <-r.stopped:
+		log.Infow("process cleanup verified successfully", "pid", pid)
 		select {
-		case <-timer.C:
-			log.Errorw("process cleanup timeout exceeded, forcing server exit",
-				"pid", pid, "timeout", timeout)
-			// Signal forced shutdown - this is idempotent and never blocks
-			if r.forceShutdown.TriggerForceShutdown() {
-				log.Errorw("triggered force shutdown signal")
-			}
-			return
-
-		case <-ticker.C:
-			// Verify if process group has been terminated
-			if err := r.verifyFn(pid); err == nil {
-				log.Infow("process cleanup verified successfully", "pid", pid)
-				// Return cleanup token to allow future cleanup
-				select {
-				case r.cleanupSlot <- struct{}{}:
-				default:
-				}
-				return
-			}
+		case r.cleanupSlot <- struct{}{}:
+		default:
 		}
+		return
+
+	case <-timer.C:
+		log.Errorw("process cleanup timeout exceeded, forcing server exit",
+			"pid", pid, "timeout", timeout)
+		if r.forceShutdown.TriggerForceShutdown() {
+			log.Errorw("triggered force shutdown signal")
+		}
+		return
 	}
 }
 
@@ -806,6 +825,17 @@ func (r *Runner) updateStatus(statusStr string) error {
 		return err
 	}
 	r.status = status
+
+	// Close readyForShutdown channel when idle and shutdown requested
+	if status == StatusReady && r.shutdownWhenIdle.Load() && len(r.pending) == 0 {
+		select {
+		case <-r.readyForShutdown:
+			// Already closed
+		default:
+			close(r.readyForShutdown)
+		}
+	}
+
 	return nil
 }
 
@@ -909,14 +939,14 @@ func (r *Runner) updateSetupResult() {
 	switch r.setupResult.Status {
 	case SetupSucceeded:
 		r.status = StatusReady
-		log.Debug("setup succeeded", "status", r.status.String())
+		log.Debugw("setup succeeded", "status", r.status.String())
 	case SetupFailed:
 		r.status = StatusSetupFailed
-		log.Debug("setup failed", "status", r.status.String())
+		log.Debugw("setup failed", "status", r.status.String())
 	default:
 		r.setupResult.Status = SetupFailed
 		r.status = StatusSetupFailed
-		log.Debug("unknown setup status, defaulting to failed", "status", r.status.String())
+		log.Debugw("unknown setup status, defaulting to failed", "status", r.status.String())
 	}
 }
 
@@ -972,6 +1002,7 @@ func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx Runn
 		verifyFn:           verifyProcessGroupTerminated,
 		cleanupSlot:        make(chan struct{}, 1),
 		stopped:            make(chan bool),
+		readyForShutdown:   make(chan struct{}),
 		setupComplete:      make(chan struct{}),
 		logCaptureComplete: make(chan struct{}),
 		cleanupTimeout:     cleanupTimeout,

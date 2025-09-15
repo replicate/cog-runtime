@@ -32,10 +32,41 @@ import (
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
+	"github.com/replicate/cog-runtime/internal/service"
 )
 
 // This file implements the basis for the test harness. It is used to test the
 // runtime server.
+
+// httpTestServerWrapper wraps httptest.Server to implement service.HTTPServer interface
+type httpTestServerWrapper struct {
+	*httptest.Server
+	closeCh   chan struct{}
+	closeOnce sync.Once
+}
+
+func newHTTPTestServerWrapper(srv *httptest.Server) *httpTestServerWrapper {
+	return &httpTestServerWrapper{
+		Server:  srv,
+		closeCh: make(chan struct{}),
+	}
+}
+
+func (w *httpTestServerWrapper) ListenAndServe() error {
+	// Block until Close() is called
+	<-w.closeCh
+	return nil
+}
+
+func (w *httpTestServerWrapper) Close() error {
+	// Signal ListenAndServe to return (safe close)
+	w.closeOnce.Do(func() {
+		close(w.closeCh)
+	})
+	// Also close the httptest server
+	w.Server.Close()
+	return nil
+}
 
 const (
 	procedureFilePathURITemplate = "file://%s/python/tests/procedures/%s"
@@ -138,13 +169,14 @@ func testHarnessReceiverServer(t *testing.T) *testHarnessReceiver {
 }
 
 type cogRuntimeServerConfig struct {
-	procedureMode    bool
-	explicitShutdown bool
-	uploadURL        string
-	module           string
-	predictorClass   string
-	concurrencyMax   int
-	maxRunners       int
+	procedureMode             bool
+	explicitShutdown          bool
+	uploadURL                 string
+	module                    string
+	predictorClass            string
+	concurrencyMax            int
+	maxRunners                int
+	runnerShutdownGracePeriod time.Duration
 
 	envSet   map[string]string
 	envUnset []string
@@ -161,7 +193,7 @@ func (cfg *cogRuntimeServerConfig) validate(t *testing.T) {
 // setupCogRuntime is a convenience function that returns the server without the handler
 func setupCogRuntime(t *testing.T, cfg cogRuntimeServerConfig) *httptest.Server {
 	t.Helper()
-	s, _ := setupCogRuntimeServer(t, cfg)
+	s, _, _ := setupCogRuntimeServer(t, cfg)
 	return s
 }
 
@@ -199,7 +231,7 @@ func setupCogRuntime(t *testing.T, cfg cogRuntimeServerConfig) *httptest.Server 
 // 	return logger
 // }
 
-func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.Server, *server.Handler) {
+func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.Server, *server.Handler, *service.Service) {
 	t.Helper()
 	cfg.validate(t)
 	tempDir := t.TempDir()
@@ -250,7 +282,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		EnvUnset:                  cfg.envUnset,
 		PythonBinPath:             path.Join(pathEnv, "python3"),
 		MaxRunners:                cfg.maxRunners,
-		RunnerShutdownGracePeriod: 0, // Force immediate cleanup in tests
+		RunnerShutdownGracePeriod: cfg.runnerShutdownGracePeriod, // Use configured grace period or 0 for immediate cleanup
 	}
 	concurrencyMax := max(cfg.concurrencyMax, 1)
 	t.Logf("concurrency max: %d", concurrencyMax)
@@ -299,21 +331,48 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		handler := httputil.NewSingleHostReverseProxy(target)
 
 		s.Config.Handler = handler
-		return s, nil
+		return s, nil, nil
 	}
 
 	// logger := NewTestLogger(t, "harness-test")
 	logger := zaptest.NewLogger(t).Named("harness-test")
-	// In non-Legacy cog mode we create the go-handler
-	handler, err := server.NewHandler(t.Context(), serverCfg, cancel, logger)
+
+	// Create handler with service shutdown function instead of test context cancel
+	handler, err := server.NewHandler(t.Context(), serverCfg, logger)
 	require.NoError(t, err)
 
 	// Start the handler so runner manager initializes
 	err = handler.Start(ctx)
 	require.NoError(t, err)
 
+	// Create the server mux and set the handler on the service
 	mux := server.NewServeMux(handler, serverCfg.UseProcedureMode)
 	s.Config.Handler = mux
+
+	httpWrapper := newHTTPTestServerWrapper(s)
+	svc := service.New(
+		serverCfg,
+		logger,
+		service.HTTPServerOption{HTTPServer: httpWrapper},
+		service.HandlerOption{Handler: handler},
+	)
+
+	// Initialize service (will skip handler and HTTP server creation since we set them)
+	err = svc.Initialize(ctx)
+	require.NoError(t, err)
+
+	// Register the shutdown endpoint on the mux since service is *not* initializing the HTTP server
+	// we should probably move this to the service but that can defer to another PR.
+	mux.HandleFunc("POST /shutdown", svc.HandleShutdown)
+
+	go func() {
+		_ = svc.Run(t.Context())
+	}()
+
+	// Wait for service to start
+	require.Eventually(t, func() bool {
+		return svc.IsStarted()
+	}, 10*time.Second, 100*time.Millisecond, "service should start")
 
 	// Ensure cleanup of runners on test completion
 	t.Cleanup(func() {
@@ -322,7 +381,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 		}
 	})
 
-	return s, handler
+	return s, handler, svc
 }
 
 func startLegacyCogServer(t *testing.T, ctx context.Context, pythonPath, tempDir string, environ []string, uploadUrl string) (int, error) { //nolint:revive // always send T first, allow context to follow T

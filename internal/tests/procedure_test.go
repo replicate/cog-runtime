@@ -110,7 +110,7 @@ func TestProcedureSlots(t *testing.T) {
 		t.Skipf("procedure endpoint has diverged from legacy Cog")
 	}
 
-	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer, handler, _ := setupCogRuntimeServer(t, cogRuntimeServerConfig{
 		procedureMode:    true,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -227,7 +227,7 @@ func TestProcedureSlotBadProcedure(t *testing.T) {
 		t.Skipf("procedure endpoint has diverged from legacy Cog")
 	}
 
-	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer, handler, _ := setupCogRuntimeServer(t, cogRuntimeServerConfig{
 		procedureMode:    true,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -287,7 +287,7 @@ func TestProcedureAsyncConcurrency(t *testing.T) {
 		t.Skipf("procedure endpoint has diverged from legacy Cog")
 	}
 
-	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer, handler, _ := setupCogRuntimeServer(t, cogRuntimeServerConfig{
 		procedureMode:    true,
 		explicitShutdown: true,
 		uploadURL:        "",
@@ -424,7 +424,7 @@ func TestProcedureNonAsyncConcurrency(t *testing.T) {
 		t.Skipf("procedure endpoint has diverged from legacy Cog")
 	}
 
-	runtimeServer, handler := setupCogRuntimeServer(t, cogRuntimeServerConfig{
+	runtimeServer, handler, _ := setupCogRuntimeServer(t, cogRuntimeServerConfig{
 		procedureMode:    true,
 		explicitShutdown: true,
 		uploadURL:        "",
