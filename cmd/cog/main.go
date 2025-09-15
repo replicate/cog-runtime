@@ -16,7 +16,7 @@ import (
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/service"
-	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/cog-runtime/internal/version"
 )
 
 type ServerCmd struct {
@@ -125,7 +125,7 @@ func (s *ServerCmd) Run() error {
 	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	log.Infow("starting Cog HTTP server", "addr", addr, "version", util.Version(), "pid", os.Getpid())
+	log.Infow("starting Cog HTTP server", "addr", addr, "version", version.Version(), "pid", os.Getpid())
 
 	// Create service with base logger
 	svc := service.New(cfg, baseLogger)

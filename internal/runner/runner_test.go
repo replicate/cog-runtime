@@ -1208,7 +1208,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		assert.Equal(t, "partial output", pending.response.Output)
 		assert.Equal(t, predictionID, pending.response.ID)
 		assert.Equal(t, map[string]any{"test": "input"}, pending.response.Input)
-		assert.Equal(t, []string{"existing log"}, pending.response.Logs) // Logs preserved
+		assert.Equal(t, LogsSlice{"existing log"}, pending.response.Logs) // Logs preserved
 		pending.mu.Unlock()
 	})
 

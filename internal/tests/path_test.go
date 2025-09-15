@@ -18,7 +18,6 @@ import (
 
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
-	"github.com/replicate/cog-runtime/internal/util"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -337,13 +336,13 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 
 	testDataPrefix := contentServer.URL + "/mimetype/"
 
-	gifPredictionID, err := util.PredictionID()
+	gifPredictionID, err := server.PredictionID()
 	require.NoError(t, err)
-	jarPredictionID, err := util.PredictionID()
+	jarPredictionID, err := server.PredictionID()
 	require.NoError(t, err)
-	tarPredictionID, err := util.PredictionID()
+	tarPredictionID, err := server.PredictionID()
 	require.NoError(t, err)
-	webpPredictionID, err := util.PredictionID()
+	webpPredictionID, err := server.PredictionID()
 	require.NoError(t, err)
 
 	predictions := []struct {

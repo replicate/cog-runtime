@@ -15,8 +15,7 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 	"github.com/getkin/kin-openapi/openapi3"
-
-	"github.com/replicate/cog-runtime/internal/util"
+	"github.com/replicate/go/httpclient"
 )
 
 var Base64Regex = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
@@ -210,7 +209,7 @@ type uploader struct {
 // newUploader creates a new uploader instance
 func newUploader(uploadURL string) *uploader {
 	return &uploader{
-		client:    util.HTTPClientWithRetry(),
+		client:    httpclient.ApplyRetryPolicy(http.DefaultClient),
 		uploadURL: uploadURL,
 	}
 }
