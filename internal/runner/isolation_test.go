@@ -40,9 +40,7 @@ func TestUID(t *testing.T) {
 		uidChan := make(chan int, numGoroutines*uidsPerGoroutine)
 
 		for range numGoroutines {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			wg.Go(func() {
 				for range uidsPerGoroutine {
 					uid, err := uidCounter.allocate()
 					if err != nil {
@@ -51,7 +49,7 @@ func TestUID(t *testing.T) {
 					}
 					uidChan <- uid
 				}
-			}()
+			})
 		}
 
 		wg.Wait()
