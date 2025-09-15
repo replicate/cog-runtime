@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // Config holds all configuration for the cog runtime service
 type Config struct {
@@ -30,6 +33,39 @@ type Config struct {
 	EnvSet   map[string]string
 	EnvUnset []string
 
-	// Force shutdown channel
-	ForceShutdown chan<- struct{}
+	// Force shutdown signal
+	ForceShutdown *ForceShutdownSignal
+}
+
+// ForceShutdownSignal provides idempotent force shutdown signaling
+type ForceShutdownSignal struct {
+	mu        sync.Mutex
+	ch        chan struct{}
+	triggered bool
+}
+
+// NewForceShutdownSignal creates a new force shutdown signal
+func NewForceShutdownSignal() *ForceShutdownSignal {
+	return &ForceShutdownSignal{
+		ch: make(chan struct{}),
+	}
+}
+
+// WatchForForceShutdown returns a channel that closes when force shutdown is triggered
+func (f *ForceShutdownSignal) WatchForForceShutdown() <-chan struct{} {
+	return f.ch
+}
+
+// TriggerForceShutdown triggers force shutdown idempotently
+func (f *ForceShutdownSignal) TriggerForceShutdown() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.triggered {
+		return false // Already triggered
+	}
+
+	f.triggered = true
+	close(f.ch)
+	return true // First trigger
 }

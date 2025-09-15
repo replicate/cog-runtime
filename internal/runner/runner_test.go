@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
+
+	"github.com/replicate/cog-runtime/internal/config"
 )
 
 func TestRunnerCapacity(t *testing.T) {
@@ -787,7 +789,7 @@ func TestNewRunner(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
 		require.NoError(t, err)
 
 		assert.Equal(t, "test-runner", r.runnerCtx.id)
@@ -823,7 +825,7 @@ func TestNewRunner(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
 		require.NoError(t, err)
 
 		// Should store the command correctly
@@ -847,7 +849,7 @@ func TestNewRunner(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
 		require.NoError(t, err)
 		require.NotNil(t, r)
 
@@ -885,7 +887,7 @@ func TestProcedureRunnerCreation(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, zaptest.NewLogger(t))
+		r, err := NewRunner(ctx, cancel, runnerCtx, cmd, 1, 0, nil, zaptest.NewLogger(t))
 		require.NoError(t, err)
 
 		assert.Equal(t, "proc-runner", r.runnerCtx.id)
@@ -1084,13 +1086,13 @@ func TestRunnerConfigCreatesConfigJSON(t *testing.T) {
 	configData, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 
-	var config map[string]any
-	err = json.Unmarshal(configData, &config)
+	var cfg map[string]any
+	err = json.Unmarshal(configData, &cfg)
 	require.NoError(t, err)
 
-	assert.Equal(t, "predict", config["module_name"])
-	assert.Equal(t, "TestPredictor", config["predictor_name"])
-	assert.Equal(t, float64(2), config["max_concurrency"]) //nolint:testifylint // JSON unmarshals numbers as float64
+	assert.Equal(t, "predict", cfg["module_name"])
+	assert.Equal(t, "TestPredictor", cfg["predictor_name"])
+	assert.Equal(t, float64(2), cfg["max_concurrency"]) //nolint:testifylint // JSON unmarshals numbers as float64
 
 	// Verify runner max concurrency was updated
 	assert.Equal(t, 2, runner.maxConcurrency)
@@ -1359,5 +1361,93 @@ func TestPerPredictionWatcher(t *testing.T) {
 		case <-time.After(200 * time.Millisecond):
 			t.Fatal("Watcher did not exit after context cancellation")
 		}
+	})
+}
+
+func TestForceKillCleanupFailures(t *testing.T) {
+	// These tests cannot run in parallel because they modify package-level osExit variable
+
+	t.Run("non-procedure mode kill failure marks runner defunct", func(t *testing.T) {
+		killCalled := false
+		killError := fmt.Errorf("kill failed")
+
+		r := &Runner{
+			cmd: &exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			killFn: func(pid int) error {
+				killCalled = true
+				return killError
+			},
+			status:        StatusReady,
+			forceShutdown: nil, // Non-procedure mode
+			logger:        zaptest.NewLogger(t),
+		}
+
+		r.ForceKill()
+
+		assert.True(t, killCalled)
+		assert.True(t, r.killed)
+		assert.Equal(t, StatusDefunct, r.status)
+	})
+
+	t.Run("procedure mode kill failure marks runner defunct and returns token", func(t *testing.T) {
+		killCalled := false
+		killError := fmt.Errorf("kill failed")
+		forceShutdown := config.NewForceShutdownSignal()
+
+		r := &Runner{
+			cmd: &exec.Cmd{
+				Process: &os.Process{Pid: 12345},
+			},
+			killFn: func(pid int) error {
+				killCalled = true
+				return killError
+			},
+			status:        StatusReady,
+			cleanupSlot:   make(chan struct{}, 1),
+			forceShutdown: forceShutdown,
+			logger:        zaptest.NewLogger(t),
+		}
+
+		// Initialize cleanup slot with token
+		r.cleanupSlot <- struct{}{}
+
+		r.ForceKill()
+
+		assert.True(t, killCalled)
+		assert.True(t, r.killed)
+		assert.Equal(t, StatusDefunct, r.status)
+		// Verify cleanup token was returned
+		assert.Len(t, r.cleanupSlot, 1)
+	})
+
+	t.Run("procedure mode cleanup success returns token", func(t *testing.T) {
+		forceShutdown := config.NewForceShutdownSignal()
+		verifyCallCount := 0
+
+		r := &Runner{
+			cleanupTimeout: 100 * time.Millisecond,
+			forceShutdown:  forceShutdown,
+			cleanupSlot:    make(chan struct{}, 1),
+			verifyFn: func(pid int) error {
+				verifyCallCount++
+				if verifyCallCount >= 3 {
+					return nil // Success after a few attempts
+				}
+				return fmt.Errorf("process still exists")
+			},
+			logger: zaptest.NewLogger(t),
+		}
+
+		// Start verification process
+		go r.verifyProcessCleanup(12345)
+
+		// Wait for verification to complete
+		time.Sleep(150 * time.Millisecond)
+
+		// Verify cleanup token was returned
+		assert.Len(t, r.cleanupSlot, 1)
+		assert.GreaterOrEqual(t, verifyCallCount, 3)
 	})
 }

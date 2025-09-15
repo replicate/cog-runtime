@@ -19,6 +19,11 @@ import (
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
+// Package-level variable for os.Exit to enable testing
+var osExit = func(code int) {
+	os.Exit(code)
+}
+
 // Service is the root lifecycle owner for the cog runtime
 type Service struct {
 	cfg config.Config
@@ -29,8 +34,9 @@ type Service struct {
 	shutdown        chan struct{}
 	shutdownStarted atomic.Bool
 
-	httpServer *http.Server
-	handler    *server.Handler
+	httpServer    *http.Server
+	handler       *server.Handler
+	forceShutdown *config.ForceShutdownSignal
 
 	logger *zap.Logger
 }
@@ -64,7 +70,7 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 	log := s.logger.Sugar()
 	log.Info("initializing HTTP server")
 
-	forceShutdown := make(chan struct{}, 1)
+	s.forceShutdown = config.NewForceShutdownSignal()
 	serverCfg := config.Config{
 		UseProcedureMode:          s.cfg.UseProcedureMode,
 		AwaitExplicitShutdown:     s.cfg.AwaitExplicitShutdown,
@@ -74,7 +80,7 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 		WorkingDirectory:          s.cfg.WorkingDirectory,
 		RunnerShutdownGracePeriod: s.cfg.RunnerShutdownGracePeriod,
 		CleanupTimeout:            s.cfg.CleanupTimeout,
-		ForceShutdown:             forceShutdown,
+		ForceShutdown:             s.forceShutdown,
 		MaxRunners:                s.cfg.MaxRunners,
 	}
 
@@ -181,6 +187,18 @@ func (s *Service) Run(ctx context.Context) error {
 			return s.handleSignals(egCtx)
 		})
 	}
+
+	// Monitor for forced shutdown from cleanup failures
+	eg.Go(func() error {
+		select {
+		case <-s.forceShutdown.WatchForForceShutdown():
+			log.Errorw("process cleanup failed, forcing immediate exit")
+			osExit(1)
+			return nil // This won't be reached, but needed for compile
+		case <-egCtx.Done():
+			return egCtx.Err()
+		}
+	})
 
 	close(s.started)
 

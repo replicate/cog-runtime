@@ -19,6 +19,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"go.uber.org/zap"
 
+	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/util"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
@@ -305,6 +306,8 @@ type Runner struct {
 	setupComplete      chan struct{} // closed on first READY after setup
 	webhookSender      webhook.Sender
 	logCaptureComplete chan struct{} // closed when both stdout/stderr capture complete
+	cleanupTimeout     time.Duration
+	forceShutdown      *config.ForceShutdownSignal
 
 	logger *zap.Logger
 }
@@ -620,11 +623,98 @@ func (r *Runner) ForceKill() {
 		return
 	}
 
-	err = r.killFn(cmd.Process.Pid)
+	pid := cmd.Process.Pid
+
+	// In non-procedure mode, use cleanup token system for proper isolation cleanup
+	if r.forceShutdown == nil {
+		// Non-procedure mode: simple kill without cleanup token system
+		err = r.killFn(pid)
+		if err != nil {
+			log.Errorw("failed to kill process", "pid", pid, "error", err)
+			// Mark runner as defunct on kill failure
+			r.status = StatusDefunct
+		}
+		r.killed = true
+		log.Infow("force killed runner process", "pid", pid)
+		return
+	}
+
+	// Procedure mode: use cleanup token system for proper isolation cleanup
+	// Try to acquire cleanup token
+	var gotToken bool
+	select {
+	case <-r.cleanupSlot:
+		gotToken = true
+		log.Infow("acquired cleanup token for force kill", "pid", pid)
+	default:
+		log.Infow("cleanup already in progress, skipping force kill", "pid", pid)
+		return
+	}
+
+	err = r.killFn(pid)
 	if err != nil {
-		log.Errorw("failed to kill process", "pid", cmd.Process.Pid, "error", err)
+		log.Errorw("failed to kill process", "pid", pid, "error", err)
+		// Mark runner as defunct on kill failure to prevent it from being marked ready again
+		r.status = StatusDefunct
+		r.killed = true
+		// Return cleanup token on kill failure
+		if gotToken {
+			select {
+			case r.cleanupSlot <- struct{}{}:
+			default:
+			}
+		}
+		return
 	}
 	r.killed = true
+
+	// Start background verification if we got the cleanup token
+	if gotToken {
+		go r.verifyProcessCleanup(pid)
+	}
+}
+
+func (r *Runner) verifyProcessCleanup(pid int) {
+	log := r.logger.Sugar()
+	const checkInterval = 10 * time.Millisecond
+
+	log.Infow("starting process cleanup verification", "pid", pid)
+
+	timeout := r.cleanupTimeout
+	if timeout == 0 {
+		timeout = 10 * time.Second // Default fallback
+	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			log.Errorw("process cleanup timeout exceeded, forcing server exit",
+				"pid", pid, "timeout", timeout)
+			// Signal forced shutdown - this is idempotent and never blocks
+			if r.forceShutdown.TriggerForceShutdown() {
+				log.Errorw("triggered force shutdown signal")
+			}
+			return
+
+		case <-ticker.C:
+			// Verify if process group has been terminated
+			if err := r.verifyFn(pid); err == nil {
+				log.Infow("process cleanup verified successfully", "pid", pid)
+				// Return cleanup token to allow future cleanup
+				select {
+				case r.cleanupSlot <- struct{}{}:
+				default:
+				}
+				return
+			}
+		}
+	}
 }
 
 func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error) {
@@ -863,7 +953,7 @@ func verifyProcessGroupTerminated(pid int) error {
 }
 
 // NewRunner creates a new runner instance with the given context
-func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx RunnerContext, command *exec.Cmd, maxConcurrency int, logger *zap.Logger) (*Runner, error) {
+func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx RunnerContext, command *exec.Cmd, maxConcurrency int, cleanupTimeout time.Duration, forceShutdown *config.ForceShutdownSignal, logger *zap.Logger) (*Runner, error) {
 	if maxConcurrency <= 0 {
 		maxConcurrency = 1
 	}
@@ -884,6 +974,8 @@ func NewRunner(ctx context.Context, ctxCancel context.CancelFunc, runnerCtx Runn
 		stopped:            make(chan bool),
 		setupComplete:      make(chan struct{}),
 		logCaptureComplete: make(chan struct{}),
+		cleanupTimeout:     cleanupTimeout,
+		forceShutdown:      forceShutdown,
 		logger:             runnerLogger,
 	}
 

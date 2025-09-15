@@ -349,7 +349,12 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		tmpDir:     tmpDir,
 		uploader:   uploader,
 	}
-	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, cogYaml.Concurrency.Max, m.baseLogger)
+	// Only enable forced shutdown for procedure mode
+	var forceShutdown *config.ForceShutdownSignal
+	if m.cfg.UseProcedureMode {
+		forceShutdown = m.cfg.ForceShutdown
+	}
+	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, cogYaml.Concurrency.Max, m.cfg.CleanupTimeout, forceShutdown, m.baseLogger)
 	if err != nil {
 		return nil, err
 	}
@@ -678,7 +683,12 @@ func (m *Manager) createProcedureRunner(runnerName, procedureHash string) (*Runn
 		uploader:   uploader,
 	}
 
-	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, 1, m.baseLogger)
+	// Only enable forced shutdown for procedure mode
+	var forceShutdown *config.ForceShutdownSignal
+	if m.cfg.UseProcedureMode {
+		forceShutdown = m.cfg.ForceShutdown
+	}
+	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, 1, m.cfg.CleanupTimeout, forceShutdown, m.baseLogger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create runner: %w", err)
 	}
