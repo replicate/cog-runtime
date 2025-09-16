@@ -16,7 +16,8 @@ class NestedItem:
     description: str
 
 
-class Container(BaseModel):
+@dataclass
+class Container:
     items: List[Item]
     tags: List[str]
     nested: NestedItem
