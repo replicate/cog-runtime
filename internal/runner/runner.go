@@ -228,7 +228,7 @@ func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionRespons
 	// Send webhooks based on prediction status
 	switch response.Status {
 	case PredictionStarting:
-		log.Infow("prediction started", "id", response.ID, "status", response.Status)
+		log.Debugw("prediction started", "id", response.ID, "status", response.Status)
 		// Send start webhook async (intermediary)
 		go func() { _ = pending.sendWebhook(webhook.EventStart) }()
 
@@ -239,7 +239,7 @@ func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionRespons
 		pending.mu.Unlock()
 
 	case PredictionProcessing:
-		log.Infow("prediction processing", "id", response.ID, "status", response.Status)
+		log.Debugw("prediction processing", "id", response.ID, "status", response.Status)
 		// Send output/logs webhook async (intermediary)
 		if response.Output != nil {
 			go func() { _ = pending.sendWebhook(webhook.EventOutput) }()
@@ -727,9 +727,9 @@ func (r *Runner) ForceKill() {
 	select {
 	case <-r.cleanupSlot:
 		gotToken = true
-		log.Infow("acquired cleanup token for force kill", "pid", pid)
+		log.Tracew("acquired cleanup token for force kill", "pid", pid)
 	default:
-		log.Infow("cleanup already in progress, skipping force kill", "pid", pid)
+		log.Tracew("cleanup already in progress, skipping force kill", "pid", pid)
 		return
 	}
 

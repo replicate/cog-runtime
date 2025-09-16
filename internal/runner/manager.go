@@ -87,7 +87,7 @@ func newManager(ctx context.Context, cfg config.Config, logger *logging.Logger) 
 					maxRunners = 1
 				} else {
 					maxRunners = max(1, cogYaml.Concurrency.Max)
-					logger.Info("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
+					logger.Trace("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
 				}
 			}
 		} else {
@@ -97,7 +97,7 @@ func newManager(ctx context.Context, cfg config.Config, logger *logging.Logger) 
 				maxRunners = 1
 			} else {
 				maxRunners = max(1, cogYaml.Concurrency.Max)
-				logger.Info("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
+				logger.Debug("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
 			}
 		}
 	}
@@ -295,7 +295,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		}
 	}
 
-	log.Infow("creating default runner",
+	log.Debugw("creating default runner",
 		"working_dir", workingDir,
 		"ipc_url", m.cfg.IPCUrl,
 		"python_bin", m.cfg.PythonBinPath,
@@ -314,7 +314,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		"--working-dir", workingDir,
 	}
 
-	log.Infow("runner command", "python_path", pythonPath, "args", args, "working_dir", workingDir)
+	log.Debugw("runner command", "python_path", pythonPath, "args", args, "working_dir", workingDir)
 
 	tmpDir, err := os.MkdirTemp("", "cog-runner-tmp-")
 	if err != nil {
@@ -589,7 +589,7 @@ func (m *Manager) allocateRunnerSlot(procedureHash string) (*Runner, error) {
 	// No empty slots, try to evict an idle runner or defunct runner
 	for i, runner := range m.runners {
 		if runner != nil && ((runner.status == StatusReady && runner.Idle()) || runner.status == StatusDefunct) {
-			log.Infow("evicting idle runner", "name", runner.runnerCtx.id)
+			log.Debugw("evicting idle runner", "name", runner.runnerCtx.id)
 			err := runner.Stop()
 			if err != nil {
 				log.Errorw("failed to stop runner", "name", runner.runnerCtx.id, "error", err)
@@ -813,7 +813,7 @@ func (m *Manager) Stop() error {
 
 		// Wait for runners to become idle or timeout using WaitGroup
 		gracePeriod := m.cfg.RunnerShutdownGracePeriod
-		log.Infow("grace period configuration", "grace_period", gracePeriod)
+		log.Debugw("grace period configuration", "grace_period", gracePeriod)
 		graceCtx, cancel := context.WithTimeout(m.ctx, gracePeriod)
 		defer cancel()
 

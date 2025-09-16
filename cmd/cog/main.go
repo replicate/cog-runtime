@@ -45,10 +45,10 @@ func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 	log := logging.New("cog-config").Sugar()
 
 	logLevel := log.Level()
-	log.Infow("log level", "level", logLevel)
+	log.Debugw("log level", "level", logLevel)
 	// One-shot mode requires procedure mode
 	if s.OneShot && !s.UseProcedureMode {
-		log.Error("one-shot mode requires procedure mode")
+		log.Fatal("one-shot mode requires procedure mode")
 		return config.Config{}, fmt.Errorf("one-shot mode requires procedure mode, use --use-procedure-mode")
 	}
 

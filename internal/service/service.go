@@ -113,7 +113,7 @@ func (s *Service) initializeHandler(ctx context.Context) error {
 	}
 
 	log := s.logger.Sugar()
-	log.Info("initializing handler")
+	log.Debug("initializing handler")
 
 	h, err := server.NewHandler(ctx, s.cfg, s.logger)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 	}
 
 	log := s.logger.Sugar()
-	log.Info("initializing HTTP server")
+	log.Debug("initializing HTTP server")
 
 	mux := server.NewServeMux(s.handler, s.cfg.UseProcedureMode)
 	s.httpServer = &http.Server{
@@ -187,7 +187,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 		// Signal runners to shutdown gracefully and wait for them
 		if s.handler != nil {
-			log.Info("stopping runners gracefully")
+			log.Tracew("stopping runners gracefully")
 			if err := s.handler.Stop(); err != nil {
 				log.Errorw("error stopping handler", "error", err)
 			}
@@ -213,7 +213,7 @@ func (s *Service) Run(ctx context.Context) error {
 		case <-egCtx.Done():
 			// Only force immediate shutdown if graceful shutdown hasn't started
 			if s.shutdownStarted.CompareAndSwap(false, true) {
-				log.Info("context canceled, forcing immediate shutdown")
+				log.Trace("context canceled, forcing immediate shutdown")
 				close(s.shutdown)
 				// Context canceled = immediate hard shutdown, no grace period
 				if err := s.httpServer.Close(); err != nil {
