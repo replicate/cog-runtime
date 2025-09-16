@@ -23,8 +23,6 @@ import (
 	"github.com/replicate/cog-runtime/internal/runner"
 )
 
-const TimeLayout = "2006-01-02T15:04:05.999999-07:00"
-
 // errAsyncPrediction is a sentinel error used to indicate that a prediction is being served asynchronously, it is not surfaced outside of server
 var errAsyncPrediction = errors.New("async prediction")
 
@@ -458,5 +456,5 @@ func PredictionID() (string, error) {
 }
 
 func formatTime(t time.Time) string {
-	return t.UTC().Format(TimeLayout)
+	return t.UTC().Format(time.RFC3339Nano)
 }
