@@ -81,6 +81,6 @@ def test_schema(predictor):
 @pytest.mark.asyncio
 async def test_output_complex_types():
     """Test that output models can have complex nested types when assertion is removed."""
-    module_name = 'tests.bad_predictors.output_complex_types'
+    module_name = 'tests.schemas.output_complex_types'
     predictor_name = 'Predictor'
     await run_fixture(module_name, predictor_name)
