@@ -62,7 +62,7 @@ jobs:
           echo "Generated stubs differ from committed versions:"
           git diff python/
           echo ""
-          echo "Run 'script/check.sh stubs' locally and commit the updated .pyi files"
+          echo "Run 'script/check.sh python' locally and commit the updated .pyi files"
           exit 1
         fi
         echo "All stub files are up to date"

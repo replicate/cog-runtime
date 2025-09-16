@@ -506,8 +506,17 @@ func writeCogConfig(t *testing.T, tempDir, predictorClass string, concurrencyMax
 // FIXME: this is a hack to provide compatibility with the `cog_test` test harness while we migrate to in-process testing.
 func linkPythonModule(t *testing.T, basePath, tempDir, module string) {
 	t.Helper()
+
+	// Try runners directory first (for backward compatibility)
 	runnersPath := path.Join(basePath, "python", "tests", "runners")
 	srcPath := path.Join(runnersPath, fmt.Sprintf("%s.py", module))
+
+	// If not found in runners, try schemas directory
+	if _, err := os.Stat(srcPath); os.IsNotExist(err) {
+		schemasPath := path.Join(basePath, "python", "tests", "schemas")
+		srcPath = path.Join(schemasPath, fmt.Sprintf("%s.py", module))
+	}
+
 	dstPath := path.Join(tempDir, "predict.py")
 
 	// Debug logging

@@ -19,6 +19,9 @@ def output_json(obj):
     elif tpe is api.Secret:
         # Encode Secret('foobar') as '**********'
         return str(obj)
+    elif hasattr(obj, '__dict__') and hasattr(obj, '__dataclass_fields__'):
+        # Handle dataclass objects (including BaseModel)
+        return {field: getattr(obj, field) for field in obj.__dataclass_fields__}
     else:
         raise TypeError(f'Object of type {tpe} is not JSON serializable')
 

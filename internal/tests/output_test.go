@@ -51,3 +51,102 @@ func TestPredictionOutputSucceeded(t *testing.T) {
 	}
 	assert.Equal(t, expectedOutput, predictionResponse.Output)
 }
+
+func TestComplexOutputTypes(t *testing.T) {
+	t.Parallel()
+	if *legacyCog {
+		t.Skip("legacy Cog does not support complex output types")
+	}
+	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
+		procedureMode:    false,
+		explicitShutdown: true,
+		uploadURL:        "",
+		module:           "output_complex_types",
+		predictorClass:   "Predictor",
+	})
+	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
+
+	input := map[string]any{"s": "test"}
+	req := httpPredictionRequest(t, runtimeServer, runner.PredictionRequest{Input: input})
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var predictionResponse server.PredictionResponse
+	err = json.Unmarshal(body, &predictionResponse)
+	require.NoError(t, err)
+
+	// Create expected output using JSON round-trip to match server serialization
+	expectedOutputs := []map[string]any{
+		{
+			"strings": []string{"hello", "world"},
+			"numbers": []int{1, 2, 3},
+			"single_item": map[string]any{
+				"name":  "item1",
+				"value": 42,
+			},
+			"items": []map[string]any{
+				{"name": "item1", "value": 42},
+				{"name": "item2", "value": 84},
+			},
+			"container": map[string]any{
+				"items": []map[string]any{
+					{"name": "item1", "value": 42},
+					{"name": "item2", "value": 84},
+				},
+				"tags": []string{"tag1", "tag2"},
+				"nested": map[string]any{
+					"item":        map[string]any{"name": "item1", "value": 42},
+					"description": "nested description",
+				},
+				"optional_list": []string{"opt1", "opt2"},
+				"count":         2,
+			},
+			"nested_items": []map[string]any{
+				{
+					"item":        map[string]any{"name": "item1", "value": 42},
+					"description": "nested description",
+				},
+			},
+		},
+		{
+			"strings": []string{"foo", "bar"},
+			"numbers": []int{4, 5, 6},
+			"single_item": map[string]any{
+				"name":  "item2",
+				"value": 84,
+			},
+			"items": []map[string]any{
+				{"name": "item2", "value": 84},
+			},
+			"container": map[string]any{
+				"items": []map[string]any{
+					{"name": "item1", "value": 42},
+					{"name": "item2", "value": 84},
+				},
+				"tags": []string{"tag1", "tag2"},
+				"nested": map[string]any{
+					"item":        map[string]any{"name": "item1", "value": 42},
+					"description": "nested description",
+				},
+				"optional_list": []string{"opt1", "opt2"},
+				"count":         2,
+			},
+			"nested_items": []map[string]any{
+				{
+					"item":        map[string]any{"name": "item1", "value": 42},
+					"description": "nested description",
+				},
+			},
+		},
+	}
+	expectedJSON, err := json.Marshal(expectedOutputs)
+	require.NoError(t, err)
+	var expectedOutput []any
+	err = json.Unmarshal(expectedJSON, &expectedOutput)
+	require.NoError(t, err)
+	assert.Equal(t, expectedOutput, predictionResponse.Output)
+	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
+}

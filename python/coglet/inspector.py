@@ -187,9 +187,6 @@ def _output_adt(tpe: type) -> adt.Output:
         fields = {}
         for name, t in tpe.__annotations__.items():
             ft = adt.FieldType.from_type(t)
-            assert ft.repetition is not adt.Repetition.REPEATED, (
-                f'output field must not be list: {name}: {ft.python_type()}'
-            )
             fields[name] = ft
         return adt.Output(kind=adt.Kind.OBJECT, fields=fields)
 
