@@ -45,7 +45,7 @@ docker run -it --detach \
     --volume "$PWD":/src python:latest \
     -c "$SCRIPT"
 
-#trap 'docker stop $name' EXIT
+trap 'docker stop $name' EXIT
 
 # Wait for server to be ready
 sleep 3
