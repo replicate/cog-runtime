@@ -435,6 +435,7 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 						if err != nil {
 							logger.Errorw("failed to stop runner in one-shot mode", "error", err, "runner_id", runner.runnerCtx.id)
 						}
+						runner.ForceKill()
 					case <-time.After(timeout):
 						logger.Warnw("stop timeout exceeded in one-shot mode, falling back to force kill", "timeout", timeout, "runner_id", runner.runnerCtx.id)
 						runner.ForceKill()
