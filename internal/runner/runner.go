@@ -468,14 +468,27 @@ func (r *Runner) setupLogCapture() error {
 func (r *Runner) logStdout(line string) {
 	r.captureLogLine(line)
 
-	_, _ = fmt.Fprintln(os.Stdout, line) //nolint:forbidigo // mirror log to stdout
+	// Strip [pid=xxxxx] prefix before mirroring to stdout
+	mirrorLine := stripPIDPrefix(line)
+	_, _ = fmt.Fprintln(os.Stdout, mirrorLine) //nolint:forbidigo // mirror log to stdout
 }
 
 // logStderr captures a line from stderr and mirrors to stderr
 func (r *Runner) logStderr(line string) {
 	r.captureLogLine(line)
 
-	_, _ = fmt.Fprintln(os.Stderr, line) //nolint:forbidigo // mirror log to stderr
+	// Strip [pid=xxxxx] prefix before mirroring to stderr
+	mirrorLine := stripPIDPrefix(line)
+	_, _ = fmt.Fprintln(os.Stderr, mirrorLine) //nolint:forbidigo // mirror log to stderr
+}
+
+func stripPIDPrefix(line string) string {
+	if LogRegex.MatchString(line) {
+		if m := LogRegex.FindStringSubmatch(line); m != nil {
+			return m[2] // Extract message without pid prefix
+		}
+	}
+	return line
 }
 
 // captureLogLine handles routing log lines like the old implementation
