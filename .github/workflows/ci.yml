@@ -127,6 +127,22 @@ jobs:
       - run: ./script/init.sh
       - run: ./script/test-setuid.sh
 
+  test-setuid-cleanup:
+    name: Test Set UID cleanup in one-shot mode
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - run: ./script/init.sh
+      - name: Run setuid cleanup test
+        run: ./script/test-setuid-cleanup.sh
+        env:
+          PORT: 8080
+
   build-python:
     name: Build & verify python package
     runs-on: ubuntu-latest
@@ -178,6 +194,8 @@ jobs:
       - lint-go
       - test-go
       - test-python
+      - test-set-uid
+      - test-setuid-cleanup
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:

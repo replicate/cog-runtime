@@ -98,6 +98,7 @@ func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 		MaxRunners:                s.MaxRunners,
 		RunnerShutdownGracePeriod: s.RunnerShutdownGracePeriod,
 		CleanupTimeout:            s.CleanupTimeout,
+		CleanupDirectories:        []string{"/tmp"},
 	}
 
 	log.Infow("service configuration",

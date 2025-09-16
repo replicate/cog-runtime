@@ -52,7 +52,6 @@ func TestShutdownEndpointE2E(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return svc.IsStopped()
 	}, 1*time.Second, 10*time.Millisecond, "service should have stopped after shutdown")
-
 	// Service should no longer be running
 	assert.False(t, svc.IsRunning())
 	assert.True(t, svc.IsStopped())
@@ -151,7 +150,7 @@ func TestShutdownEndpointWaitsForInflightPredictions(t *testing.T) {
 	// Wait for service to stop (it should stop automatically after shutdown)
 	require.Eventually(t, func() bool {
 		return svc.IsStopped()
-	}, 1*time.Second, 10*time.Millisecond, "service should have stopped after shutdown")
+	}, 10*time.Second, 10*time.Millisecond, "service should have stopped after shutdown")
 
 	// Service should no longer be running
 	assert.False(t, svc.IsRunning())

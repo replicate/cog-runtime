@@ -27,7 +27,8 @@ type Config struct {
 	RunnerShutdownGracePeriod time.Duration
 
 	// Cleanup configuration
-	CleanupTimeout time.Duration
+	CleanupTimeout     time.Duration
+	CleanupDirectories []string // Directories to walk for cleanup of files owned by isolated UIDs
 
 	// Environment configuration
 	EnvSet   map[string]string
