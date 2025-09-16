@@ -27,9 +27,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/loggingtest"
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/service"
@@ -335,7 +335,7 @@ func setupCogRuntimeServer(t *testing.T, cfg cogRuntimeServerConfig) (*httptest.
 	}
 
 	// logger := NewTestLogger(t, "harness-test")
-	logger := zaptest.NewLogger(t).Named("harness-test")
+	logger := loggingtest.NewTestLogger(t).Named("harness-test")
 
 	// Create handler with service shutdown function instead of test context cancel
 	handler, err := server.NewHandler(t.Context(), serverCfg, logger)

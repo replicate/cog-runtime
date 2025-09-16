@@ -14,12 +14,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/replicate/go/httpclient"
 	"github.com/replicate/go/uuid"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/runner"
 )
 
@@ -48,10 +47,10 @@ type Handler struct {
 
 	cwd string
 
-	logger *zap.Logger
+	logger *logging.Logger
 }
 
-func NewHandler(ctx context.Context, cfg config.Config, baseLogger *zap.Logger) (*Handler, error) {
+func NewHandler(ctx context.Context, cfg config.Config, baseLogger *logging.Logger) (*Handler, error) {
 	runnerManager := runner.NewManager(ctx, cfg, baseLogger)
 
 	h := &Handler{
@@ -158,7 +157,7 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 	log := h.logger.Sugar()
 
 	// Debug: Log all incoming IPC requests
-	log.Debugw("received IPC request",
+	log.Tracew("received IPC request",
 		"method", r.Method,
 		"url", r.URL.String(),
 		"remote_addr", r.RemoteAddr,
@@ -184,7 +183,7 @@ func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
 		name = ipc.Name
 	}
 
-	log.Debugw("handling IPC for runner", "target_runner", name, "procedure_mode", h.cfg.UseProcedureMode, "status", ipc.Status, "pid", ipc.Pid, "name", ipc.Name)
+	log.Tracew("handling IPC for runner", "target_runner", name, "procedure_mode", h.cfg.UseProcedureMode, "status", ipc.Status, "pid", ipc.Pid, "name", ipc.Name)
 
 	if err := h.runnerManager.HandleRunnerIPC(name, string(ipc.Status)); err != nil {
 		if !errors.Is(err, runner.ErrRunnerNotFound) {
@@ -288,7 +287,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infow("running prediction", "id", req.ID, "webhook", req.Webhook, "procedure_mode", h.cfg.UseProcedureMode)
-	log.Debugw("procedure mode prediction request", "id", req.ID, "webhook", req.Webhook, "procedure_source_url", req.ProcedureSourceURL)
+	log.Tracew("procedure mode prediction request", "id", req.ID, "webhook", req.Webhook, "procedure_source_url", req.ProcedureSourceURL)
 
 	var runnerResult *runner.PredictionResponse
 	if req.Webhook != "" {
@@ -304,11 +303,10 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 			// Convert runner response to server response format
 			c = make(chan PredictionResponse, 1)
 			var logsStr string
-			log.Debugw("runner result received", "id", runnerResult.ID, "logs_count", len(runnerResult.Logs))
+			log.Tracew("runner result received", "id", runnerResult.ID, "logs_count", len(runnerResult.Logs))
 			if len(runnerResult.Logs) > 0 {
-				log.Debugw("joining logs", "logs", runnerResult.Logs)
+				log.Tracew("joining logs", "logs", runnerResult.Logs)
 				logsStr = runnerResult.Logs.String()
-				log.Debugw("joined logs result", "logs_str", logsStr)
 			}
 			var metrics map[string]any
 			if runnerResult.Metrics != nil {

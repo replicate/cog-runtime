@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/server"
 )
 
@@ -44,7 +44,7 @@ type Service struct {
 	handler       *server.Handler
 	forceShutdown *config.ForceShutdownSignal
 
-	logger *zap.Logger
+	logger *logging.Logger
 }
 
 type ServiceOption interface {
@@ -73,7 +73,7 @@ var (
 )
 
 // New creates a new Service with the given configuration
-func New(cfg config.Config, baseLogger *zap.Logger, opts ...ServiceOption) *Service {
+func New(cfg config.Config, baseLogger *logging.Logger, opts ...ServiceOption) *Service {
 	svc := &Service{
 		cfg:      cfg,
 		started:  make(chan struct{}),
@@ -113,7 +113,7 @@ func (s *Service) initializeHandler(ctx context.Context) error {
 	}
 
 	log := s.logger.Sugar()
-	log.Info("initializing handler")
+	log.Debug("initializing handler")
 
 	h, err := server.NewHandler(ctx, s.cfg, s.logger)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 	}
 
 	log := s.logger.Sugar()
-	log.Info("initializing HTTP server")
+	log.Debug("initializing HTTP server")
 
 	mux := server.NewServeMux(s.handler, s.cfg.UseProcedureMode)
 	s.httpServer = &http.Server{
@@ -187,7 +187,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 		// Signal runners to shutdown gracefully and wait for them
 		if s.handler != nil {
-			log.Info("stopping runners gracefully")
+			log.Tracew("stopping runners gracefully")
 			if err := s.handler.Stop(); err != nil {
 				log.Errorw("error stopping handler", "error", err)
 			}
@@ -213,7 +213,7 @@ func (s *Service) Run(ctx context.Context) error {
 		case <-egCtx.Done():
 			// Only force immediate shutdown if graceful shutdown hasn't started
 			if s.shutdownStarted.CompareAndSwap(false, true) {
-				log.Info("context canceled, forcing immediate shutdown")
+				log.Trace("context canceled, forcing immediate shutdown")
 				close(s.shutdown)
 				// Context canceled = immediate hard shutdown, no grace period
 				if err := s.httpServer.Close(); err != nil {
@@ -233,7 +233,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	// Monitor for forced shutdown from cleanup failures
 	eg.Go(func() error {
-		defer log.Debug("force shutdown goroutine exiting")
+		defer log.Trace("force shutdown goroutine exiting")
 		select {
 		case <-s.forceShutdown.WatchForForceShutdown():
 			log.Errorw("process cleanup failed, forcing immediate exit")
@@ -249,7 +249,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 	close(s.started)
 
-	log.Debug("waiting for all service goroutines to complete")
+	log.Trace("waiting for all service goroutines to complete")
 	err := eg.Wait()
 	log.Debug("all service goroutines completed")
 
@@ -271,7 +271,7 @@ func (s *Service) Shutdown() {
 
 	// Use atomic CAS to ensure only one shutdown
 	if !s.shutdownStarted.CompareAndSwap(false, true) {
-		log.Debug("already shutting down")
+		log.Trace("already shutting down")
 		return
 	}
 
@@ -285,7 +285,7 @@ func (s *Service) stop(ctx context.Context) {
 
 	select {
 	case <-s.stopped:
-		log.Debug("service already stopped")
+		log.Trace("service already stopped")
 	default:
 		close(s.stopped)
 	}

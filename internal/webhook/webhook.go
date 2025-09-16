@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/replicate/go/httpclient"
-	"go.uber.org/zap"
+
+	"github.com/replicate/cog-runtime/internal/logging"
 )
 
 // Event represents a webhook event - using string to be compatible with any type
@@ -32,12 +33,12 @@ var _ Sender = (*DefaultSender)(nil)
 
 // DefaultSender handles webhook delivery
 type DefaultSender struct {
-	logger *zap.Logger
+	logger *logging.Logger
 	client *http.Client
 }
 
 // NewSender creates a new webhook sender
-func NewSender(logger *zap.Logger) *DefaultSender {
+func NewSender(logger *logging.Logger) *DefaultSender {
 	return &DefaultSender{
 		logger: logger.Named("webhook"),
 		client: httpclient.ApplyRetryPolicy(http.DefaultClient),
@@ -76,14 +77,14 @@ func (s *DefaultSender) SendConditional(url string, payload io.Reader, event Eve
 
 	// Check event filter
 	if len(allowedEvents) > 0 && !slices.Contains(allowedEvents, event) {
-		log.Debugw("skipping webhook due to event filter", "url", url, "event", string(event), "allowed_events", allowedEvents)
+		log.Tracew("skipping webhook due to event filter", "url", url, "event", string(event), "allowed_events", allowedEvents)
 		return nil
 	}
 
 	// Rate limiting for logs and output events
 	if event == EventLogs || event == EventOutput {
 		if lastUpdated != nil && time.Since(*lastUpdated) < 500*time.Millisecond {
-			log.Debugw("skipping webhook due to rate limiting", "url", url, "event", string(event), "last_updated", lastUpdated)
+			log.Tracew("skipping webhook due to rate limiting", "url", url, "event", string(event), "last_updated", lastUpdated)
 			return nil
 		}
 		if lastUpdated != nil {

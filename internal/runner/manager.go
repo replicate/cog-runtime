@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/replicate/cog-runtime/internal/config"
+	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -45,12 +46,12 @@ type Manager struct {
 
 	mu sync.RWMutex
 
-	baseLogger *zap.Logger // base logger passed from parent, used to create named loggers for runners
-	logger     *zap.Logger
+	baseLogger *logging.Logger // base logger passed from parent, used to create named loggers for runners
+	logger     *logging.Logger
 }
 
 // NewManager creates a new runner manager with channel-based capacity control
-func NewManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Manager {
+func NewManager(ctx context.Context, cfg config.Config, logger *logging.Logger) *Manager {
 	m := newManager(ctx, cfg, logger)
 	// Pre-load default runner in non-procedure mode
 	if !cfg.UseProcedureMode {
@@ -62,7 +63,7 @@ func NewManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Man
 	return m
 }
 
-func newManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Manager {
+func newManager(ctx context.Context, cfg config.Config, logger *logging.Logger) *Manager {
 	maxRunners := cfg.MaxRunners
 	if cfg.UseProcedureMode {
 		if cfg.OneShot {
@@ -86,7 +87,7 @@ func newManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Man
 					maxRunners = 1
 				} else {
 					maxRunners = max(1, cogYaml.Concurrency.Max)
-					logger.Info("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
+					logger.Trace("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
 				}
 			}
 		} else {
@@ -96,7 +97,7 @@ func newManager(ctx context.Context, cfg config.Config, logger *zap.Logger) *Man
 				maxRunners = 1
 			} else {
 				maxRunners = max(1, cogYaml.Concurrency.Max)
-				logger.Info("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
+				logger.Debug("read concurrency from cog.yaml", zap.Int("max_concurrency", maxRunners))
 			}
 		}
 	}
@@ -175,7 +176,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error
 
 	runner, err := m.assignReqToRunner(deadlineCtx, req)
 	if err != nil {
-		log.Debugw("failed to get runner for async request", "error", err)
+		log.Tracew("failed to get runner for async request", "error", err)
 		m.releaseSlot()
 		return err
 	}
@@ -196,7 +197,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error
 
 	respChan, err := runner.predict(req)
 	if err != nil {
-		log.Debugw("failed to predict", "error", err)
+		log.Tracew("failed to predict", "error", err)
 		m.releaseSlot()
 		return err
 	}
@@ -205,7 +206,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error
 	go func() {
 		defer m.releaseSlot() // Release slot after prediction completes
 		<-respChan            // Wait for prediction to complete
-		log.Debugw("async prediction completed", "prediction_id", req.ID)
+		log.Tracew("async prediction completed", "prediction_id", req.ID)
 	}()
 
 	return nil
@@ -294,7 +295,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		}
 	}
 
-	log.Infow("creating default runner",
+	log.Debugw("creating default runner",
 		"working_dir", workingDir,
 		"ipc_url", m.cfg.IPCUrl,
 		"python_bin", m.cfg.PythonBinPath,
@@ -313,7 +314,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		"--working-dir", workingDir,
 	}
 
-	log.Infow("runner command", "python_path", pythonPath, "args", args, "working_dir", workingDir)
+	log.Debugw("runner command", "python_path", pythonPath, "args", args, "working_dir", workingDir)
 
 	tmpDir, err := os.MkdirTemp("", "cog-runner-tmp-")
 	if err != nil {
@@ -327,6 +328,14 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	env := mergeEnv(os.Environ(), m.cfg.EnvSet, m.cfg.EnvUnset)
 	env = append(env, "TMPDIR="+tmpDir)
+
+	// Ensure Python processes never receive trace level logs
+	if logLevel := os.Getenv("COG_LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "COG_LOG_LEVEL=debug")
+	} else if logLevel := os.Getenv("LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "LOG_LEVEL=debug")
+	}
+
 	cmd.Env = env
 
 	// Read cog.yaml for runner configuration (capacity was already set in newManager)
@@ -476,7 +485,7 @@ func (m *Manager) assignReqToRunner(ctx context.Context, req PredictionRequest) 
 	// First, try to find existing runner with capacity and atomically reserve slot
 	procRunner := m.findRunnerWithCapacity(ctx, req)
 	if procRunner != nil {
-		log.Debugw("allocated request to existing runner", "runner", procRunner.runnerCtx.id)
+		log.Tracew("allocated request to existing runner", "runner", procRunner.runnerCtx.id)
 		return procRunner, nil
 	}
 
@@ -580,7 +589,7 @@ func (m *Manager) allocateRunnerSlot(procedureHash string) (*Runner, error) {
 	// No empty slots, try to evict an idle runner or defunct runner
 	for i, runner := range m.runners {
 		if runner != nil && ((runner.status == StatusReady && runner.Idle()) || runner.status == StatusDefunct) {
-			log.Infow("evicting idle runner", "name", runner.runnerCtx.id)
+			log.Debugw("evicting idle runner", "name", runner.runnerCtx.id)
 			err := runner.Stop()
 			if err != nil {
 				log.Errorw("failed to stop runner", "name", runner.runnerCtx.id, "error", err)
@@ -648,6 +657,14 @@ func (m *Manager) createProcedureRunner(runnerName, procedureHash string) (*Runn
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	env := mergeEnv(os.Environ(), m.cfg.EnvSet, m.cfg.EnvUnset)
 	env = append(env, "TMPDIR="+tmpDir)
+
+	// Ensure Python processes never receive trace level logs
+	if logLevel := os.Getenv("COG_LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "COG_LOG_LEVEL=debug")
+	} else if logLevel := os.Getenv("LOG_LEVEL"); logLevel == "trace" {
+		env = append(env, "LOG_LEVEL=debug")
+	}
+
 	cmd.Env = env
 
 	var allocatedUID *int
@@ -796,7 +813,7 @@ func (m *Manager) Stop() error {
 
 		// Wait for runners to become idle or timeout using WaitGroup
 		gracePeriod := m.cfg.RunnerShutdownGracePeriod
-		log.Infow("grace period configuration", "grace_period", gracePeriod)
+		log.Debugw("grace period configuration", "grace_period", gracePeriod)
 		graceCtx, cancel := context.WithTimeout(m.ctx, gracePeriod)
 		defer cancel()
 
@@ -807,7 +824,7 @@ func (m *Manager) Stop() error {
 				// Wait for this runner to become idle OR timeout
 				select {
 				case <-runner.readyForShutdown:
-					log.Infow("runner became idle naturally", "name", runner.runnerCtx.id)
+					log.Debugw("runner became idle naturally", "name", runner.runnerCtx.id)
 				case <-graceCtx.Done():
 					log.Warnw("grace period expired for runner", "name", runner.runnerCtx.id, "context_err", graceCtx.Err())
 				}
@@ -860,7 +877,7 @@ func (m *Manager) Status() string {
 			runner.mu.Unlock()
 			return status
 		}
-		log.Debug("default runner not found, returning STARTING")
+		log.Trace("default runner not found, returning STARTING")
 		return "STARTING"
 	}
 
@@ -1054,9 +1071,9 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 		}
 
 		// Capture crash logs from runner and fail predictions one by one
-		log.Debugw("checking runner logs for crash", "runner_logs_count", len(runner.logs), "runner_logs", runner.logs)
+		log.Tracew("checking runner logs for crash", "runner_logs_count", len(runner.logs), "runner_logs", runner.logs)
 		crashLogs := runner.logs
-		log.Debugw("captured crash logs", "crash_logs_count", len(crashLogs), "crash_logs", crashLogs)
+		log.Tracew("captured crash logs", "crash_logs_count", len(crashLogs), "crash_logs", crashLogs)
 
 		for id, pending := range runner.pending {
 			log.Debugw("failing prediction due to setup failure", "prediction_id", id)
