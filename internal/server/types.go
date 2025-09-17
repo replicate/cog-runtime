@@ -22,16 +22,3 @@ type SetupResult struct {
 	Status      runner.SetupStatus `json:"status"`
 	Logs        string             `json:"logs,omitempty"`
 }
-
-type PredictionResponse struct {
-	Input       any                     `json:"input"`
-	Output      any                     `json:"output,omitempty"`
-	ID          string                  `json:"id"`
-	CreatedAt   string                  `json:"created_at,omitempty"`
-	StartedAt   string                  `json:"started_at,omitempty"`
-	CompletedAt string                  `json:"completed_at,omitempty"`
-	Logs        string                  `json:"logs,omitempty"`
-	Error       string                  `json:"error,omitempty"`
-	Status      runner.PredictionStatus `json:"status,omitempty"`
-	Metrics     map[string]any          `json:"metrics,omitempty"`
-}

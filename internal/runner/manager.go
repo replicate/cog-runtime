@@ -1,10 +1,8 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -152,9 +150,9 @@ func (m *Manager) releaseSlot() {
 	}
 }
 
-// Predict executes a sync prediction request - blocks until complete
-func (m *Manager) Predict(req PredictionRequest) (*PredictionResponse, error) {
-	respChan, err := m.predict(m.ctx, req)
+// PredictSync executes a sync prediction request - blocks until complete
+func (m *Manager) PredictSync(req PredictionRequest) (*PredictionResponse, error) {
+	respChan, _, err := m.predict(m.ctx, req, false)
 	if err != nil {
 		return nil, err
 	}
@@ -165,41 +163,11 @@ func (m *Manager) Predict(req PredictionRequest) (*PredictionResponse, error) {
 }
 
 // PredictAsync executes an async prediction request - returns immediately, sends webhook when complete
-func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error {
+func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) (*PredictionResponse, error) {
 	log := m.logger.Sugar()
-	if err := m.claimSlot(); err != nil {
-		return err
-	}
-
-	deadlineCtx, deadlineCancel := context.WithTimeout(ctx, 10*time.Second)
-	defer deadlineCancel()
-
-	runner, err := m.assignReqToRunner(deadlineCtx, req)
+	respChan, initialResponse, err := m.predict(ctx, req, true)
 	if err != nil {
-		log.Tracew("failed to get runner for async request", "error", err)
-		m.releaseSlot()
-		return err
-	}
-
-	switch runner.status {
-	case StatusReady:
-		// Status ready is always valid for new predictions
-		break
-	case StatusStarting:
-		if !m.cfg.UseProcedureMode {
-			m.releaseSlot()
-			return fmt.Errorf("%w: %s", ErrInvalidRunnerStatus, runner.status)
-		}
-	default:
-		m.releaseSlot()
-		return fmt.Errorf("%w: %s", ErrInvalidRunnerStatus, runner.status)
-	}
-
-	respChan, err := runner.predict(req)
-	if err != nil {
-		log.Tracew("failed to predict", "error", err)
-		m.releaseSlot()
-		return err
+		return nil, err
 	}
 
 	// Release slot when prediction completes in background
@@ -209,33 +177,33 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) error
 		log.Tracew("async prediction completed", "prediction_id", req.ID)
 	}()
 
-	return nil
+	return initialResponse, nil
 }
 
 // predict is the internal implementation shared by both sync and async predictions
-func (m *Manager) predict(ctx context.Context, req PredictionRequest) (chan PredictionResponse, error) {
+func (m *Manager) predict(ctx context.Context, req PredictionRequest, async bool) (chan PredictionResponse, *PredictionResponse, error) {
 	if err := m.claimSlot(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	deadlineCtx, deadlineCancel := context.WithTimeout(ctx, 10*time.Second)
 	defer deadlineCancel()
 
-	runner, err := m.assignReqToRunnerWait(deadlineCtx, req)
+	runner, err := m.assignReqToRunner(deadlineCtx, req, async)
 	if err != nil {
 		m.releaseSlot()
-		return nil, err
+		return nil, nil, err
 	}
 
 	if !m.cfg.UseProcedureMode && runner.status != StatusReady {
 		m.releaseSlot()
-		return nil, fmt.Errorf("runner not ready: %s", runner.status)
+		return nil, nil, fmt.Errorf("runner not ready: %s", runner.status)
 	}
 
-	respChan, err := runner.predict(req)
+	respChan, initialResponse, err := runner.predict(req)
 	if err != nil {
 		m.releaseSlot()
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Wrap the channel to release slot when prediction completes
@@ -247,39 +215,7 @@ func (m *Manager) predict(ctx context.Context, req PredictionRequest) (chan Pred
 		close(wrappedChan)
 	}()
 
-	return wrappedChan, nil
-}
-
-// sendTerminalWebhook sends a terminal webhook synchronously for a completed prediction
-func (m *Manager) sendTerminalWebhook(req PredictionRequest, resp PredictionResponse) error {
-	log := m.logger.Sugar()
-
-	// Send synchronously using SendConditional to respect filters
-	// Send the actual PredictionResponse object, not a custom map
-
-	body, err := json.Marshal(resp)
-	if err != nil {
-		log.Errorw("failed to marshal prediction response", "error", err)
-		return fmt.Errorf("failed to marshal prediction response: %w", err)
-	}
-
-	if err := m.webhookSender.SendConditional(req.Webhook, bytes.NewReader(body), webhook.EventCompleted, req.WebhookEventsFilter, nil); err != nil {
-		log.Errorw("failed to send terminal webhook", "prediction_id", resp.ID, "webhook_url", req.Webhook, "error", err)
-		return fmt.Errorf("failed to send terminal webhook: %w", err)
-	}
-	log.Infow("sent terminal webhook", "prediction_id", resp.ID, "webhook_url", req.Webhook, "status", resp.Status)
-	return nil
-}
-
-func (m *Manager) assignReqToRunnerWait(ctx context.Context, req PredictionRequest) (*Runner, error) {
-	runner, err := m.assignReqToRunner(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to assign request to runner: %w", err)
-	}
-	if waitForRunnerSetup(ctx, runner) != nil {
-		return nil, err
-	}
-	return runner, nil
+	return wrappedChan, initialResponse, nil
 }
 
 // createDefaultRunner creates the default runner for non-procedure mode
@@ -384,6 +320,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 
 // allocatePrediction reserves a slot in the runner for the prediction
 func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //nolint:contextcheck // we do not use this context for the prediction see note below
+	log := m.logger.Sugar()
 	runner.mu.Lock()
 	defer runner.mu.Unlock()
 
@@ -409,11 +346,14 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 		defer func() {
 			// When watcher exits, handle terminal webhook and cleanup
 			pending.mu.Lock()
-			finalResponse := pending.response
+			pending.response.populateFromRequest(pending.request)
+			if err := pending.response.finalizeResponse(); err != nil {
+				log.Errorw("failed to finalize response", "error", err)
+			}
 
 			// Send terminal webhook if prediction completed
-			if finalResponse.Status.IsCompleted() && pending.terminalWebhookSent.CompareAndSwap(false, true) {
-				_ = m.sendTerminalWebhook(pending.request, finalResponse)
+			if err := m.sendTerminalWebhook(pending); err != nil {
+				log.Errorw("failed to send terminal webhook", "error", err)
 			}
 			pending.mu.Unlock()
 
@@ -423,7 +363,7 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 			runner.mu.Unlock()
 
 			// In one-shot mode, stop runner after prediction completes to trigger cleanup
-			if m.cfg.OneShot && finalResponse.Status.IsCompleted() {
+			if m.cfg.OneShot {
 				go func() {
 					logger := m.logger.Sugar()
 					logger.Infow("one-shot mode: stopping runner after prediction completion", "prediction_id", req.ID, "runner_id", runner.runnerCtx.id)
@@ -461,7 +401,7 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 	}()
 }
 
-func (m *Manager) assignReqToRunner(ctx context.Context, req PredictionRequest) (*Runner, error) {
+func (m *Manager) assignReqToRunner(ctx context.Context, req PredictionRequest, async bool) (*Runner, error) {
 	log := m.logger.Sugar()
 
 	if !m.cfg.UseProcedureMode {
@@ -523,6 +463,11 @@ func (m *Manager) assignReqToRunner(ctx context.Context, req PredictionRequest) 
 	m.allocatePrediction(procRunner, req) //nolint:contextcheck // see above note
 	m.mu.Unlock()
 
+	if !async {
+		if err := waitForRunnerSetup(ctx, procRunner); err != nil {
+			return nil, err
+		}
+	}
 	return procRunner, nil
 }
 
@@ -1088,13 +1033,12 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 			pending.mu.Unlock()
 
 			failedResponse := PredictionResponse{
-				ID:      id,
 				Status:  PredictionFailed,
-				Input:   pending.request.Input,
 				Error:   "setup failed",
 				Logs:    allLogs,
 				Metrics: pending.response.Metrics,
 			}
+			failedResponse.populateFromRequest(pending.request)
 
 			pending.safeSend(failedResponse)
 			pending.safeClose()
@@ -1102,12 +1046,12 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 			// Update pending response with failed response for webhook
 			pending.mu.Lock()
 			pending.response = failedResponse
-			pending.mu.Unlock()
 
 			// Send terminal webhook since we're canceling the watcher
-			if pending.terminalWebhookSent.CompareAndSwap(false, true) {
-				_ = pending.sendWebhookSync(webhook.EventCompleted)
+			if err := m.sendTerminalWebhook(pending); err != nil {
+				log.Errorw("failed to send terminal webhook", "error", err)
 			}
+			pending.mu.Unlock()
 
 			for _, inputPath := range pending.inputPaths {
 				if err := os.Remove(inputPath); err != nil {
@@ -1143,13 +1087,12 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 			pending.mu.Unlock()
 
 			failedResponse := PredictionResponse{
-				ID:      id,
 				Status:  PredictionFailed,
-				Input:   pending.request.Input,
 				Error:   "prediction failed",
 				Logs:    allLogs,
 				Metrics: pending.response.Metrics,
 			}
+			failedResponse.populateFromRequest(pending.request)
 
 			pending.safeSend(failedResponse)
 			pending.safeClose()
@@ -1157,12 +1100,12 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 			// Update pending response with failed response for webhook
 			pending.mu.Lock()
 			pending.response = failedResponse
-			pending.mu.Unlock()
 
 			// Send terminal webhook since we're canceling the watcher
-			if pending.terminalWebhookSent.CompareAndSwap(false, true) {
-				_ = pending.sendWebhookSync(webhook.EventCompleted)
+			if err := m.sendTerminalWebhook(pending); err != nil {
+				log.Errorw("failed to send terminal webhook", "error", err)
 			}
+			pending.mu.Unlock()
 
 			for _, inputPath := range pending.inputPaths {
 				if err := os.Remove(inputPath); err != nil {
@@ -1179,4 +1122,16 @@ func (m *Manager) monitorRunnerSubprocess(ctx context.Context, runnerName string
 		runner.pending = make(map[string]*PendingPrediction)
 		runner.status = StatusDefunct
 	}
+}
+
+func (m *Manager) sendTerminalWebhook(pending *PendingPrediction) error {
+	log := m.logger.Sugar()
+	// Send terminal webhook since we're canceling the watcher
+	if pending.response.Status.IsCompleted() && pending.terminalWebhookSent.CompareAndSwap(false, true) {
+		if err := pending.response.finalizeResponse(); err != nil {
+			log.Errorw("failed to finalize response", "error", err)
+		}
+		return pending.sendWebhookSync(webhook.EventCompleted)
+	}
+	return nil
 }

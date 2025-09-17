@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/replicate/cog-runtime/internal/config"
 )
 
 func TestStatus(t *testing.T) {
@@ -126,13 +128,12 @@ func TestPredictionResponse(t *testing.T) {
 		t.Parallel()
 
 		resp := PredictionResponse{
-			ID:         "test-id",
-			Status:     "succeeded",
-			Output:     map[string]any{"result": "success"},
-			Error:      "",
-			Logs:       []string{"log1", "log2"},
-			Metrics:    map[string]any{"duration": 1.5},
-			WebhookURL: "http://example.com/webhook",
+			ID:      "test-id",
+			Status:  "succeeded",
+			Output:  map[string]any{"result": "success"},
+			Error:   "",
+			Logs:    []string{"log1", "log2"},
+			Metrics: map[string]any{"duration": 1.5},
 		}
 
 		assert.Equal(t, "test-id", resp.ID)
@@ -141,7 +142,6 @@ func TestPredictionResponse(t *testing.T) {
 		assert.Empty(t, resp.Error)
 		assert.Equal(t, LogsSlice{"log1", "log2"}, resp.Logs)
 		assert.Equal(t, map[string]any{"duration": 1.5}, resp.Metrics)
-		assert.Equal(t, "http://example.com/webhook", resp.WebhookURL)
 	})
 }
 
@@ -510,5 +510,180 @@ func TestRunnerContextCleanup(t *testing.T) {
 		assert.Contains(t, rc.cleanupDirectories, cleanupDir)
 		assert.Equal(t, workingDir, rc.workingdir)
 		assert.Equal(t, tmpDir, rc.tmpDir)
+	})
+}
+
+func TestPredictionResponseFinalization(t *testing.T) {
+	t.Parallel()
+
+	t.Run("finalizeResponse sets CompletedAt when empty", func(t *testing.T) {
+		t.Parallel()
+
+		response := &PredictionResponse{
+			Status:    PredictionSucceeded,
+			StartedAt: "2023-01-01T12:00:00.000000+00:00",
+			Metrics:   make(map[string]any),
+		}
+
+		err := response.finalizeResponse()
+		require.NoError(t, err)
+
+		assert.NotEmpty(t, response.CompletedAt)
+		// Should be RFC3339Nano format
+		_, err = time.Parse(config.TimeFormat, response.CompletedAt)
+		assert.NoError(t, err)
+	})
+
+	t.Run("finalizeResponse preserves existing CompletedAt", func(t *testing.T) {
+		t.Parallel()
+
+		existingTime := "2023-01-01T12:30:45.123456+00:00"
+		response := &PredictionResponse{
+			Status:      PredictionSucceeded,
+			StartedAt:   "2023-01-01T12:00:00.000000+00:00",
+			CompletedAt: existingTime,
+			Metrics:     make(map[string]any),
+		}
+
+		err := response.finalizeResponse()
+		require.NoError(t, err)
+
+		assert.Equal(t, existingTime, response.CompletedAt)
+	})
+
+	t.Run("finalizeResponse creates metrics map when nil", func(t *testing.T) {
+		t.Parallel()
+
+		response := &PredictionResponse{
+			Status:    PredictionSucceeded,
+			StartedAt: "2023-01-01T12:00:00.000000+00:00",
+			Metrics:   nil,
+		}
+
+		err := response.finalizeResponse()
+		require.NoError(t, err)
+
+		assert.NotNil(t, response.Metrics)
+		assert.Contains(t, response.Metrics, "predict_time")
+	})
+
+	t.Run("finalizeResponse calculates predict_time correctly", func(t *testing.T) {
+		t.Parallel()
+
+		startTime := "2023-01-01T12:00:00.000000+00:00"
+		response := &PredictionResponse{
+			Status:    PredictionSucceeded,
+			StartedAt: startTime,
+			Metrics:   make(map[string]any),
+		}
+
+		err := response.finalizeResponse()
+		require.NoError(t, err)
+
+		predictTime, ok := response.Metrics["predict_time"]
+		require.True(t, ok)
+
+		// Should be a positive number
+		predictTimeFloat, ok := predictTime.(float64)
+		require.True(t, ok)
+		assert.Positive(t, predictTimeFloat)
+	})
+
+	t.Run("finalizeResponse preserves existing predict_time", func(t *testing.T) {
+		t.Parallel()
+
+		existingPredictTime := 42.5
+		response := &PredictionResponse{
+			Status:    PredictionSucceeded,
+			StartedAt: "2023-01-01T12:00:00.000000+00:00",
+			Metrics:   map[string]any{"predict_time": existingPredictTime},
+		}
+
+		err := response.finalizeResponse()
+		require.NoError(t, err)
+
+		assert.Equal(t, existingPredictTime, response.Metrics["predict_time"]) //nolint:testifylint // we want to compare absolute values not delta
+	})
+
+	t.Run("finalizeResponse handles invalid time formats", func(t *testing.T) {
+		t.Parallel()
+
+		response := &PredictionResponse{
+			Status:    PredictionSucceeded,
+			StartedAt: "invalid-time",
+			Metrics:   make(map[string]any),
+		}
+
+		err := response.finalizeResponse()
+		require.Error(t, err)
+		var parseErr *time.ParseError
+		require.ErrorAs(t, err, &parseErr)
+	})
+
+	t.Run("finalizeResponse handles missing StartedAt", func(t *testing.T) {
+		t.Parallel()
+
+		response := &PredictionResponse{
+			Status:  PredictionSucceeded,
+			Metrics: make(map[string]any),
+		}
+
+		err := response.finalizeResponse()
+		require.Error(t, err)
+		var parseErr *time.ParseError
+		require.ErrorAs(t, err, &parseErr)
+	})
+}
+
+func TestPredictionResponsePopulateFromRequest(t *testing.T) {
+	t.Parallel()
+
+	t.Run("PopulateFromRequest sets all fields correctly", func(t *testing.T) {
+		t.Parallel()
+
+		request := PredictionRequest{
+			ID:        "test-id-123",
+			Input:     map[string]any{"prompt": "hello world"},
+			CreatedAt: "2023-01-01T11:00:00.000000+00:00",
+			StartedAt: "2023-01-01T11:00:05.000000+00:00",
+		}
+
+		response := &PredictionResponse{
+			Status: PredictionProcessing,
+		}
+
+		response.populateFromRequest(request)
+
+		assert.Equal(t, request.ID, response.ID)
+		assert.Equal(t, request.Input, response.Input)
+		assert.Equal(t, request.CreatedAt, response.CreatedAt)
+		assert.Equal(t, request.StartedAt, response.StartedAt)
+	})
+
+	t.Run("PopulateFromRequest overwrites existing fields", func(t *testing.T) {
+		t.Parallel()
+
+		request := PredictionRequest{
+			ID:        "new-id",
+			Input:     map[string]any{"new": "input"},
+			CreatedAt: "2023-01-01T12:00:00.000000+00:00",
+			StartedAt: "2023-01-01T12:00:05.000000+00:00",
+		}
+
+		response := &PredictionResponse{
+			ID:        "old-id",
+			Input:     map[string]any{"old": "input"},
+			CreatedAt: "2023-01-01T10:00:00.000000+00:00",
+			StartedAt: "2023-01-01T10:00:05.000000+00:00",
+			Status:    PredictionProcessing,
+		}
+
+		response.populateFromRequest(request)
+
+		assert.Equal(t, "new-id", response.ID)
+		assert.Equal(t, map[string]any{"new": "input"}, response.Input)
+		assert.Equal(t, "2023-01-01T12:00:00.000000+00:00", response.CreatedAt)
+		assert.Equal(t, "2023-01-01T12:00:05.000000+00:00", response.StartedAt)
+		assert.Equal(t, PredictionProcessing, response.Status) // Preserves existing status
 	})
 }

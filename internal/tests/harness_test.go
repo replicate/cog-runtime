@@ -85,10 +85,18 @@ var (
 	testProcessesMu sync.Mutex
 )
 
+// testHarnessResponse is a wrapper around the PredictionResponse that adds the Logs field
+// as a string for easier testing. this more directly mirrors what a downstream consumer would
+// see rather than the LogSlice type.
+type testHarnessResponse struct {
+	runner.PredictionResponse
+
+	Logs string `json:"logs"`
+}
 type webhookData struct {
 	Method   string
 	Path     string
-	Response server.PredictionResponse
+	Response testHarnessResponse
 }
 
 type uploadData struct {
@@ -116,7 +124,7 @@ func (tr *testHarnessReceiver) webhookHandler(t *testing.T) http.HandlerFunc { /
 		body, err := io.ReadAll(r.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, http.MethodPost, r.Method)
-		var resp server.PredictionResponse
+		var resp testHarnessResponse
 		err = json.Unmarshal(body, &resp)
 		assert.NoError(t, err)
 		message := webhookData{
@@ -586,10 +594,10 @@ func httpPredictionReq(t *testing.T, method string, runtimeServer *httptest.Serv
 	if prediction.CreatedAt != "" {
 		t.Logf("using existing created_at: %s", prediction.CreatedAt)
 		// verify that created_at is a valid time
-		_, err := time.Parse(time.RFC3339, prediction.CreatedAt)
+		_, err := time.Parse(config.TimeFormat, prediction.CreatedAt)
 		require.NoError(t, err)
 	}
-	prediction.CreatedAt = time.Now().Format(time.RFC3339)
+	prediction.CreatedAt = time.Now().Format(config.TimeFormat)
 
 	serverURL := runtimeServer.URL + "/predictions"
 	body, err := json.Marshal(prediction)
@@ -803,4 +811,39 @@ func safeCloseChannel(ch chan struct{}) {
 	default:
 		close(ch)
 	}
+}
+
+// ValidateTerminalResponse validates that a terminal response has all required fields
+func ValidateTerminalResponse(t *testing.T, response *testHarnessResponse) {
+	t.Helper()
+
+	require.NotNil(t, response, "response cannot be nil")
+
+	// Validate terminal status
+	terminalStatuses := []runner.PredictionStatus{runner.PredictionSucceeded, runner.PredictionFailed, runner.PredictionCanceled}
+	require.Contains(t, terminalStatuses, response.Status, "response status %q is not terminal", response.Status)
+
+	// Validate required fields
+	if !*legacyCog {
+		require.NotEmpty(t, response.ID, "response.ID is required but empty")
+	}
+	require.NotEmpty(t, response.CreatedAt, "response.CreatedAt is required but empty")
+	require.NotEmpty(t, response.StartedAt, "response.StartedAt is required but empty")
+	require.NotEmpty(t, response.CompletedAt, "response.CompletedAt is required but empty")
+
+	// Validate time formats
+	_, err := time.Parse(config.TimeFormat, response.CreatedAt)
+	require.NoError(t, err, "response.CreatedAt has invalid format")
+	_, err = time.Parse(config.TimeFormat, response.StartedAt)
+	require.NoError(t, err, "response.StartedAt has invalid format")
+	_, err = time.Parse(config.TimeFormat, response.CompletedAt)
+	require.NoError(t, err, "response.CompletedAt has invalid format")
+
+	// Validate metrics
+	require.NotNil(t, response.Metrics, "response.Metrics is required but nil")
+	predictTime, exists := response.Metrics["predict_time"]
+	require.True(t, exists, "response.Metrics must contain 'predict_time' field")
+	predictTimeFloat, ok := predictTime.(float64)
+	require.True(t, ok, "response.Metrics['predict_time'] must be a float64, got %T", predictTime)
+	require.GreaterOrEqual(t, predictTimeFloat, 0.0, "response.Metrics['predict_time'] must be non-negative")
 }

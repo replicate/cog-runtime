@@ -16,7 +16,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 )
 
 var errProcedureFailedToStart = errors.New("procedure failed to start")
@@ -34,7 +33,7 @@ func runProcedure(t *testing.T, runtimeServer *httptest.Server, predictionReques
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	if resp.StatusCode != http.StatusAccepted {
@@ -85,6 +84,7 @@ func runAndValidateProcedure(t *testing.T, runtimeServer *httptest.Server, run p
 			case runner.PredictionStarting, runner.PredictionProcessing:
 				safeCloseChannel(run.Started)
 			case runner.PredictionSucceeded:
+				ValidateTerminalResponse(t, &webhook.Response)
 				assert.Equal(t, run.ExpectedOutput, webhook.Response.Output)
 				assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
 				assert.Contains(t, webhook.Response.Logs, run.ExpectedLogs)
@@ -257,6 +257,7 @@ func TestProcedureSlotBadProcedure(t *testing.T) {
 		t.Fatalf("timeout waiting for prediction to complete")
 	}
 	assert.Equal(t, runner.PredictionFailed, webhook.Response.Status)
+	ValidateTerminalResponse(t, &webhook.Response)
 	assert.Contains(t, webhook.Response.Logs, "unsupported Cog type")
 	assert.Equal(t, "setup failed", webhook.Response.Error)
 

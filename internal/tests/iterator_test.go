@@ -56,10 +56,11 @@ func TestIteratorTypes(t *testing.T) {
 			defer resp.Body.Close()
 			assert.Equal(t, http.StatusAccepted, resp.StatusCode)
 			_, _ = io.Copy(io.Discard, resp.Body)
-			var predictionResponse server.PredictionResponse
+			var predictionResponse testHarnessResponse
 			for webhook := range receiverServer.webhookReceiverChan {
 				if webhook.Response.Status == runner.PredictionSucceeded {
 					predictionResponse = webhook.Response
+					ValidateTerminalResponse(t, &predictionResponse)
 					break
 				}
 			}
@@ -117,15 +118,17 @@ func TestPredictionAsyncIteratorConcurrency(t *testing.T) {
 	require.NoError(t, err)
 	defer bazResp.Body.Close()
 	_, _ = io.Copy(io.Discard, bazResp.Body)
-	var barR *server.PredictionResponse
-	var bazR *server.PredictionResponse
+	var barR *testHarnessResponse
+	var bazR *testHarnessResponse
 	for wh := range receiverServer.webhookReceiverChan {
 		assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
 		switch wh.Response.ID {
 		case barPrediction.ID:
 			barR = &wh.Response
+			ValidateTerminalResponse(t, barR)
 		case bazPrediction.ID:
 			bazR = &wh.Response
+			ValidateTerminalResponse(t, bazR)
 		}
 		if barR != nil && bazR != nil {
 			break

@@ -134,9 +134,7 @@ func (r *Runner) handleSingleResponse(filename, predictionID string, pending *Pe
 	}
 
 	// Python response doesn't include ID/Input/etc, so merge from request
-	response.ID = pending.request.ID
-	response.Input = pending.request.Input
-	response.WebhookURL = pending.request.Webhook
+	response.populateFromRequest(pending.request)
 
 	// Add logs if available from pending prediction
 	pending.mu.Lock()
@@ -215,68 +213,91 @@ func (r *Runner) processResponseOutput(response *PredictionResponse, pending *Pe
 
 // handleResponseWebhooksAndCompletion sends webhooks and handles prediction completion
 func (r *Runner) handleResponseWebhooksAndCompletion(response *PredictionResponse, predictionID string, pending *PendingPrediction, log *logging.SugaredLogger) {
-	// Update pending prediction's response data, preserving accumulated logs
+	// Handle legacy compatibility: change "starting" to "processing" for webhook purposes
+	webhookStatus := response.Status
+	if response.Status == PredictionStarting {
+		webhookStatus = PredictionProcessing
+	}
+
+	// Update pending response once with all necessary fields
 	pending.mu.Lock()
 	existingLogs := pending.response.Logs
 	pending.response = *response
-	// Preserve accumulated logs if they exist and response doesn't have logs
+	pending.response.Status = webhookStatus
+
+	// Preserve accumulated logs if new response doesn't have them
 	if len(existingLogs) > 0 && len(response.Logs) == 0 {
 		pending.response.Logs = existingLogs
 	}
+
+	// Restore request-derived fields and finalize if terminal
+	pending.response.populateFromRequest(pending.request)
+	completed := pending.response.Status.IsCompleted()
+	if completed {
+		if err := pending.response.finalizeResponse(); err != nil {
+			log.Errorw("failed to finalize response", "error", err)
+		}
+	}
 	pending.mu.Unlock()
 
-	// Send webhooks based on prediction status
-	switch response.Status {
+	// Send appropriate webhooks
+	r.sendStatusWebhook(pending, response, webhookStatus, log)
+
+	// Handle terminal completion
+	if completed {
+		r.handleTerminalCompletion(response, pending, predictionID, log)
+	}
+}
+
+// sendStatusWebhook sends webhooks based on prediction status
+func (r *Runner) sendStatusWebhook(pending *PendingPrediction, response *PredictionResponse, status PredictionStatus, log *logging.SugaredLogger) {
+	switch status {
 	case PredictionStarting:
-		log.Debugw("prediction started", "id", response.ID, "status", response.Status)
-		// Send start webhook async (intermediary)
+		// This case shouldn't happen due to compatibility transformation above
+		log.Debugw("prediction started", "id", response.ID, "status", status)
 		go func() { _ = pending.sendWebhook(webhook.EventStart) }()
 
-		// Compat: legacy Cog never sends "start" event - change status to processing
-		response.Status = PredictionProcessing
-		pending.mu.Lock()
-		pending.response.Status = PredictionProcessing
-		pending.mu.Unlock()
-
 	case PredictionProcessing:
-		log.Debugw("prediction processing", "id", response.ID, "status", response.Status)
-		// Send output/logs webhook async (intermediary)
-		if response.Output != nil {
-			go func() { _ = pending.sendWebhook(webhook.EventOutput) }()
+		if response.Status == PredictionStarting {
+			log.Debugw("prediction started", "id", response.ID, "status", "starting->processing")
+			go func() { _ = pending.sendWebhook(webhook.EventStart) }()
 		} else {
-			go func() { _ = pending.sendWebhook(webhook.EventLogs) }()
-		}
-	}
-
-	// Always update pending response state, preserving accumulated logs again
-	pending.mu.Lock()
-	existingLogs = pending.response.Logs
-	pending.response = *response
-	// Preserve accumulated logs if they exist and response doesn't have logs
-	if len(existingLogs) > 0 && len(response.Logs) == 0 {
-		pending.response.Logs = existingLogs
-	}
-	pending.mu.Unlock()
-
-	// Handle terminal vs non-terminal states
-	if response.Status.IsCompleted() {
-		log.Infow("prediction completed", "id", response.ID, "status", response.Status)
-
-		// Send response and close channel - manager will handle webhook/cleanup
-		pending.safeSend(*response)
-		pending.safeClose()
-
-		// Clean up input paths for completed prediction
-		for _, inputPath := range pending.inputPaths {
-			if err := os.Remove(inputPath); err != nil {
-				log.Errorw("failed to remove input path", "path", inputPath, "error", err)
+			log.Debugw("prediction processing", "id", response.ID, "status", status)
+			if response.Output != nil {
+				go func() { _ = pending.sendWebhook(webhook.EventOutput) }()
+			} else {
+				go func() { _ = pending.sendWebhook(webhook.EventLogs) }()
 			}
 		}
-
-		// Watcher exits - manager defer will handle webhook and cleanup
-		log.Tracew("prediction completed, watcher exiting", "prediction_id", predictionID)
-		return
 	}
+}
+
+// handleTerminalCompletion handles cleanup and response sending for completed predictions
+func (r *Runner) handleTerminalCompletion(response *PredictionResponse, pending *PendingPrediction, predictionID string, log *logging.SugaredLogger) {
+	log.Infow("prediction completed", "id", response.ID, "status", response.Status)
+
+	// Prepare local response copy with all fields populated and finalized
+	pending.mu.Lock()
+	finalResponse := *response
+	finalResponse.populateFromRequest(pending.request)
+	pending.mu.Unlock()
+
+	if err := finalResponse.finalizeResponse(); err != nil {
+		log.Errorw("failed to finalize response", "error", err)
+	}
+
+	// Send response and close channel - use local copy to avoid race conditions
+	pending.safeSend(finalResponse)
+	pending.safeClose()
+
+	// Clean up input paths
+	for _, inputPath := range pending.inputPaths {
+		if err := os.Remove(inputPath); err != nil {
+			log.Errorw("failed to remove input path", "path", inputPath, "error", err)
+		}
+	}
+
+	log.Tracew("prediction completed, watcher exiting", "prediction_id", predictionID)
 }
 
 type (
@@ -655,12 +676,14 @@ func (r *Runner) Stop() error {
 
 	// Close all pending prediction channels to avoid goroutine leaks
 	for id, pending := range r.pending {
-		pending.safeSend(PredictionResponse{
+		response := PredictionResponse{
 			ID:     id,
 			Status: PredictionFailed,
 			Input:  pending.request.Input,
 			Error:  "runner stopped",
-		})
+		}
+		response.populateFromRequest(pending.request)
+		pending.safeSend(response)
 		pending.safeClose()
 
 		// Clean up input paths
@@ -787,7 +810,9 @@ func (r *Runner) verifyProcessCleanup(pid int) {
 	}
 }
 
-func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error) {
+// predict returns a channel that will receive the prediction response and an initial prediction response
+// populated with the relevant fields from the request
+func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, *PredictionResponse, error) {
 	log := r.logger.Sugar()
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -797,7 +822,7 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	// Prediction must be pre-allocated by manager
 	pending, exists := r.pending[req.ID]
 	if !exists {
-		return nil, fmt.Errorf("prediction %s not allocated", req.ID)
+		return nil, nil, fmt.Errorf("prediction %s not allocated", req.ID)
 	}
 
 	log.Tracew("prediction found in pending", "prediction_id", req.ID)
@@ -806,11 +831,11 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	inputPaths := make([]string, 0)
 	input, err := ProcessInputPaths(req.Input, r.doc, &inputPaths, Base64ToInput)
 	if err != nil {
-		return nil, fmt.Errorf("failed to process base64 inputs: %w", err)
+		return nil, nil, fmt.Errorf("failed to process base64 inputs: %w", err)
 	}
 	input, err = ProcessInputPaths(input, r.doc, &inputPaths, URLToInput)
 	if err != nil {
-		return nil, fmt.Errorf("failed to process URL inputs: %w", err)
+		return nil, nil, fmt.Errorf("failed to process URL inputs: %w", err)
 	}
 	req.Input = input
 	pending.inputPaths = inputPaths
@@ -822,11 +847,11 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 
 	requestData, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	if err := os.WriteFile(requestPath, requestData, 0o644); err != nil { //nolint:gosec // 0o644 is the correct permissions for non-root consumer
-		return nil, fmt.Errorf("failed to write request file: %w", err)
+		return nil, nil, fmt.Errorf("failed to write request file: %w", err)
 	}
 
 	log.Tracew("wrote prediction request file", "prediction_id", req.ID, "path", requestPath, "working_dir", r.runnerCtx.workingdir, "request_data", string(requestData))
@@ -850,8 +875,20 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, error)
 	// Update pending prediction with request details
 	pending.request = req
 
+	now := time.Now().Format(config.TimeFormat)
+	if pending.request.CreatedAt == "" {
+		pending.request.CreatedAt = now
+	}
+	if pending.request.StartedAt == "" {
+		pending.request.StartedAt = now
+	}
+
 	log.Tracew("returning prediction channel", "prediction_id", req.ID)
-	return pending.c, nil
+	initialResponse := &PredictionResponse{
+		Status: PredictionStarting,
+	}
+	initialResponse.populateFromRequest(req)
+	return pending.c, initialResponse, nil
 }
 
 func (r *Runner) Cancel(pid string) error {

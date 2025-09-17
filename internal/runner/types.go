@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -151,14 +152,51 @@ func (s PredictionStatus) IsCompleted() bool {
 }
 
 type PredictionResponse struct {
-	ID         string           `json:"id"`
-	Status     PredictionStatus `json:"status"`
-	Input      any              `json:"input,omitempty"`
-	Output     any              `json:"output,omitempty"`
-	Error      string           `json:"error,omitempty"`
-	Logs       LogsSlice        `json:"logs,omitempty"`
-	Metrics    any              `json:"metrics,omitempty"`
-	WebhookURL string           `json:"webhook,omitempty"`
+	ID      string           `json:"id"`
+	Status  PredictionStatus `json:"status,omitempty"`
+	Input   any              `json:"input"`
+	Output  any              `json:"output,omitempty"`
+	Error   string           `json:"error,omitempty"`
+	Logs    LogsSlice        `json:"logs,omitempty"`
+	Metrics map[string]any   `json:"metrics,omitempty"`
+
+	CreatedAt   string `json:"created_at,omitempty"`
+	StartedAt   string `json:"started_at,omitempty"`
+	CompletedAt string `json:"completed_at,omitempty"`
+}
+
+// TODO: This should somehow be merged up to PendingPrediction, making
+// PendingPrediction immutable. For now, this is sufficient. Additionally,
+// error handling should be improved to take appropriate action rather than
+// just logging errors
+func (p *PredictionResponse) finalizeResponse() error {
+	if p.CompletedAt == "" {
+		p.CompletedAt = time.Now().UTC().Format(config.TimeFormat)
+	}
+	if p.Metrics == nil {
+		p.Metrics = make(map[string]any)
+	}
+	if _, ok := p.Metrics["predict_time"]; !ok {
+		startedAt, err := time.Parse(config.TimeFormat, p.StartedAt)
+		if err != nil {
+			return fmt.Errorf("failed to parse started at: %w", err)
+		}
+		completedAt, err := time.Parse(config.TimeFormat, p.CompletedAt)
+		if err != nil {
+			return fmt.Errorf("failed to parse completed at: %w", err)
+		}
+		p.Metrics["predict_time"] = completedAt.Sub(startedAt).Seconds()
+	}
+	return nil
+}
+
+// populateFromRequest populates the response from the request
+// Explicitly `populateFromRequest` populates the following fields: ID, Input, CreatedAt, StartedAt
+func (p *PredictionResponse) populateFromRequest(request PredictionRequest) {
+	p.ID = request.ID
+	p.Input = request.Input
+	p.CreatedAt = request.CreatedAt
+	p.StartedAt = request.StartedAt
 }
 
 // RunnerID is a unique identifier for a runner instance.
@@ -359,16 +397,13 @@ func (p *PendingPrediction) sendWebhookSync(event webhook.Event) error {
 		return nil
 	}
 
-	p.mu.Lock()
 	body, err := json.Marshal(p.response)
 	if err != nil {
 		return fmt.Errorf("failed to marshal prediction response: %w", err)
 	}
-	p.mu.Unlock()
 
 	// Send webhook synchronously for terminal events
-	_ = p.webhookSender.SendConditional(p.request.Webhook, bytes.NewReader(body), event, p.request.WebhookEventsFilter, &p.lastUpdated)
-	return nil
+	return p.webhookSender.SendConditional(p.request.Webhook, bytes.NewReader(body), event, p.request.WebhookEventsFilter, &p.lastUpdated)
 }
 
 type MetricsPayload struct {

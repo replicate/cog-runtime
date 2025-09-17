@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestInputFunctionSchemaGeneration(t *testing.T) {
@@ -149,11 +148,12 @@ func TestInputFunctionComplexPrediction(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var prediction runner.PredictionResponse
+	var prediction testHarnessResponse
 	err = json.Unmarshal(body, &prediction)
 	require.NoError(t, err)
 
 	assert.Equal(t, runner.PredictionSucceeded, prediction.Status)
+	ValidateTerminalResponse(t, &prediction)
 	assert.Equal(t, "Output: TEST MESSAGE TEST MESSAGE [END]", prediction.Output)
 }
 
@@ -215,12 +215,13 @@ func TestInputFunctionConstraintViolations(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 
-			var errorResp runner.PredictionResponse
+			var errorResp testHarnessResponse
 			t.Logf("body: %s", string(body))
 			err = json.Unmarshal(body, &errorResp)
 			require.NoError(t, err)
 
 			assert.Equal(t, runner.PredictionFailed, errorResp.Status)
+			ValidateTerminalResponse(t, &errorResp)
 			assert.Contains(t, errorResp.Error, tc.errorMsg)
 			// FIXME: python's internal task for sending IPC updates has a 100ms delay
 			// without adding a delay here now that go is a lot more async, we will
@@ -289,7 +290,7 @@ func TestInputFunctionSimple(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var prediction server.PredictionResponse
+	var prediction runner.PredictionResponse
 	err = json.Unmarshal(body, &prediction)
 	require.NoError(t, err)
 

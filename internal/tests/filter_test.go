@@ -65,13 +65,6 @@ func TestPredictionWebhookFilter(t *testing.T) {
 			},
 		},
 		{
-			allowedPredictionStatuses: []runner.PredictionStatus{
-				runner.PredictionStarting,
-				runner.PredictionProcessing,
-				runner.PredictionSucceeded,
-			},
-		},
-		{
 			name: "output_completed",
 			webhookEvents: []webhook.Event{
 				webhook.EventOutput,
@@ -139,6 +132,7 @@ func TestPredictionWebhookFilter(t *testing.T) {
 				case webhookEvent := <-receiverServer.webhookReceiverChan:
 					assert.Contains(t, tc.allowedPredictionStatuses, webhookEvent.Response.Status)
 					if webhookEvent.Response.Status == runner.PredictionSucceeded {
+						ValidateTerminalResponse(t, &webhookEvent.Response)
 						assert.Equal(t, "starting prediction\nprediction in progress 1/2\nprediction in progress 2/2\ncompleted prediction\n", webhookEvent.Response.Logs)
 						assert.Equal(t, []any{"*bar-0*", "*bar-1*"}, webhookEvent.Response.Output)
 					}
