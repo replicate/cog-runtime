@@ -22,9 +22,6 @@ import (
 	"github.com/replicate/cog-runtime/internal/runner"
 )
 
-// errAsyncPrediction is a sentinel error used to indicate that a prediction is being served asynchronously, it is not surfaced outside of server
-var errAsyncPrediction = errors.New("async prediction")
-
 type IPCStatus string
 
 const (
@@ -109,11 +106,12 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 	// Convert runner setup logs from []string to string
 	logsStr := runnerSetupResult.Logs
 
+	formattedTime := h.startedAt.UTC().Format(config.TimeFormat)
 	hc := HealthCheck{
 		Status: runnerStatus,
 		Setup: &SetupResult{
-			StartedAt:   formatTime(h.startedAt),
-			CompletedAt: formatTime(h.startedAt),
+			StartedAt:   formattedTime,
+			CompletedAt: formattedTime,
 			Status:      runnerSetupResult.Status,
 			Logs:        logsStr,
 		},
@@ -240,7 +238,6 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var c chan PredictionResponse
 	_, ok := req.Input.(map[string]any)
 	if !ok {
 		http.Error(w, "input is not a map[string]any", http.StatusBadRequest)
@@ -292,45 +289,18 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	var runnerResult *runner.PredictionResponse
 	if req.Webhook != "" {
 		// Async prediction
-		err = h.runnerManager.PredictAsync(r.Context(), req)
+		runnerResult, err = h.runnerManager.PredictAsync(r.Context(), req)
 		if err == nil {
-			err = errAsyncPrediction // Signal to return 202
+			w.WriteHeader(http.StatusAccepted)
+			h.writeResponse(w, *runnerResult)
+			return
 		}
 	} else {
 		// Sync prediction
-		runnerResult, err = h.runnerManager.Predict(req)
-		if err == nil {
-			// Convert runner response to server response format
-			c = make(chan PredictionResponse, 1)
-			var logsStr string
-			log.Tracew("runner result received", "id", runnerResult.ID, "logs_count", len(runnerResult.Logs))
-			if len(runnerResult.Logs) > 0 {
-				log.Tracew("joining logs", "logs", runnerResult.Logs)
-				logsStr = runnerResult.Logs.String()
-			}
-			var metrics map[string]any
-			if runnerResult.Metrics != nil {
-				if m, ok := runnerResult.Metrics.(map[string]any); ok {
-					metrics = m
-				}
-			}
-			c <- PredictionResponse{
-				ID:      runnerResult.ID,
-				Status:  runnerResult.Status,
-				Output:  runnerResult.Output,
-				Error:   runnerResult.Error,
-				Logs:    logsStr,
-				Metrics: metrics,
-			}
-			close(c)
-		}
+		runnerResult, err = h.runnerManager.PredictSync(req)
 	}
 
 	switch {
-	case errors.Is(err, errAsyncPrediction):
-		// Async prediction sentinel received this explicitly means
-		// we fall through and hit the `c == nil` if branch below
-		break
 	case errors.Is(err, ErrConflict):
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -351,15 +321,8 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if c == nil {
-		w.WriteHeader(http.StatusAccepted)
-		resp := PredictionResponse{ID: req.ID, Status: "starting"}
-		h.writeResponse(w, resp)
-	} else {
-		resp := <-c
-		w.WriteHeader(http.StatusOK)
-		h.writeResponse(w, resp)
-	}
+	w.WriteHeader(http.StatusOK)
+	h.writeResponse(w, *runnerResult)
 }
 
 func (h *Handler) writeBytes(w http.ResponseWriter, bs []byte) {
@@ -369,7 +332,7 @@ func (h *Handler) writeBytes(w http.ResponseWriter, bs []byte) {
 	}
 }
 
-func (h *Handler) writeResponse(w http.ResponseWriter, resp PredictionResponse) {
+func (h *Handler) writeResponse(w http.ResponseWriter, resp runner.PredictionResponse) {
 	log := h.logger.Sugar()
 	bs, err := json.Marshal(resp)
 	if err != nil {
@@ -378,7 +341,7 @@ func (h *Handler) writeResponse(w http.ResponseWriter, resp PredictionResponse) 
 	h.writeBytes(w, bs)
 }
 
-func SendWebhook(webhook string, pr *PredictionResponse) error {
+func SendWebhook(webhook string, pr *runner.PredictionResponse) error {
 	body, err := json.Marshal(pr)
 	if err != nil {
 		return fmt.Errorf("failed to marshal prediction response: %w", err)
@@ -451,8 +414,4 @@ func PredictionID() (string, error) {
 	}
 	encoding := base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
 	return encoding.EncodeToString(shuffle), nil
-}
-
-func formatTime(t time.Time) string {
-	return t.UTC().Format(time.RFC3339Nano)
 }

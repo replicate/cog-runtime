@@ -579,7 +579,7 @@ func TestManagerPredictionHandling(t *testing.T) {
 		require.NoError(t, err)
 
 		req := PredictionRequest{ID: "test-id"}
-		_, err = m.Predict(req)
+		_, err = m.PredictSync(req)
 		require.Error(t, err)
 		assert.Equal(t, ErrNoCapacity, err)
 	})

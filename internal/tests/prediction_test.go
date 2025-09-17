@@ -38,7 +38,7 @@ func TestPredictionSucceeded(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var prediction server.PredictionResponse
+	var prediction testHarnessResponse
 	err = json.Unmarshal(body, &prediction)
 	require.NoError(t, err)
 
@@ -75,7 +75,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse testHarnessResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -106,7 +106,7 @@ func TestPredictionFailure(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var predictionResponse server.PredictionResponse
+	var predictionResponse testHarnessResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -145,7 +145,7 @@ func TestPredictionCrash(t *testing.T) {
 		assert.Equal(t, "DEFUNCT", hc.Status)
 	case http.StatusOK:
 		require.NoError(t, err)
-		var predictionResponse server.PredictionResponse
+		var predictionResponse testHarnessResponse
 		err = json.Unmarshal(body, &predictionResponse)
 		require.NoError(t, err)
 		assert.Equal(t, runner.PredictionFailed, predictionResponse.Status)

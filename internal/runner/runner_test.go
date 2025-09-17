@@ -503,7 +503,13 @@ func TestRunnerPredict(t *testing.T) {
 			Input: map[string]any{"key": "value"},
 		}
 
-		ch, err := r.predict(req)
+		ch, initialResponse, err := r.predict(req)
+		assert.NotNil(t, initialResponse)
+		assert.Equal(t, PredictionStarting, initialResponse.Status)
+		assert.NotEmpty(t, initialResponse.ID)
+		assert.Equal(t, req.Input, initialResponse.Input)
+		assert.Equal(t, req.CreatedAt, initialResponse.CreatedAt)
+		assert.Equal(t, req.StartedAt, initialResponse.StartedAt)
 		require.NoError(t, err)
 		assert.NotNil(t, ch)
 
@@ -523,9 +529,10 @@ func TestRunnerPredict(t *testing.T) {
 		}
 
 		req := PredictionRequest{ID: "test-id"}
-		ch, err := r.predict(req)
+		ch, initialResponse, err := r.predict(req)
 		require.Error(t, err)
 		assert.Nil(t, ch)
+		assert.Nil(t, initialResponse)
 		assert.Contains(t, err.Error(), "prediction test-id not allocated")
 	})
 }

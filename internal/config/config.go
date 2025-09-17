@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+const (
+	TimeFormat = "2006-01-02T15:04:05.999999-07:00"
+)
+
 // Config holds all configuration for the cog runtime service
 type Config struct {
 	// Server configuration

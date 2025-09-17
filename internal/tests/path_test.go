@@ -64,7 +64,7 @@ func TestPredictionPathBase64Succeeded(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var predictionResponse server.PredictionResponse
+	var predictionResponse testHarnessResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestPredictionPathURLSucceeded(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var predictionResponse server.PredictionResponse
+	var predictionResponse testHarnessResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -132,7 +132,7 @@ func TestPredictionNotPathSucceeded(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 
-	var predictionResponse server.PredictionResponse
+	var predictionResponse testHarnessResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -175,6 +175,7 @@ func TestPredictionPathOutputFilePrefixSucceeded(t *testing.T) {
 	}
 
 	assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+	ValidateTerminalResponse(t, &wh.Response)
 	assert.Equal(t, "reading input file\nwriting output file\n", wh.Response.Logs)
 	output, ok := wh.Response.Output.(string)
 	assert.True(t, ok)
@@ -234,6 +235,7 @@ func TestPredictionPathUploadUrlSucceeded(t *testing.T) {
 	}
 
 	assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+	ValidateTerminalResponse(t, &wh.Response)
 	assert.Equal(t, "reading input file\nwriting output file\n", wh.Response.Logs)
 	output, ok := wh.Response.Output.(string)
 	assert.True(t, ok)
@@ -298,6 +300,7 @@ func TestPredictionPathUploadIterator(t *testing.T) {
 				assert.Len(t, output, count)
 			case 4:
 				assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+				ValidateTerminalResponse(t, &wh.Response)
 				output, ok := wh.Response.Output.([]any)
 				require.True(t, ok)
 				assert.Len(t, output, 3)
@@ -393,6 +396,7 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 			select {
 			case webhook := <-receiverServer.webhookReceiverChan:
 				assert.Equal(t, runner.PredictionSucceeded, webhook.Response.Status)
+				ValidateTerminalResponse(t, &webhook.Response)
 			case <-time.After(10 * time.Second):
 				t.Fatalf("timeout waiting for webhook")
 			}
@@ -473,6 +477,7 @@ func TestPredictionPathMultiMimeTypes(t *testing.T) {
 	select {
 	case wh := <-receiverServer.webhookReceiverChan:
 		assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status)
+		ValidateTerminalResponse(t, &wh.Response)
 	case <-time.After(10 * time.Second):
 		t.Fatalf("timeout waiting for webhook")
 	}

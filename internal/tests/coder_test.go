@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestPredictionDataclassCoderSucceeded(t *testing.T) {
@@ -43,7 +42,7 @@ func TestPredictionDataclassCoderSucceeded(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -82,7 +81,7 @@ func TestPredictionChatCoderSucceeded(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 	expectedOutput := map[string]any{"role": "assistant", "content": "*bar*"}
@@ -113,7 +112,7 @@ func TestPredictionCustomOutputCoder(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -155,7 +154,7 @@ func TestPredictionComplexOutputCoder(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -196,7 +195,7 @@ func TestPredictionCustomDataclassOutputCoder(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 
@@ -236,7 +235,7 @@ func TestPredictionComplexDataclassOutputCoder(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 

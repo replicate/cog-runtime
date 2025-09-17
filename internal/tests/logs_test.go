@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 )
 
 func TestLogs(t *testing.T) {
@@ -69,7 +68,7 @@ func TestLogs(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	var predictionResponse server.PredictionResponse
+	var predictionResponse runner.PredictionResponse
 	err = json.Unmarshal(body, &predictionResponse)
 	require.NoError(t, err)
 	assert.Equal(t, runner.PredictionSucceeded, predictionResponse.Status)
