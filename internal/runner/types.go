@@ -165,9 +165,10 @@ type PredictionResponse struct {
 	CompletedAt string `json:"completed_at,omitempty"`
 }
 
-// TODO: This should be some how merged up to PendingPrediction and making
-// pending prediction immutable. For now this is sufficient. We also should
-// do more than log on errors...
+// TODO: This should somehow be merged up to PendingPrediction, making
+// PendingPrediction immutable. For now, this is sufficient. Additionally,
+// error handling should be improved to take appropriate action rather than
+// just logging errors
 func (p *PredictionResponse) finalizeResponse() error {
 	if p.CompletedAt == "" {
 		p.CompletedAt = time.Now().UTC().Format(config.TimeFormat)
@@ -190,7 +191,7 @@ func (p *PredictionResponse) finalizeResponse() error {
 }
 
 // populateFromRequest populates the response from the request
-// Explicitly `populateFromRequest` populates the follow fields: ID, Input, CreatedAt, StartedAt
+// Explicitly `populateFromRequest` populates the following fields: ID, Input, CreatedAt, StartedAt
 func (p *PredictionResponse) populateFromRequest(request PredictionRequest) {
 	p.ID = request.ID
 	p.Input = request.Input
