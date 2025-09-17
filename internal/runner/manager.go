@@ -136,8 +136,10 @@ func (m *Manager) Start(ctx context.Context) error {
 func (m *Manager) claimSlot() error {
 	select {
 	case <-m.capacity:
+		m.logger.Trace("claiming slot")
 		return nil
 	default:
+		m.logger.Trace("attempted claim slot but no slot available")
 		return ErrNoCapacity
 	}
 }
@@ -145,8 +147,9 @@ func (m *Manager) claimSlot() error {
 func (m *Manager) releaseSlot() {
 	select {
 	case m.capacity <- struct{}{}:
+		m.logger.Trace("releasing slot")
 	default:
-		m.logger.Warn("attempted to release slot but channel is full")
+		m.logger.Error("attempted to release slot but channel is full")
 	}
 }
 
@@ -172,8 +175,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) (*Pre
 
 	// Release slot when prediction completes in background
 	go func() {
-		defer m.releaseSlot() // Release slot after prediction completes
-		<-respChan            // Wait for prediction to complete
+		<-respChan // Wait for prediction to complete
 		log.Tracew("async prediction completed", "prediction_id", req.ID)
 	}()
 
