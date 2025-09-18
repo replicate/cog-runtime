@@ -18,6 +18,7 @@ import (
 
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/webhook"
+	"github.com/replicate/go/uuid"
 )
 
 // LogsSlice is a []string that marshals to/from a newline-joined string in JSON
@@ -411,4 +412,17 @@ type MetricsPayload struct {
 	Source string         `json:"source,omitempty"`
 	Type   string         `json:"type,omitempty"`
 	Data   map[string]any `json:"data,omitempty"`
+}
+
+func PredictionID() (string, error) {
+	u, err := uuid.NewV7()
+	if err != nil {
+		return "", err
+	}
+	shuffle := make([]byte, uuid.Size)
+	for i := 0; i < 4; i++ {
+		shuffle[i], shuffle[i+4], shuffle[i+8], shuffle[i+12] = u[i+12], u[i+4], u[i], u[i+8]
+	}
+	encoding := base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
+	return encoding.EncodeToString(shuffle), nil
 }

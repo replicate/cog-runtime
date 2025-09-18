@@ -29,6 +29,8 @@ var (
 	ErrRunnerNotFound      = errors.New("runner not found")
 	ErrNoEmptySlot         = errors.New("no empty slot available")
 	ErrInvalidRunnerStatus = errors.New("invalid runner status for new prediction")
+	// ErrAsyncPrediction is a sentinel error used to indicate that a prediction is being served asynchronously, it is not surfaced outside of runner
+	ErrAsyncPrediction = errors.New("async prediction")
 )
 
 // Manager manages the lifecycle and capacity of prediction runners
@@ -224,7 +226,19 @@ func (m *Manager) predict(ctx context.Context, req PredictionRequest, async bool
 		return nil, nil, fmt.Errorf("prediction %s was canceled: %w", req.ID, pending.ctx.Err())
 	}
 
-	respChan, initialResponse, err := runner.predict(req)
+	// Check for setup failure before calling predict
+	runner.mu.Lock()
+	status := runner.status
+	runner.mu.Unlock()
+	if status == StatusSetupFailed {
+		// Setup failure will be handled by async webhook machinery
+		// Return sentinel error to indicate async handling
+		log.Tracew("setup failed, using async handling", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
+		m.releaseSlot()
+		return nil, nil, ErrAsyncPrediction
+	}
+
+	respChan, initialResponse, err := runner.predict(req.ID)
 	if err != nil {
 		m.releaseSlot()
 		return nil, nil, err
@@ -365,6 +379,14 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 		webhookSender: m.webhookSender,
 	}
 	runner.pending[req.ID] = pending
+
+	now := time.Now().Format(config.TimeFormat)
+	if pending.request.CreatedAt == "" {
+		pending.request.CreatedAt = now
+	}
+	if pending.request.StartedAt == "" {
+		pending.request.StartedAt = now
+	}
 
 	// Start per-prediction response watcher with cleanup wrapper
 	go func() {

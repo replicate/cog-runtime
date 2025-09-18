@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
 	"github.com/replicate/cog-runtime/internal/webhook"
@@ -65,7 +64,7 @@ func TestProcedureSchemaLoadingSequential(t *testing.T) {
 			}
 
 			_, statusCode := runProcedure(t, runtimeServer, prediction)
-			require.Equal(t, http.StatusAccepted, statusCode)
+			assert.Equal(t, http.StatusAccepted, statusCode)
 
 			var wh webhookData
 			select {
@@ -79,7 +78,7 @@ func TestProcedureSchemaLoadingSequential(t *testing.T) {
 
 			// Verify URL processing worked - this is the key regression test
 			output, ok := wh.Response.Output.(string)
-			require.True(t, ok, "output should be a string for prediction %d", predIndex)
+			assert.True(t, ok, "output should be a string for prediction %d", predIndex)
 			assert.True(t, strings.HasPrefix(output, "data:"),
 				"prediction %d: HTTPS URL should be downloaded and converted to base64, got: %s", predIndex, output)
 		}(i)

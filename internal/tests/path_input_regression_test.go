@@ -62,6 +62,7 @@ func TestPathInputHTTPSRegression(t *testing.T) {
 }
 
 func testProcedureModeHTTPSProcessing(t *testing.T, testServer *httptest.Server, receiverServer *testHarnessReceiver) {
+	t.Helper()
 	runtimeServer, _, _ := setupCogRuntimeServer(t, cogRuntimeServerConfig{
 		procedureMode:    true,
 		explicitShutdown: true,
@@ -138,6 +139,7 @@ func testProcedureModeHTTPSProcessing(t *testing.T, testServer *httptest.Server,
 }
 
 func testNonProcedureModeHTTPSProcessing(t *testing.T, testServer *httptest.Server, receiverServer *testHarnessReceiver) {
+	t.Helper()
 	runtimeServer := setupCogRuntime(t, cogRuntimeServerConfig{
 		procedureMode:    false,
 		explicitShutdown: true,
