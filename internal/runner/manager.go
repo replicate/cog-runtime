@@ -184,6 +184,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) (*Pre
 
 // predict is the internal implementation shared by both sync and async predictions
 func (m *Manager) predict(ctx context.Context, req PredictionRequest, async bool) (chan PredictionResponse, *PredictionResponse, error) {
+	log := m.logger.Sugar()
 	if err := m.claimSlot(); err != nil {
 		return nil, nil, err
 	}
@@ -200,6 +201,27 @@ func (m *Manager) predict(ctx context.Context, req PredictionRequest, async bool
 	if !m.cfg.UseProcedureMode && runner.status != StatusReady {
 		m.releaseSlot()
 		return nil, nil, fmt.Errorf("runner not ready: %s", runner.status)
+	}
+
+	runner.mu.RLock()
+	pending, exists := runner.pending[req.ID]
+	setupCompletedChan := runner.setupComplete
+	runner.mu.RUnlock()
+	if !exists {
+		m.releaseSlot()
+		return nil, nil, fmt.Errorf("failed to find pending prediction after allocation: %s", req.ID)
+	}
+	select {
+	case <-setupCompletedChan:
+		// We need to wait for setup to complete before proceeding so that we can ensure that
+		// the OpenAPI schema is available for input processing
+		log.Tracew("runner setup complete, proceeding with prediction", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
+	case <-pending.ctx.Done():
+		// Prediction was canceled, watcher will perform cleanup, er need to abort
+		// the rest of the prediction processing
+		log.Tracew("prediction was canceled before setup complete, aborting", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
+		m.releaseSlot()
+		return nil, nil, fmt.Errorf("prediction %s was canceled: %w", req.ID, pending.ctx.Err())
 	}
 
 	respChan, initialResponse, err := runner.predict(req)
@@ -330,13 +352,14 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 	// NOTE(morgan): by design we do not use the passed in context, as the passed
 	// in context is tied to the http request, and would cause the prediction to
 	// fail at the end of the http request's lifecycle.
-	watcherCtx, cancel := context.WithCancel(m.ctx)
+	predictionCtx, cancel := context.WithCancel(m.ctx)
 
 	pending := &PendingPrediction{
 		request:       req,
 		outputCache:   make(map[string]string),
 		c:             make(chan PredictionResponse, 1),
 		cancel:        cancel, // Manager can cancel this watcher explicitly
+		ctx:           predictionCtx,
 		watcherDone:   make(chan struct{}),
 		outputNotify:  make(chan struct{}, 1),
 		webhookSender: m.webhookSender,
@@ -399,7 +422,7 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 			}
 		}()
 
-		runner.watchPredictionResponses(watcherCtx, req.ID, pending)
+		runner.watchPredictionResponses(predictionCtx, req.ID, pending)
 	}()
 }
 

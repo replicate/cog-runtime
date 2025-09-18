@@ -576,7 +576,7 @@ func TestProcessInputPaths(t *testing.T) {
 		}
 
 		result, err := ProcessInputPaths(input, nil, &paths, mockFn)
-		require.NoError(t, err)
+		require.ErrorIs(t, err, ErrSchemaNotAvailable)
 		assert.Equal(t, input, result)
 		assert.Empty(t, paths)
 	})

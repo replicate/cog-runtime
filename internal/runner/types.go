@@ -337,6 +337,7 @@ type PendingPrediction struct {
 
 	// Per-prediction watcher cancellation and notification
 	cancel       context.CancelFunc
+	ctx          context.Context //nolint:containedctx // context for the lifetime of the prediction, used in runner.predict as well as the watcher
 	watcherDone  chan struct{}
 	outputNotify chan struct{} // Receives OUTPUT IPC events for this prediction
 

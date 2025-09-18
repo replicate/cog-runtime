@@ -829,18 +829,24 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, *Predi
 
 	// Process input paths (base64 and URL inputs)
 	inputPaths := make([]string, 0)
-	input, err := ProcessInputPaths(req.Input, r.doc, &inputPaths, Base64ToInput)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to process base64 inputs: %w", err)
+	if r.doc == nil {
+		log.Errorw("OpenAPI schema not available for input processing - cannot convert base64 or URL inputs", "prediction_id", req.ID)
+	} else {
+		// Process base64 inputs first, then URL inputs (to allow URL inputs to reference base64-decoded files)
+		input, err := ProcessInputPaths(req.Input, r.doc, &inputPaths, Base64ToInput)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to process base64 inputs: %w", err)
+		}
+
+		input, err = ProcessInputPaths(input, r.doc, &inputPaths, URLToInput)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to process URL inputs: %w", err)
+		}
+		req.Input = input
 	}
-	input, err = ProcessInputPaths(input, r.doc, &inputPaths, URLToInput)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to process URL inputs: %w", err)
-	}
-	req.Input = input
 	pending.inputPaths = inputPaths
 
-	// Write prediction request to file (async like original)
+	// Write prediction request to file (async like original)[]
 	requestFile := fmt.Sprintf("request-%s.json", req.ID)
 	log.Debugw("writing prediction request file", "prediction_id", req.ID, "file", requestFile)
 	requestPath := path.Join(r.runnerCtx.workingdir, requestFile)
@@ -970,14 +976,23 @@ func (r *Runner) updateSchema() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	log := r.logger.Sugar()
 	schemaPath := filepath.Join(r.runnerCtx.workingdir, "openapi.json")
+	log.Tracew("attempting to read openapi.json", "path", schemaPath)
+
 	if schemaData, err := os.ReadFile(schemaPath); err == nil { //nolint:gosec // expected dynamic path
 		r.schema = string(schemaData)
+		log.Tracew("successfully read openapi.json", "schema_length", len(schemaData))
 
 		// Parse the schema for use in ProcessInputPaths
 		if doc, parseErr := openapi3.NewLoader().LoadFromData(schemaData); parseErr == nil {
 			r.doc = doc
+			log.Tracew("successfully parsed openapi schema for ProcessInputPaths")
+		} else {
+			log.Errorw("failed to parse openapi schema", "error", parseErr)
 		}
+	} else {
+		log.Tracew("failed to read openapi.json", "error", err)
 	}
 }
 
