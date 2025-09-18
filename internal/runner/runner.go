@@ -812,40 +812,53 @@ func (r *Runner) verifyProcessCleanup(pid int) {
 
 // predict returns a channel that will receive the prediction response and an initial prediction response
 // populated with the relevant fields from the request
-func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, *PredictionResponse, error) {
+func (r *Runner) predict(reqID string) (chan PredictionResponse, *PredictionResponse, error) {
 	log := r.logger.Sugar()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	log.Tracew("runner.predict called", "prediction_id", req.ID, "status", r.status)
+	log.Tracew("runner.predict called", "prediction_id", reqID, "status", r.status)
 
 	// Prediction must be pre-allocated by manager
-	pending, exists := r.pending[req.ID]
+	pending, exists := r.pending[reqID]
 	if !exists {
-		return nil, nil, fmt.Errorf("prediction %s not allocated", req.ID)
+		return nil, nil, fmt.Errorf("prediction %s not allocated", reqID)
 	}
 
-	log.Tracew("prediction found in pending", "prediction_id", req.ID)
+	if pending.request.ID != reqID {
+		return nil, nil, fmt.Errorf("prediction ID mismatch: expected %s, got %s", reqID, pending.request.ID)
+	}
+
+	pending.mu.Lock()
+	defer pending.mu.Unlock()
+
+	log.Tracew("prediction found in pending", "prediction_id", reqID)
 
 	// Process input paths (base64 and URL inputs)
 	inputPaths := make([]string, 0)
-	input, err := ProcessInputPaths(req.Input, r.doc, &inputPaths, Base64ToInput)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to process base64 inputs: %w", err)
+	if r.doc == nil {
+		log.Errorw("OpenAPI schema not available for input processing - cannot convert base64 or URL inputs", "prediction_id", reqID)
+	} else {
+		// Process base64 inputs first, then URL inputs (to allow URL inputs to reference base64-decoded files)
+		input, err := ProcessInputPaths(pending.request.Input, r.doc, &inputPaths, Base64ToInput)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to process base64 inputs: %w", err)
+		}
+
+		input, err = ProcessInputPaths(input, r.doc, &inputPaths, URLToInput)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to process URL inputs: %w", err)
+		}
+		pending.request.Input = input
 	}
-	input, err = ProcessInputPaths(input, r.doc, &inputPaths, URLToInput)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to process URL inputs: %w", err)
-	}
-	req.Input = input
 	pending.inputPaths = inputPaths
 
-	// Write prediction request to file (async like original)
-	requestFile := fmt.Sprintf("request-%s.json", req.ID)
-	log.Debugw("writing prediction request file", "prediction_id", req.ID, "file", requestFile)
+	// Write prediction request to file
+	requestFile := fmt.Sprintf("request-%s.json", reqID)
+	log.Debugw("writing prediction request file", "prediction_id", reqID, "file", requestFile)
 	requestPath := path.Join(r.runnerCtx.workingdir, requestFile)
 
-	requestData, err := json.Marshal(req)
+	requestData, err := json.Marshal(pending.request)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -854,13 +867,13 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, *Predi
 		return nil, nil, fmt.Errorf("failed to write request file: %w", err)
 	}
 
-	log.Tracew("wrote prediction request file", "prediction_id", req.ID, "path", requestPath, "working_dir", r.runnerCtx.workingdir, "request_data", string(requestData))
+	log.Tracew("wrote prediction request file", "prediction_id", reqID, "path", requestPath, "working_dir", r.runnerCtx.workingdir, "request_data", string(requestData))
 
 	// Debug: Check if file actually exists and list directory contents
 	if _, err := os.Stat(requestPath); err != nil {
-		log.Tracew("ERROR: written request file does not exist", "prediction_id", req.ID, "path", requestPath, "error", err)
+		log.Tracew("ERROR: written request file does not exist", "prediction_id", reqID, "path", requestPath, "error", err)
 	} else {
-		log.Tracew("confirmed request file exists", "prediction_id", req.ID, "path", requestPath)
+		log.Tracew("confirmed request file exists", "prediction_id", reqID, "path", requestPath)
 	}
 
 	// Debug: List all files in working directory
@@ -869,25 +882,14 @@ func (r *Runner) predict(req PredictionRequest) (chan PredictionResponse, *Predi
 		for i, entry := range entries {
 			fileNames[i] = entry.Name()
 		}
-		log.Tracew("working directory contents after write", "prediction_id", req.ID, "working_dir", r.runnerCtx.workingdir, "files", fileNames)
+		log.Tracew("working directory contents after write", "prediction_id", reqID, "working_dir", r.runnerCtx.workingdir, "files", fileNames)
 	}
 
-	// Update pending prediction with request details
-	pending.request = req
-
-	now := time.Now().Format(config.TimeFormat)
-	if pending.request.CreatedAt == "" {
-		pending.request.CreatedAt = now
-	}
-	if pending.request.StartedAt == "" {
-		pending.request.StartedAt = now
-	}
-
-	log.Tracew("returning prediction channel", "prediction_id", req.ID)
+	log.Tracew("returning prediction channel", "prediction_id", reqID)
 	initialResponse := &PredictionResponse{
 		Status: PredictionStarting,
 	}
-	initialResponse.populateFromRequest(req)
+	initialResponse.populateFromRequest(pending.request)
 	return pending.c, initialResponse, nil
 }
 
@@ -970,14 +972,23 @@ func (r *Runner) updateSchema() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	log := r.logger.Sugar()
 	schemaPath := filepath.Join(r.runnerCtx.workingdir, "openapi.json")
+	log.Tracew("attempting to read openapi.json", "path", schemaPath)
+
 	if schemaData, err := os.ReadFile(schemaPath); err == nil { //nolint:gosec // expected dynamic path
 		r.schema = string(schemaData)
+		log.Tracew("successfully read openapi.json", "schema_length", len(schemaData))
 
 		// Parse the schema for use in ProcessInputPaths
 		if doc, parseErr := openapi3.NewLoader().LoadFromData(schemaData); parseErr == nil {
 			r.doc = doc
+			log.Tracew("successfully parsed openapi schema for ProcessInputPaths")
+		} else {
+			log.Errorw("failed to parse openapi schema", "error", parseErr)
 		}
+	} else {
+		log.Tracew("failed to read openapi.json", "error", err)
 	}
 }
 

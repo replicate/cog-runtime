@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -83,7 +82,7 @@ func TestShutdownEndpointWaitsForInflightPredictions(t *testing.T) {
 	baseURL := httpTestServer.URL
 
 	// Start an async prediction
-	predictionID, err := server.PredictionID()
+	predictionID, err := runner.PredictionID()
 	require.NoError(t, err)
 
 	prediction := runner.PredictionRequest{
@@ -118,7 +117,7 @@ func TestShutdownEndpointWaitsForInflightPredictions(t *testing.T) {
 	assert.Equal(t, http.StatusOK, shutdownResp.StatusCode)
 
 	// Verify new predictions are rejected during shutdown with 503
-	newPredictionID, err := server.PredictionID()
+	newPredictionID, err := runner.PredictionID()
 	require.NoError(t, err)
 	newPrediction := runner.PredictionRequest{
 		Input:   map[string]any{"i": 1, "s": "should_be_rejected"},

@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -28,9 +27,9 @@ func TestAsyncPredictorConcurrency(t *testing.T) {
 	receiverServer := testHarnessReceiverServer(t)
 	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	barID, err := server.PredictionID()
+	barID, err := runner.PredictionID()
 	require.NoError(t, err)
-	bazID, err := server.PredictionID()
+	bazID, err := runner.PredictionID()
 	require.NoError(t, err)
 	barReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:               map[string]any{"i": 1, "s": "bar"},
@@ -94,7 +93,7 @@ func TestAsyncPredictorCanceled(t *testing.T) {
 	receiverServer := testHarnessReceiverServer(t)
 	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	barID, err := server.PredictionID()
+	barID, err := runner.PredictionID()
 	require.NoError(t, err)
 	barReq := httpPredictionRequestWithID(t, runtimeServer, runner.PredictionRequest{
 		Input:   map[string]any{"i": 60, "s": "bar"},

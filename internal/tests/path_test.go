@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -339,13 +338,13 @@ func TestPredictionPathMimeTypes(t *testing.T) {
 
 	testDataPrefix := contentServer.URL + "/mimetype/"
 
-	gifPredictionID, err := server.PredictionID()
+	gifPredictionID, err := runner.PredictionID()
 	require.NoError(t, err)
-	jarPredictionID, err := server.PredictionID()
+	jarPredictionID, err := runner.PredictionID()
 	require.NoError(t, err)
-	tarPredictionID, err := server.PredictionID()
+	tarPredictionID, err := runner.PredictionID()
 	require.NoError(t, err)
-	webpPredictionID, err := server.PredictionID()
+	webpPredictionID, err := runner.PredictionID()
 	require.NoError(t, err)
 
 	predictions := []struct {

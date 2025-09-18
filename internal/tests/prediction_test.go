@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -61,7 +60,7 @@ func TestPredictionWithIdSucceeded(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
 	input := map[string]any{"i": 1, "s": "bar"}
-	predictionID, err := server.PredictionID()
+	predictionID, err := runner.PredictionID()
 	require.NoError(t, err)
 	predictionReq := runner.PredictionRequest{
 		ID:    predictionID,

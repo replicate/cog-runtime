@@ -29,6 +29,8 @@ var (
 	ErrRunnerNotFound      = errors.New("runner not found")
 	ErrNoEmptySlot         = errors.New("no empty slot available")
 	ErrInvalidRunnerStatus = errors.New("invalid runner status for new prediction")
+	// ErrAsyncPrediction is a sentinel error used to indicate that a prediction is being served asynchronously, it is not surfaced outside of runner
+	ErrAsyncPrediction = errors.New("async prediction")
 )
 
 // Manager manages the lifecycle and capacity of prediction runners
@@ -184,6 +186,7 @@ func (m *Manager) PredictAsync(ctx context.Context, req PredictionRequest) (*Pre
 
 // predict is the internal implementation shared by both sync and async predictions
 func (m *Manager) predict(ctx context.Context, req PredictionRequest, async bool) (chan PredictionResponse, *PredictionResponse, error) {
+	log := m.logger.Sugar()
 	if err := m.claimSlot(); err != nil {
 		return nil, nil, err
 	}
@@ -202,7 +205,40 @@ func (m *Manager) predict(ctx context.Context, req PredictionRequest, async bool
 		return nil, nil, fmt.Errorf("runner not ready: %s", runner.status)
 	}
 
-	respChan, initialResponse, err := runner.predict(req)
+	runner.mu.RLock()
+	pending, exists := runner.pending[req.ID]
+	setupCompletedChan := runner.setupComplete
+	runner.mu.RUnlock()
+	if !exists {
+		m.releaseSlot()
+		return nil, nil, fmt.Errorf("failed to find pending prediction after allocation: %s", req.ID)
+	}
+	select {
+	case <-setupCompletedChan:
+		// We need to wait for setup to complete before proceeding so that we can ensure that
+		// the OpenAPI schema is available for input processing
+		log.Tracew("runner setup complete, proceeding with prediction", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
+	case <-pending.ctx.Done():
+		// Prediction was canceled, watcher will perform cleanup, we need to abort
+		// the rest of the prediction processing
+		log.Tracew("prediction was canceled before setup complete, aborting", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
+		m.releaseSlot()
+		return nil, nil, fmt.Errorf("prediction %s was canceled: %w", req.ID, pending.ctx.Err())
+	}
+
+	// Check for setup failure before calling predict
+	runner.mu.Lock()
+	status := runner.status
+	runner.mu.Unlock()
+	if status == StatusSetupFailed {
+		// Setup failure will be handled by async webhook machinery
+		// Return sentinel error to indicate async handling
+		log.Tracew("setup failed, using async handling", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
+		m.releaseSlot()
+		return nil, nil, ErrAsyncPrediction
+	}
+
+	respChan, initialResponse, err := runner.predict(req.ID)
 	if err != nil {
 		m.releaseSlot()
 		return nil, nil, err
@@ -330,18 +366,27 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 	// NOTE(morgan): by design we do not use the passed in context, as the passed
 	// in context is tied to the http request, and would cause the prediction to
 	// fail at the end of the http request's lifecycle.
-	watcherCtx, cancel := context.WithCancel(m.ctx)
+	predictionCtx, cancel := context.WithCancel(m.ctx)
 
 	pending := &PendingPrediction{
 		request:       req,
 		outputCache:   make(map[string]string),
 		c:             make(chan PredictionResponse, 1),
 		cancel:        cancel, // Manager can cancel this watcher explicitly
+		ctx:           predictionCtx,
 		watcherDone:   make(chan struct{}),
 		outputNotify:  make(chan struct{}, 1),
 		webhookSender: m.webhookSender,
 	}
 	runner.pending[req.ID] = pending
+
+	now := time.Now().Format(config.TimeFormat)
+	if pending.request.CreatedAt == "" {
+		pending.request.CreatedAt = now
+	}
+	if pending.request.StartedAt == "" {
+		pending.request.StartedAt = now
+	}
 
 	// Start per-prediction response watcher with cleanup wrapper
 	go func() {
@@ -399,7 +444,7 @@ func (m *Manager) allocatePrediction(runner *Runner, req PredictionRequest) { //
 			}
 		}()
 
-		runner.watchPredictionResponses(watcherCtx, req.ID, pending)
+		runner.watchPredictionResponses(predictionCtx, req.ID, pending)
 	}()
 }
 

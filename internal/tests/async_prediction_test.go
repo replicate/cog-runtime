@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/replicate/cog-runtime/internal/runner"
-	"github.com/replicate/cog-runtime/internal/server"
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
@@ -62,7 +61,7 @@ func TestAsyncPrediction(t *testing.T) {
 			})
 			waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-			predictionID, err := server.PredictionID()
+			predictionID, err := runner.PredictionID()
 			require.NoError(t, err)
 			prediction := runner.PredictionRequest{
 				Input:   map[string]any{"i": 1, "s": "bar"},
@@ -118,7 +117,7 @@ func TestAsyncPredictionCanceled(t *testing.T) {
 	})
 	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 
-	predictionID, err := server.PredictionID()
+	predictionID, err := runner.PredictionID()
 	require.NoError(t, err)
 	prediction := runner.PredictionRequest{
 		Input:   map[string]any{"i": 60, "s": "bar"},
@@ -195,7 +194,7 @@ func TestAsyncPredictionConcurrency(t *testing.T) {
 	assert.Equal(t, 1, hc.Concurrency.Max)
 	assert.Equal(t, 0, hc.Concurrency.Current)
 
-	predictionID, err := server.PredictionID()
+	predictionID, err := runner.PredictionID()
 	require.NoError(t, err)
 	prediction := runner.PredictionRequest{
 		Input:   map[string]any{"i": 1, "s": "bar"},

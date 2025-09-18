@@ -3,6 +3,7 @@ package runner
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -18,17 +19,22 @@ import (
 	"github.com/replicate/go/httpclient"
 )
 
-var Base64Regex = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
+var (
+	Base64Regex           = regexp.MustCompile(`^data:.*;base64,(?P<base64>.*)$`)
+	ErrSchemaNotAvailable = errors.New("OpenAPI schema not available for input processing")
+)
 
 func isURI(s *openapi3.SchemaRef) bool {
 	return s.Value.Type.Is("string") && s.Value.Format == "uri"
 }
 
 // ProcessInputPaths processes the input paths and discards the now unused paths from the input.
-// Note that we return the input, but the expectation is that input will be mutated in-place.
+// Note that we return the input, but the expectation is that input will be mutated in-place. This function
+// returns ErrSchemaNotAvailable if the OpenAPI schema is not available. It is up to the caller to decide how
+// handles this error (e.g. log a warning and proceed without path processing).
 func ProcessInputPaths(input any, doc *openapi3.T, paths *[]string, fn func(string, *[]string) (string, error)) (any, error) {
 	if doc == nil {
-		return input, nil
+		return input, ErrSchemaNotAvailable
 	}
 
 	schema, ok := doc.Components.Schemas["Input"]

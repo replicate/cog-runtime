@@ -492,29 +492,36 @@ func TestRunnerPredict(t *testing.T) {
 			runnerCtx: RunnerContext{workingdir: tempDir},
 			logger:    loggingtest.NewTestLogger(t),
 		}
-
-		// Pre-allocate prediction
-		r.pending["test-id"] = &PendingPrediction{
-			c: make(chan PredictionResponse, 1),
-		}
+		predictionID, _ := PredictionID()
 
 		req := PredictionRequest{
-			ID:    "test-id",
+			ID:    predictionID,
 			Input: map[string]any{"key": "value"},
+			// CreatedAt and StartedAt would be set in the manager allocatePrediction step
+			// so we need to set them directly here
+			CreatedAt: time.Now().Format(config.TimeFormat),
+			StartedAt: time.Now().Format(config.TimeFormat),
+		}
+		// Pre-allocate prediction
+		r.pending[predictionID] = &PendingPrediction{
+			c:       make(chan PredictionResponse, 1),
+			request: req,
 		}
 
-		ch, initialResponse, err := r.predict(req)
-		assert.NotNil(t, initialResponse)
+		ch, initialResponse, err := r.predict(req.ID)
+		require.NoError(t, err)
+		require.NotNil(t, initialResponse)
 		assert.Equal(t, PredictionStarting, initialResponse.Status)
 		assert.NotEmpty(t, initialResponse.ID)
 		assert.Equal(t, req.Input, initialResponse.Input)
+		assert.NotEmpty(t, initialResponse.CreatedAt)
+		assert.NotEmpty(t, initialResponse.StartedAt)
 		assert.Equal(t, req.CreatedAt, initialResponse.CreatedAt)
 		assert.Equal(t, req.StartedAt, initialResponse.StartedAt)
-		require.NoError(t, err)
 		assert.NotNil(t, ch)
 
 		// Check request file was created
-		requestFile := path.Join(tempDir, "request-test-id.json")
+		requestFile := path.Join(tempDir, fmt.Sprintf("request-%s.json", predictionID))
 		_, err = os.Stat(requestFile)
 		assert.NoError(t, err)
 	})
@@ -528,12 +535,14 @@ func TestRunnerPredict(t *testing.T) {
 			logger:  loggingtest.NewTestLogger(t),
 		}
 
-		req := PredictionRequest{ID: "test-id"}
-		ch, initialResponse, err := r.predict(req)
+		predictionID, _ := PredictionID()
+
+		req := PredictionRequest{ID: predictionID}
+		ch, initialResponse, err := r.predict(req.ID)
 		require.Error(t, err)
 		assert.Nil(t, ch)
 		assert.Nil(t, initialResponse)
-		assert.Contains(t, err.Error(), "prediction test-id not allocated")
+		assert.Contains(t, err.Error(), fmt.Sprintf("prediction %s not allocated", predictionID))
 	})
 }
 
@@ -1118,7 +1127,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 
 		// Setup temp directory with response files
 		tempDir := t.TempDir()
-		predictionID := "test-prediction-123"
+		predictionID, _ := PredictionID()
 
 		// Create response files - one for our prediction, one for another
 		responseFile1 := fmt.Sprintf("response-%s-00001.json", predictionID)
@@ -1170,7 +1179,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
-		predictionID := "test-prediction-456"
+		predictionID, _ := PredictionID()
 		filename := fmt.Sprintf("response-%s-00001.json", predictionID)
 		filePath := filepath.Join(tempDir, filename)
 
@@ -1223,7 +1232,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
-		predictionID := "test-prediction-789"
+		predictionID, _ := PredictionID()
 
 		// Setup runner
 		logger := loggingtest.NewTestLogger(t)
@@ -1290,7 +1299,7 @@ func TestPerPredictionWatcher(t *testing.T) {
 		t.Parallel()
 
 		tempDir := t.TempDir()
-		predictionID := "test-prediction-abc"
+		predictionID, _ := PredictionID()
 
 		// Setup runner
 		logger := loggingtest.NewTestLogger(t)

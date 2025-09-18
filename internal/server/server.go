@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/base32"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/replicate/go/httpclient"
-	"github.com/replicate/go/uuid"
 
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/logging"
@@ -231,7 +229,7 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 		req.ID = id
 	}
 	if req.ID == "" {
-		req.ID, err = PredictionID()
+		req.ID, err = runner.PredictionID()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -301,6 +299,11 @@ func (h *Handler) Predict(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch {
+	case errors.Is(err, runner.ErrAsyncPrediction):
+		// Async prediction sentinel - return 202 with minimal response
+		w.WriteHeader(http.StatusAccepted)
+		h.writeResponse(w, runner.PredictionResponse{ID: req.ID, Status: "starting"})
+		return
 	case errors.Is(err, ErrConflict):
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
@@ -401,17 +404,4 @@ func writeReadyFile() error {
 	}
 
 	return nil
-}
-
-func PredictionID() (string, error) {
-	u, err := uuid.NewV7()
-	if err != nil {
-		return "", err
-	}
-	shuffle := make([]byte, uuid.Size)
-	for i := 0; i < 4; i++ {
-		shuffle[i], shuffle[i+4], shuffle[i+8], shuffle[i+12] = u[i+12], u[i+4], u[i], u[i+8]
-	}
-	encoding := base32.NewEncoding("0123456789abcdefghjkmnpqrstvwxyz").WithPadding(base32.NoPadding)
-	return encoding.EncodeToString(shuffle), nil
 }
