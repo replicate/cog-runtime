@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -43,48 +42,37 @@ func TestProcedureSchemaLoadingSequential(t *testing.T) {
 	waitForSetupComplete(t, runtimeServer, runner.StatusReady, runner.SetupSucceeded)
 	procedureURL := fmt.Sprintf("file://%s/python/tests/procedures/path_test", basePath)
 
-	wg := sync.WaitGroup{}
-
 	// Run 3 sequential predictions to test schema loading robustness
 	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func(predIndex int) {
-			defer wg.Done()
+		prediction := runner.PredictionRequest{
+			Input: map[string]any{
+				"img": fmt.Sprintf("%s/image-%d.jpg", testServer.URL, i),
+			},
+			Context: map[string]any{
+				"procedure_source_url": procedureURL,
+				"replicate_api_token":  "test-token",
+			},
+			Webhook:             receiverServer.URL + "/webhook",
+			WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
+		}
 
-			prediction := runner.PredictionRequest{
-				Input: map[string]any{
-					"img": fmt.Sprintf("%s/image-%d.jpg", testServer.URL, predIndex),
-				},
-				Context: map[string]any{
-					"procedure_source_url": procedureURL,
-					"replicate_api_token":  "test-token",
-				},
-				Webhook:             receiverServer.URL + "/webhook",
-				WebhookEventsFilter: []webhook.Event{webhook.EventCompleted},
-			}
+		_, statusCode := runProcedure(t, runtimeServer, prediction)
+		assert.Equal(t, http.StatusAccepted, statusCode)
 
-			_, statusCode := runProcedure(t, runtimeServer, prediction)
-			assert.Equal(t, http.StatusAccepted, statusCode)
+		var wh webhookData
+		select {
+		case wh = <-receiverServer.webhookReceiverChan:
+		case <-time.After(10 * time.Second):
+			t.Errorf("timeout waiting for webhook for prediction %d", i)
+			return
+		}
 
-			var wh webhookData
-			select {
-			case wh = <-receiverServer.webhookReceiverChan:
-			case <-time.After(10 * time.Second):
-				t.Errorf("timeout waiting for webhook for prediction %d", predIndex)
-				return
-			}
+		assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status, "prediction %d should succeed", i)
 
-			assert.Equal(t, runner.PredictionSucceeded, wh.Response.Status, "prediction %d should succeed", predIndex)
-
-			// Verify URL processing worked - this is the key regression test
-			output, ok := wh.Response.Output.(string)
-			assert.True(t, ok, "output should be a string for prediction %d", predIndex)
-			assert.True(t, strings.HasPrefix(output, "data:"),
-				"prediction %d: HTTPS URL should be downloaded and converted to base64, got: %s", predIndex, output)
-		}(i)
-
-		// Wait for this prediction to complete before starting the next
-		// This ensures sequential execution and potential runner cleanup between predictions
-		wg.Wait()
+		// Verify URL processing worked - this is the key regression test
+		output, ok := wh.Response.Output.(string)
+		assert.True(t, ok, "output should be a string for prediction %d", i)
+		assert.True(t, strings.HasPrefix(output, "data:"),
+			"prediction %d: HTTPS URL should be downloaded and converted to base64, got: %s", i, output)
 	}
 }

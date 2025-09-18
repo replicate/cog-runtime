@@ -12,3 +12,9 @@ class Predictor(BasePredictor):
     ) -> Path:
         print('img', type(img), img)
         return img
+
+    @property
+    def test_inputs(self):
+        return {
+            'img': 'https://httpbin.org/image/jpeg',
+        }

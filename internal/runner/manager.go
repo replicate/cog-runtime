@@ -219,7 +219,7 @@ func (m *Manager) predict(ctx context.Context, req PredictionRequest, async bool
 		// the OpenAPI schema is available for input processing
 		log.Tracew("runner setup complete, proceeding with prediction", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
 	case <-pending.ctx.Done():
-		// Prediction was canceled, watcher will perform cleanup, er need to abort
+		// Prediction was canceled, watcher will perform cleanup, we need to abort
 		// the rest of the prediction processing
 		log.Tracew("prediction was canceled before setup complete, aborting", "prediction_id", req.ID, "runner", runner.runnerCtx.id)
 		m.releaseSlot()

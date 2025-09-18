@@ -853,7 +853,7 @@ func (r *Runner) predict(reqID string) (chan PredictionResponse, *PredictionResp
 	}
 	pending.inputPaths = inputPaths
 
-	// Write prediction request to file (async like original)[]
+	// Write prediction request to file
 	requestFile := fmt.Sprintf("request-%s.json", reqID)
 	log.Debugw("writing prediction request file", "prediction_id", reqID, "file", requestFile)
 	requestPath := path.Join(r.runnerCtx.workingdir, requestFile)

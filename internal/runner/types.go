@@ -16,9 +16,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/replicate/go/uuid"
+
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/webhook"
-	"github.com/replicate/go/uuid"
 )
 
 // LogsSlice is a []string that marshals to/from a newline-joined string in JSON
