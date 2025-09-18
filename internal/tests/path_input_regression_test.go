@@ -21,6 +21,10 @@ import (
 // and converted to local paths across all runtime modes. This prevents regression
 // of the issue where schema loading timing caused URLs to be passed unchanged.
 func TestPathInputHTTPSRegression(t *testing.T) {
+	t.Parallel()
+	if *legacyCog {
+		t.Skip("this test is validating the cog-runtime server's behavior not legacy cog")
+	}
 	// Create a test server that serves dummy image data
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/jpeg")
