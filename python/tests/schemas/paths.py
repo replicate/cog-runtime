@@ -45,6 +45,8 @@ class Predictor(BasePredictor):
         p1: Path,
         p2: Path = Input(default=Path('bar.txt')),
         p3: Path = Input(default='baz.txt'),
-        ps: List[Path] = Input(default=['bar123.txt', Path('baz123.txt')]),
+        ps: List[Path] = Input(
+            default_factory=lambda: ['bar123.txt', Path('baz123.txt')]
+        ),
     ) -> List[Path]:
         return [p1, p2, p3] + ps

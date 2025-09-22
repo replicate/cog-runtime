@@ -36,6 +36,6 @@ class Predictor(BasePredictor):
         s1: Secret,
         s2: Secret = Input(default=Secret('bar')),
         s3: Secret = Input(default='baz'),
-        ss: List[Secret] = Input(default=['bar123', Secret('baz123')]),
+        ss: List[Secret] = Input(default_factory=lambda: ['bar123', Secret('baz123')]),
     ) -> List[Secret]:
         return [s1, s2, s3] + ss

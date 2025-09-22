@@ -4,9 +4,9 @@ import sys
 import typing
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from cog.coder import dataclass_coder
+from cog.coder import dataclass_coder, json_coder, set_coder
 from coglet import api
 from coglet.util import type_name
 
@@ -29,6 +29,7 @@ class PrimitiveType(Enum):
     STRING = auto()
     PATH = auto()
     SECRET = auto()
+    ANY = auto()
     CUSTOM = auto()
 
     @staticmethod
@@ -40,6 +41,7 @@ class PrimitiveType(Enum):
             PrimitiveType.STRING: str,
             PrimitiveType.PATH: api.Path,
             PrimitiveType.SECRET: api.Secret,
+            PrimitiveType.ANY: Any,
             PrimitiveType.CUSTOM: Any,
         }
 
@@ -52,6 +54,7 @@ class PrimitiveType(Enum):
             PrimitiveType.STRING: 'string',
             PrimitiveType.PATH: 'string',
             PrimitiveType.SECRET: 'string',
+            PrimitiveType.ANY: 'object',
             PrimitiveType.CUSTOM: 'object',
         }
 
@@ -64,6 +67,7 @@ class PrimitiveType(Enum):
             str: PrimitiveType.STRING,
             api.Path: PrimitiveType.PATH,
             api.Secret: PrimitiveType.SECRET,
+            Any: PrimitiveType.ANY,
         }
 
     @staticmethod
@@ -85,6 +89,9 @@ class PrimitiveType(Enum):
         tpe = type(value)
         if self is PrimitiveType.CUSTOM:
             # Custom type, leave as is
+            return value
+        elif self is PrimitiveType.ANY:
+            # Any type, accept any value as-is
             return value
         elif self in {self.PATH, self.SECRET}:
             # String-ly types, only upcast
@@ -118,6 +125,9 @@ class PrimitiveType(Enum):
         elif self in {self.PATH, self.SECRET}:
             # Leave these as is and let the file runner handle special encoding
             return value
+        elif self is self.ANY:
+            # Any type, return as-is
+            return value
         else:
             return value
 
@@ -136,15 +146,35 @@ class FieldType:
 
     @staticmethod
     def from_type(tpe: type):
-        if typing.get_origin(tpe) is list:
+        origin = typing.get_origin(tpe)
+
+        # Handle bare collection types first
+        if tpe is list:
+            # Bare list -> List[Any]
+            tpe = List[Any]
+            origin = typing.get_origin(tpe)
+        elif tpe is dict:
+            # Bare dict -> Dict[str, Any]
+            tpe = Dict[str, Any]
+            origin = typing.get_origin(tpe)
+        elif tpe is set:
+            # Bare set -> Set[Any]
+            tpe = Set[Any]
+            origin = typing.get_origin(tpe)
+
+        if origin in (list, List):
             t_args = typing.get_args(tpe)
-            assert len(t_args) == 1, 'List must have one type argument'
-            elem_t = t_args[0]
-            # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
-            nested_t = typing.get_origin(elem_t)
-            assert nested_t is None, (
-                f'List cannot have nested type {type_name(nested_t)}'
-            )
+            if t_args:
+                assert len(t_args) == 1, 'List must have one type argument'
+                elem_t = t_args[0]
+                # Fail fast to avoid the cryptic "unsupported Cog type" error later with elem_t
+                nested_t = typing.get_origin(elem_t)
+                assert nested_t is None, (
+                    f'List cannot have nested type {type_name(nested_t)}'
+                )
+            else:
+                # Bare list type without type arguments, treat as List[Any]
+                elem_t = Any
             repetition = Repetition.REPEATED
         elif _is_union(tpe):
             t_args = typing.get_args(tpe)
@@ -165,6 +195,8 @@ class FieldType:
         coder = None
         if cog_t is PrimitiveType.CUSTOM:
             api.Coder.register(dataclass_coder.DataclassCoder)
+            api.Coder.register(json_coder.JsonCoder)
+            api.Coder.register(set_coder.SetCoder)
             coder = api.Coder.lookup(elem_t)
             assert coder is not None, f'unsupported Cog type {type_name(elem_t)}'
 

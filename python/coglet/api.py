@@ -1,9 +1,12 @@
 import pathlib
+import sys
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, is_dataclass
+from dataclasses import MISSING, Field, dataclass, is_dataclass
+from enum import Enum
 from typing import (
     Any,
     AsyncIterator,
+    Callable,
     Generic,
     Iterator,
     List,
@@ -196,9 +199,27 @@ def Input(
     ...
 
 
+@overload
+def Input(
+    *,
+    default_factory: Callable[[], Any],
+    description: Optional[str] = None,
+    ge: Optional[Union[int, float]] = None,
+    le: Optional[Union[int, float]] = None,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None,
+    regex: Optional[str] = None,
+    choices: Optional[List[Union[str, int]]] = None,
+    deprecated: Optional[bool] = None,
+) -> Any:
+    """Create an input field with default_factory and optional constraints."""
+    ...
+
+
 def Input(
     default: Any = None,
     *,
+    default_factory: Optional[Callable[[], Any]] = None,
     description: Optional[str] = None,
     ge: Optional[Union[int, float]] = None,
     le: Optional[Union[int, float]] = None,
@@ -227,8 +248,66 @@ def Input(
     Returns:
         FieldInfo instance containing the field metadata
     """
+    # Validate that default and default_factory are mutually exclusive
+    if default is not None and default_factory is not None:
+        raise ValueError(
+            "Cannot specify both 'default' and 'default_factory' parameters. "
+            "Use either 'default' for immutable values or 'default_factory' for mutable values."
+        )
+
+    # If default_factory is provided, create a proper dataclass Field
+    if default_factory is not None:
+        # kw_only parameter was added in Python 3.10
+        if sys.version_info >= (3, 10):
+            computed_default = Field(
+                default=MISSING,
+                default_factory=default_factory,
+                init=True,
+                repr=True,
+                hash=None,
+                compare=True,
+                metadata={},
+                kw_only=False,
+            )
+        else:
+            computed_default = Field(
+                default=MISSING,
+                default_factory=default_factory,
+                init=True,
+                repr=True,
+                hash=None,
+                compare=True,
+                metadata={},
+            )
+    else:
+        computed_default = default
+
+    # Validate that mutable defaults use default_factory instead
+    if default is not None:
+        # Known immutable types that are safe to use as defaults
+
+        immutable_types = (str, int, float, bool, type(None), tuple, frozenset, bytes)
+
+        # Also allow Cog-specific types and enums
+        if not isinstance(default, immutable_types) and not isinstance(
+            default, (Path, Secret, Enum)
+        ):
+            if isinstance(default, list) and not default:
+                suggestion = 'Input(default_factory=list)'
+            elif isinstance(default, dict) and not default:
+                suggestion = 'Input(default_factory=dict)'
+            elif isinstance(default, set) and not default:
+                suggestion = 'Input(default_factory=set)'
+            else:
+                suggestion = f'Input(default_factory=lambda: {default!r})'
+
+            raise ValueError(
+                f'Mutable default {default!r} passed to Input(). '
+                f'Use {suggestion} instead.'
+            )
+
     return FieldInfo(
-        default=default,
+        default=computed_default,
         description=description,
         ge=ge,
         le=le,

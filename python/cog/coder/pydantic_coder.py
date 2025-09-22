@@ -44,10 +44,15 @@ patch_path()
 class BaseModelCoder(api.Coder):
     @staticmethod
     def factory(cls: Type):
-        if cls is not BaseModel and any(c is BaseModel for c in inspect.getmro(cls)):
-            return BaseModelCoder(cls)
-        else:
-            return None
+        try:
+            if cls is not BaseModel and any(
+                c is BaseModel for c in inspect.getmro(cls)
+            ):
+                return BaseModelCoder(cls)
+        except (AttributeError, TypeError):
+            # Generic types like Set[Any] don't have __mro__ in newer Python versions
+            pass
+        return None
 
     def __init__(self, cls: Type[BaseModel]):
         self.cls = cls

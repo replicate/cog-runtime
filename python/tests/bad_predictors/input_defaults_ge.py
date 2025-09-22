@@ -9,5 +9,7 @@ class Predictor(BasePredictor):
     def setup(self) -> None:
         pass
 
-    def predict(self, i: List[int] = Input(default=[0, 100], ge=10)) -> str:
+    def predict(
+        self, i: List[int] = Input(default_factory=lambda: [0, 100], ge=10)
+    ) -> str:
         pass

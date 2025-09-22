@@ -209,12 +209,131 @@ class TestTypeCompatibility:
         int_field = Input(default=42)
         float_field = Input(default=3.14)
         bool_field = Input(default=True)
-        list_field = Input(default=[1, 2, 3])
+        tuple_field = Input(default=(1, 2, 3))  # tuple is immutable
         none_field = Input(default=None)
 
         assert str_field.default == 'string'
         assert int_field.default == 42
         assert float_field.default == 3.14
         assert bool_field.default is True
-        assert list_field.default == [1, 2, 3]
+        assert tuple_field.default == (1, 2, 3)
         assert none_field.default is None
+
+
+class TestMutableDefaults:
+    """Test validation of mutable defaults in Input()."""
+
+    def test_empty_list_raises_error(self):
+        """Test that empty list raises ValueError with correct suggestion."""
+        with pytest.raises(
+            ValueError,
+            match=r'Mutable default \[\] passed to Input\(\)\. Use Input\(default_factory=list\) instead\.',
+        ):
+            Input(default=[])
+
+    def test_populated_list_raises_error(self):
+        """Test that populated list raises ValueError with lambda suggestion."""
+        with pytest.raises(
+            ValueError,
+            match=r'Mutable default \[1, 2, 3\] passed to Input\(\)\. Use Input\(default_factory=lambda: \[1, 2, 3\]\) instead\.',
+        ):
+            Input(default=[1, 2, 3])
+
+    def test_empty_dict_raises_error(self):
+        """Test that empty dict raises ValueError with correct suggestion."""
+        with pytest.raises(
+            ValueError,
+            match=r'Mutable default \{\} passed to Input\(\)\. Use Input\(default_factory=dict\) instead\.',
+        ):
+            Input(default={})
+
+    def test_populated_dict_raises_error(self):
+        """Test that populated dict raises ValueError with lambda suggestion."""
+        with pytest.raises(
+            ValueError,
+            match=r"Mutable default \{'key': 'value'\} passed to Input\(\)\. Use Input\(default_factory=lambda: \{'key': 'value'\}\) instead\.",
+        ):
+            Input(default={'key': 'value'})
+
+    def test_empty_set_raises_error(self):
+        """Test that empty set raises ValueError with correct suggestion."""
+        with pytest.raises(
+            ValueError,
+            match=r'Mutable default set\(\) passed to Input\(\)\. Use Input\(default_factory=set\) instead\.',
+        ):
+            Input(default=set())
+
+    def test_populated_set_raises_error(self):
+        """Test that populated set raises ValueError with lambda suggestion."""
+        with pytest.raises(
+            ValueError,
+            match=r'Mutable default \{1, 2\} passed to Input\(\)\. Use Input\(default_factory=lambda: \{1, 2\}\) instead\.',
+        ):
+            Input(default={1, 2})
+
+    def test_custom_object_raises_error(self):
+        """Test that custom objects raise ValueError with lambda suggestion."""
+
+        class CustomObject:
+            def __init__(self, value):
+                self.value = value
+
+            def __repr__(self):
+                return f'CustomObject({self.value})'
+
+        obj = CustomObject(42)
+        with pytest.raises(
+            ValueError,
+            match=r'Mutable default CustomObject\(42\) passed to Input\(\)\. Use Input\(default_factory=lambda: CustomObject\(42\)\) instead\.',
+        ):
+            Input(default=obj)
+
+    def test_immutable_defaults_allowed(self):
+        """Test that immutable types are allowed as defaults."""
+        from enum import Enum
+
+        from cog import Path, Secret
+
+        class TestEnum(Enum):
+            VALUE = 'test'
+
+        # These should not raise errors
+        Input(default='string')
+        Input(default=42)
+        Input(default=3.14)
+        Input(default=True)
+        Input(default=False)
+        Input(default=None)
+        Input(default=(1, 2, 3))  # tuple
+        Input(default=frozenset([1, 2, 3]))
+        Input(default=b'bytes')
+        Input(default=Path('test.txt'))  # Cog Path
+        Input(default=Secret('secret'))  # Cog Secret
+        Input(default=TestEnum.VALUE)  # Enum
+
+    def test_default_factory_works(self):
+        """Test that default_factory parameter works correctly."""
+        from dataclasses import MISSING, Field
+
+        # Test with empty list factory
+        field = Input(default_factory=list)
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is list
+        assert field.default.default is MISSING
+
+        # Test with lambda factory
+        def func():
+            return [1, 2, 3]
+
+        field = Input(default_factory=func)
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is func
+        assert field.default.default is MISSING
+
+    def test_default_and_default_factory_mutual_exclusion(self):
+        """Test that default and default_factory are mutually exclusive."""
+        with pytest.raises(
+            ValueError,
+            match="Cannot specify both 'default' and 'default_factory' parameters",
+        ):
+            Input(default='value', default_factory=lambda: 'other')

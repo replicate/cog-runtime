@@ -156,7 +156,7 @@ class TestInputWithPredictors:
             def predict(
                 self,
                 tags: List[str] = Input(
-                    default=['default'], description='List of tags'
+                    default_factory=lambda: ['default'], description='List of tags'
                 ),
                 numbers: List[int] = Input(description='List of numbers'),
             ) -> str:
@@ -167,8 +167,11 @@ class TestInputWithPredictors:
         )
 
         # Check tags list
+        from dataclasses import Field
+
         tags_input = pred.inputs['tags']
-        assert tags_input.default == ['default']
+        assert isinstance(tags_input.default, Field)
+        assert tags_input.default.default_factory() == ['default']
         assert tags_input.description == 'List of tags'
 
         # Check numbers list

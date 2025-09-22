@@ -9,5 +9,7 @@ class Predictor(BasePredictor):
     def setup(self) -> None:
         pass
 
-    def predict(self, s: List[str] = Input(default=['foo'], min_length=10)) -> str:
+    def predict(
+        self, s: List[str] = Input(default_factory=lambda: ['foo'], min_length=10)
+    ) -> str:
         pass

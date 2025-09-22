@@ -100,7 +100,7 @@ class Predictor(BasePredictor):
         od2: Optional[str] = Input(default='bar'),
         ld0: List[str] = Input(),
         # ld1: List[str] = Input(default=None),  # Invalid default=None
-        ld2: List[str] = Input(default=[]),
+        ld2: List[str] = Input(default_factory=list),
     ) -> Output:
         return Output(
             rs=rs,
