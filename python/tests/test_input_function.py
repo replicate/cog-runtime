@@ -221,58 +221,77 @@ class TestTypeCompatibility:
 
 
 class TestMutableDefaults:
-    """Test validation of mutable defaults in Input()."""
+    """Test automatic conversion of mutable defaults in Input()."""
 
-    def test_empty_list_raises_error(self):
-        """Test that empty list raises ValueError with correct suggestion."""
-        with pytest.raises(
-            ValueError,
-            match=r'Mutable default \[\] passed to Input\(\)\. Use Input\(default_factory=list\) instead\.',
-        ):
-            Input(default=[])
+    def test_empty_list_auto_converts(self):
+        """Test that empty list automatically converts to default_factory=list."""
+        from dataclasses import MISSING, Field
 
-    def test_populated_list_raises_error(self):
-        """Test that populated list raises ValueError with lambda suggestion."""
-        with pytest.raises(
-            ValueError,
-            match=r'Mutable default \[1, 2, 3\] passed to Input\(\)\. Use Input\(default_factory=lambda: \[1, 2, 3\]\) instead\.',
-        ):
-            Input(default=[1, 2, 3])
+        field = Input(default=[])
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is list
+        assert field.default.default is MISSING
 
-    def test_empty_dict_raises_error(self):
-        """Test that empty dict raises ValueError with correct suggestion."""
-        with pytest.raises(
-            ValueError,
-            match=r'Mutable default \{\} passed to Input\(\)\. Use Input\(default_factory=dict\) instead\.',
-        ):
-            Input(default={})
+    def test_populated_list_auto_converts(self):
+        """Test that populated list automatically converts to lambda factory."""
+        from dataclasses import MISSING, Field
 
-    def test_populated_dict_raises_error(self):
-        """Test that populated dict raises ValueError with lambda suggestion."""
-        with pytest.raises(
-            ValueError,
-            match=r"Mutable default \{'key': 'value'\} passed to Input\(\)\. Use Input\(default_factory=lambda: \{'key': 'value'\}\) instead\.",
-        ):
-            Input(default={'key': 'value'})
+        field = Input(default=[1, 2, 3])
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == [1, 2, 3]
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
 
-    def test_empty_set_raises_error(self):
-        """Test that empty set raises ValueError with correct suggestion."""
-        with pytest.raises(
-            ValueError,
-            match=r'Mutable default set\(\) passed to Input\(\)\. Use Input\(default_factory=set\) instead\.',
-        ):
-            Input(default=set())
+    def test_empty_dict_auto_converts(self):
+        """Test that empty dict automatically converts to default_factory=dict."""
+        from dataclasses import MISSING, Field
 
-    def test_populated_set_raises_error(self):
-        """Test that populated set raises ValueError with lambda suggestion."""
-        with pytest.raises(
-            ValueError,
-            match=r'Mutable default \{1, 2\} passed to Input\(\)\. Use Input\(default_factory=lambda: \{1, 2\}\) instead\.',
-        ):
-            Input(default={1, 2})
+        field = Input(default={})
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is dict
+        assert field.default.default is MISSING
 
-    def test_custom_object_raises_error(self):
-        """Test that custom objects raise ValueError with lambda suggestion."""
+    def test_populated_dict_auto_converts(self):
+        """Test that populated dict automatically converts to lambda factory."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default={'key': 'value'})
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == {'key': 'value'}
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
+
+    def test_empty_set_auto_converts(self):
+        """Test that empty set automatically converts to default_factory=set."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default=set())
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is set
+        assert field.default.default is MISSING
+
+    def test_populated_set_auto_converts(self):
+        """Test that populated set automatically converts to lambda factory."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default={1, 2})
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == {1, 2}
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
+
+    def test_custom_object_auto_converts(self):
+        """Test that custom objects automatically convert to lambda factory."""
+        from dataclasses import MISSING, Field
 
         class CustomObject:
             def __init__(self, value):
@@ -281,12 +300,18 @@ class TestMutableDefaults:
             def __repr__(self):
                 return f'CustomObject({self.value})'
 
+            def __eq__(self, other):
+                return isinstance(other, CustomObject) and self.value == other.value
+
         obj = CustomObject(42)
-        with pytest.raises(
-            ValueError,
-            match=r'Mutable default CustomObject\(42\) passed to Input\(\)\. Use Input\(default_factory=lambda: CustomObject\(42\)\) instead\.',
-        ):
-            Input(default=obj)
+        field = Input(default=obj)
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == obj
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
 
     def test_immutable_defaults_allowed(self):
         """Test that immutable types are allowed as defaults."""

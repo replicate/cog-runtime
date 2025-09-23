@@ -1,3 +1,4 @@
+import copy
 import pathlib
 import sys
 from abc import ABC, abstractmethod
@@ -255,6 +256,36 @@ def Input(
             "Use either 'default' for immutable values or 'default_factory' for mutable values."
         )
 
+    # Automatically convert mutable defaults to default_factory
+    if default is not None:
+        # Known immutable types that are safe to use as defaults
+        immutable_types = (str, int, float, bool, type(None), tuple, frozenset, bytes)
+
+        # Also allow Cog-specific types and enums
+        if not isinstance(default, immutable_types) and not isinstance(
+            default, (Path, Secret, Enum)
+        ):
+            # Automatically convert to default_factory
+
+            if isinstance(default, list) and not default:
+                default_factory = list
+            elif isinstance(default, dict) and not default:
+                default_factory = dict
+            elif isinstance(default, set) and not default:
+                default_factory = set
+            else:
+                # For populated collections or complex objects, use deepcopy
+                # Capture the value before clearing default
+                original_value = default
+
+                def _create_default():
+                    return copy.deepcopy(original_value)
+
+                default_factory = _create_default
+
+            # Clear the default since we're using factory instead
+            default = None
+
     # If default_factory is provided, create a proper dataclass Field
     if default_factory is not None:
         # kw_only parameter was added in Python 3.10
@@ -281,30 +312,6 @@ def Input(
             )
     else:
         computed_default = default
-
-    # Validate that mutable defaults use default_factory instead
-    if default is not None:
-        # Known immutable types that are safe to use as defaults
-
-        immutable_types = (str, int, float, bool, type(None), tuple, frozenset, bytes)
-
-        # Also allow Cog-specific types and enums
-        if not isinstance(default, immutable_types) and not isinstance(
-            default, (Path, Secret, Enum)
-        ):
-            if isinstance(default, list) and not default:
-                suggestion = 'Input(default_factory=list)'
-            elif isinstance(default, dict) and not default:
-                suggestion = 'Input(default_factory=dict)'
-            elif isinstance(default, set) and not default:
-                suggestion = 'Input(default_factory=set)'
-            else:
-                suggestion = f'Input(default_factory=lambda: {default!r})'
-
-            raise ValueError(
-                f'Mutable default {default!r} passed to Input(). '
-                f'Use {suggestion} instead.'
-            )
 
     return FieldInfo(
         default=computed_default,
