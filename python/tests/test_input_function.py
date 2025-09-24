@@ -209,12 +209,156 @@ class TestTypeCompatibility:
         int_field = Input(default=42)
         float_field = Input(default=3.14)
         bool_field = Input(default=True)
-        list_field = Input(default=[1, 2, 3])
+        tuple_field = Input(default=(1, 2, 3))  # tuple is immutable
         none_field = Input(default=None)
 
         assert str_field.default == 'string'
         assert int_field.default == 42
         assert float_field.default == 3.14
         assert bool_field.default is True
-        assert list_field.default == [1, 2, 3]
+        assert tuple_field.default == (1, 2, 3)
         assert none_field.default is None
+
+
+class TestMutableDefaults:
+    """Test automatic conversion of mutable defaults in Input()."""
+
+    def test_empty_list_auto_converts(self):
+        """Test that empty list automatically converts to default_factory=list."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default=[])
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is list
+        assert field.default.default is MISSING
+
+    def test_populated_list_auto_converts(self):
+        """Test that populated list automatically converts to lambda factory."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default=[1, 2, 3])
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == [1, 2, 3]
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
+
+    def test_empty_dict_auto_converts(self):
+        """Test that empty dict automatically converts to default_factory=dict."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default={})
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is dict
+        assert field.default.default is MISSING
+
+    def test_populated_dict_auto_converts(self):
+        """Test that populated dict automatically converts to lambda factory."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default={'key': 'value'})
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == {'key': 'value'}
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
+
+    def test_empty_set_auto_converts(self):
+        """Test that empty set automatically converts to default_factory=set."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default=set())
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is set
+        assert field.default.default is MISSING
+
+    def test_populated_set_auto_converts(self):
+        """Test that populated set automatically converts to lambda factory."""
+        from dataclasses import MISSING, Field
+
+        field = Input(default={1, 2})
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == {1, 2}
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
+
+    def test_custom_object_auto_converts(self):
+        """Test that custom objects automatically convert to lambda factory."""
+        from dataclasses import MISSING, Field
+
+        class CustomObject:
+            def __init__(self, value):
+                self.value = value
+
+            def __repr__(self):
+                return f'CustomObject({self.value})'
+
+            def __eq__(self, other):
+                return isinstance(other, CustomObject) and self.value == other.value
+
+        obj = CustomObject(42)
+        field = Input(default=obj)
+        assert isinstance(field.default, Field)
+        assert field.default.default is MISSING
+        # Verify the factory produces the expected value
+        result = field.default.default_factory()
+        assert result == obj
+        # Verify it creates a new instance each time
+        assert field.default.default_factory() is not field.default.default_factory()
+
+    def test_immutable_defaults_allowed(self):
+        """Test that immutable types are allowed as defaults."""
+        from enum import Enum
+
+        from cog import Path, Secret
+
+        class TestEnum(Enum):
+            VALUE = 'test'
+
+        # These should not raise errors
+        Input(default='string')
+        Input(default=42)
+        Input(default=3.14)
+        Input(default=True)
+        Input(default=False)
+        Input(default=None)
+        Input(default=(1, 2, 3))  # tuple
+        Input(default=frozenset([1, 2, 3]))
+        Input(default=b'bytes')
+        Input(default=Path('test.txt'))  # Cog Path
+        Input(default=Secret('secret'))  # Cog Secret
+        Input(default=TestEnum.VALUE)  # Enum
+
+    def test_default_factory_works(self):
+        """Test that default_factory parameter works correctly."""
+        from dataclasses import MISSING, Field
+
+        # Test with empty list factory
+        field = Input(default_factory=list)
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is list
+        assert field.default.default is MISSING
+
+        # Test with lambda factory
+        def func():
+            return [1, 2, 3]
+
+        field = Input(default_factory=func)
+        assert isinstance(field.default, Field)
+        assert field.default.default_factory is func
+        assert field.default.default is MISSING
+
+    def test_default_and_default_factory_mutual_exclusion(self):
+        """Test that default and default_factory are mutually exclusive."""
+        with pytest.raises(
+            ValueError,
+            match="Cannot specify both 'default' and 'default_factory' parameters",
+        ):
+            Input(default='value', default_factory=lambda: 'other')

@@ -1,5 +1,6 @@
 import json
 import os.path
+from dataclasses import MISSING, Field
 from typing import Any, Dict
 
 from coglet import adt
@@ -39,7 +40,22 @@ def to_json_input(predictor: adt.Predictor) -> Dict[str, Any]:
             }:
                 required.append(name)
         else:
-            prop['default'] = adt_in.type.json_encode(adt_in.default)
+            # Handle dataclass fields by extracting the actual default value
+            if isinstance(adt_in.default, Field):
+                if adt_in.default.default_factory is not MISSING:
+                    # For default_factory, get a sample value for schema
+                    actual_default = adt_in.default.default_factory()
+                elif adt_in.default.default is not MISSING:
+                    actual_default = adt_in.default.default
+                else:
+                    actual_default = None
+            else:
+                actual_default = adt_in.default
+
+            if actual_default is not None:
+                # First normalize the value to convert raw types to proper objects (e.g., str -> Secret)
+                normalized_default = adt_in.type.normalize(actual_default)
+                prop['default'] = adt_in.type.json_encode(normalized_default)
 
         # <name>: Optional[<type>] implies nullable, regardless of default
         if adt_in.type.repetition is adt.Repetition.OPTIONAL:

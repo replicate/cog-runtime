@@ -26,8 +26,8 @@ class Predictor(BasePredictor):
         self,
         f1: float = Input(default=3),
         f2: float = Input(default=3.14),
-        f3: List[float] = Input(default=[3, 4]),
-        f4: List[float] = Input(default=[2.71, 3.14]),
+        f3: List[float] = Input(default_factory=lambda: [3, 4]),
+        f4: List[float] = Input(default_factory=lambda: [2.71, 3.14]),
     ) -> str:
         def f(xs):
             return ','.join(f'{x:.2f}' for x in xs)

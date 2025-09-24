@@ -40,10 +40,10 @@ class Predictor(BasePredictor):
         f2: list[float],
         i1: List[int],
         i2: list[int],
-        b_wd: List[bool] = Input(default=[True, False]),
-        f_wd: List[float] = Input(default=[2.71, 3.14]),
-        i_wd: List[int] = Input(default=[0, 1, 2]),
-        s_wd: List[str] = Input(default=['foo', 'bar']),
+        b_wd: List[bool] = Input(default_factory=lambda: [True, False]),
+        f_wd: List[float] = Input(default_factory=lambda: [2.71, 3.14]),
+        i_wd: List[int] = Input(default_factory=lambda: [0, 1, 2]),
+        s_wd: List[str] = Input(default_factory=lambda: ['foo', 'bar']),
     ) -> str:
         def f2s(xs):
             return ','.join(f'{x:.2f}' for x in xs)

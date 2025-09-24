@@ -3,6 +3,7 @@ import inspect
 import re
 import typing
 import warnings
+from dataclasses import MISSING, Field
 from enum import Enum
 from types import ModuleType
 from typing import Any, AsyncIterator, Callable, Dict, Iterator, Optional, Type
@@ -57,46 +58,65 @@ def _validate_input(name: str, ft: adt.FieldType, cog_in: api.FieldInfo) -> None
     defaults = []
     def_repr = ''
     if cog_in.default is not None:
-        if ft.repetition is adt.Repetition.REPEATED:
-            defaults = ft.normalize(cog_in.default)
-            def_repr = repr(defaults)
+        # Handle dataclass fields by extracting the actual default value
+        if isinstance(cog_in.default, Field):
+            if cog_in.default.default_factory is not MISSING:
+                # For default_factory, get a sample value for validation
+                actual_default = cog_in.default.default_factory()
+            elif cog_in.default.default is not MISSING:
+                actual_default = cog_in.default.default
+            else:
+                actual_default = None
         else:
-            defaults = [ft.normalize(cog_in.default)]
-            def_repr = repr(defaults[0])
+            actual_default = cog_in.default
+
+        if actual_default is not None:
+            if ft.repetition is adt.Repetition.REPEATED:
+                defaults = ft.normalize(actual_default)
+                def_repr = repr(defaults)
+            else:
+                defaults = [ft.normalize(actual_default)]
+                def_repr = repr(defaults[0])
+        else:
+            defaults = []
+            def_repr = 'None'
 
     numeric_types = {adt.PrimitiveType.FLOAT, adt.PrimitiveType.INTEGER}
     if cog_in.ge is not None or cog_in.le is not None:
         assert cog_t in numeric_types, f'incompatible input type for ge/le: {in_repr}'
-        if cog_in.ge is not None:
-            assert all(x >= cog_in.ge for x in defaults), (
-                f'default={def_repr} conflicts with ge={cog_in.ge} for input: {in_repr}'
-            )
-        if cog_in.le is not None:
-            assert all(x <= cog_in.le for x in defaults), (
-                f'default={def_repr} conflicts with le={cog_in.le} for input: {in_repr}'
-            )
+        if defaults:
+            if cog_in.ge is not None:
+                assert all(x >= cog_in.ge for x in defaults), (
+                    f'default={def_repr} conflicts with ge={cog_in.ge} for input: {in_repr}'
+                )
+            if cog_in.le is not None:
+                assert all(x <= cog_in.le for x in defaults), (
+                    f'default={def_repr} conflicts with le={cog_in.le} for input: {in_repr}'
+                )
 
     if cog_in.min_length is not None or cog_in.max_length is not None:
         assert cog_t is adt.PrimitiveType.STRING, (
             f'incompatible input type for min_length/max_length: {in_repr}'
         )
-        if cog_in.min_length is not None:
-            assert all(len(x) >= cog_in.min_length for x in defaults), (
-                f'default={def_repr} conflicts with min_length={cog_in.min_length} for input: {in_repr}'
-            )
-        if cog_in.max_length is not None:
-            assert all(len(x) <= cog_in.max_length for x in defaults), (
-                f'default={def_repr} conflicts with max_length={cog_in.max_length} for input: {in_repr}'
-            )
+        if defaults:
+            if cog_in.min_length is not None:
+                assert all(len(x) >= cog_in.min_length for x in defaults), (
+                    f'default={def_repr} conflicts with min_length={cog_in.min_length} for input: {in_repr}'
+                )
+            if cog_in.max_length is not None:
+                assert all(len(x) <= cog_in.max_length for x in defaults), (
+                    f'default={def_repr} conflicts with max_length={cog_in.max_length} for input: {in_repr}'
+                )
 
     if cog_in.regex is not None:
         assert cog_t is adt.PrimitiveType.STRING, (
             f'incompatible input type for regex: {in_repr}'
         )
-        regex = re.compile(cog_in.regex)
-        assert all(regex.match(x) for x in defaults), (
-            f'default={def_repr} not a regex match for input: {in_repr}'
-        )
+        if defaults:
+            regex = re.compile(cog_in.regex)
+            assert all(regex.match(x) for x in defaults), (
+                f'default={def_repr} not a regex match for input: {in_repr}'
+            )
 
     choice_types = {adt.PrimitiveType.INTEGER, adt.PrimitiveType.STRING}
     if cog_in.choices is not None:
@@ -136,7 +156,21 @@ def _input_adt(
         )
     else:
         _validate_input(name, ft, cog_in)
-        default = None if cog_in.default is None else ft.normalize(cog_in.default)
+
+        # Handle dataclass fields properly
+        if isinstance(cog_in.default, Field):
+            # This is a dataclass field, extract the default value or factory
+            if cog_in.default.default_factory is not MISSING:
+                # This field uses default_factory, store the field itself
+                default = cog_in.default
+            elif cog_in.default.default is not MISSING:
+                # Has a regular default value
+                default = ft.normalize(cog_in.default.default)
+            else:
+                # No default
+                default = None
+        else:
+            default = None if cog_in.default is None else ft.normalize(cog_in.default)
         choices = (
             None
             if cog_in.choices is None
@@ -272,12 +306,25 @@ def check_input(
             kwargs[name] = adt_in.type.normalize(value)
     for name, adt_in in adt_ins.items():
         if name not in kwargs:
-            # default=None is only allowed on `Optional[<type>]`
-            if adt_in.type.repetition is not adt.Repetition.OPTIONAL:
-                assert adt_in.default is not None, (
-                    f'missing required input field: {name}'
-                )
-            kwargs[name] = adt_in.default
+            # Handle dataclass fields properly
+            if isinstance(adt_in.default, Field):
+                # This is a dataclass field with default_factory
+                if adt_in.default.default_factory is not MISSING:
+                    kwargs[name] = adt_in.default.default_factory()
+                elif adt_in.default.default is not MISSING:
+                    kwargs[name] = adt_in.default.default
+                else:
+                    # No default or factory
+                    if adt_in.type.repetition is not adt.Repetition.OPTIONAL:
+                        assert False, f'missing required input field: {name}'
+                    kwargs[name] = None
+            elif adt_in.default is not None:
+                kwargs[name] = adt_in.default
+            else:
+                # default=None is only allowed on `Optional[<type>]`
+                if adt_in.type.repetition is not adt.Repetition.OPTIONAL:
+                    assert False, f'missing required input field: {name}'
+                kwargs[name] = None
 
         values = []
         if adt_in.type.repetition is adt.Repetition.REQUIRED:
