@@ -216,7 +216,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY_SECRET }}
           AWS_ENDPOINT_URL: ${{ secrets.R2_S3_ENDPOINT }}
       - run: ./script/build.sh
-      - uses: softprops/action-gh-release@v2.3.2
+      - uses: softprops/action-gh-release@v2.3.3
         with:
           files: dist/coglet-*.whl
           prerelease: ${{ contains(github.ref, '.dev') }}
