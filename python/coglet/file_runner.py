@@ -313,6 +313,8 @@ class FileRunner:
 
     def _send_ipc(self, status: str) -> None:
         try:
+            if not self.ipc_url:
+                raise RuntimeError("IPC invoked but IPC URL not provided")
             payload = {
                 'name': self.name,
                 'pid': os.getpid(),
