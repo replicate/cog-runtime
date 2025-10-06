@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"sync/atomic"
 	"time"
 
@@ -394,11 +395,26 @@ func writeReadyFile() error {
 	dir := "/var/run/cog"
 	file := path.Join(dir, "ready")
 
-	if _, err := os.Stat(file); os.IsNotExist(err) {
+	return writeFileIfNotExists(file)
+}
+
+// If the checkpoint flow is turned on, write the ready file for checkpointing
+func writeCheckpointReadyFile() error {
+	file := os.Getenv("ENTRYPOINT_CUDA_READY_LOCK_FILE")
+	if file == "" {
+		return nil
+	}
+
+	return writeFileIfNotExists(file)
+}
+
+func writeFileIfNotExists(path string) error {
+	dir := filepath.Dir(path)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		if err := os.WriteFile(file, nil, 0o600); err != nil {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
 			return err
 		}
 	}

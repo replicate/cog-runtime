@@ -46,10 +46,10 @@ class FileRunner:
         ipc_url: Optional[str],
         working_dir: str,
         config: Config,
-        signal_mode: bool=False,
+        signal_mode: bool = False,
     ):
         if not signal_mode and not ipc_url:
-            raise ValueError("IPC URL cannot be null if signal mode is false")
+            raise ValueError('IPC URL cannot be null if signal mode is false')
         self.signal_mode = signal_mode
         self.logger = logger
         self.name = name
@@ -314,7 +314,7 @@ class FileRunner:
     def _send_ipc(self, status: str) -> None:
         try:
             if not self.ipc_url:
-                raise RuntimeError("IPC invoked but IPC URL not provided")
+                raise RuntimeError('IPC invoked but IPC URL not provided')
             payload = {
                 'name': self.name,
                 'pid': os.getpid(),
