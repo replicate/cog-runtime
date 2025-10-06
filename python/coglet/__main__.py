@@ -53,7 +53,9 @@ def pre_setup(logger: logging.Logger, working_dir: str) -> Optional[file_runner.
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', metavar='NAME', required=True, help='name')
-    parser.add_argument('--ipc-url', metavar='URL', required=True, help='IPC URL')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--ipc-url', metavar='URL', required=True, help='IPC URL')
+    group.add_argument('--signal_mode', action='store_true')
     parser.add_argument(
         '--working-dir', metavar='DIR', required=True, help='working directory'
     )
@@ -85,6 +87,7 @@ def main() -> int:
             logger=logger,
             name=args.name,
             ipc_url=args.ipc_url,
+            signal_mode=args.signal_mode,
             working_dir=args.working_dir,
             config=config,
         ).start()

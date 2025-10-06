@@ -5,6 +5,7 @@ import os
 import pathlib
 import re
 import signal
+import sys
 import tempfile
 import urllib.request
 from dataclasses import dataclass
@@ -25,6 +26,13 @@ class FileRunner:
     REQUEST_RE = re.compile(r'^request-(?P<pid>\S+).json$')
     RESPONSE_FMT = 'response-{pid}-{epoch:05d}.json'
 
+    # Signal parent to scan output
+    SIG_OUTPUT = signal.SIGHUP
+
+    # Signal ready or busy status
+    SIG_READY = signal.SIGUSR1
+    SIG_BUSY = signal.SIGUSR2
+
     # IPC status updates to Go server
     IPC_READY = 'READY'
     IPC_BUSY = 'BUSY'
@@ -35,16 +43,21 @@ class FileRunner:
         *,
         logger: logging.Logger,
         name: str,
-        ipc_url: str,
+        ipc_url: str|None,
         working_dir: str,
         config: Config,
+        signal_mode: bool=False,
     ):
+        if not signal_mode and not ipc_url:
+            raise ValueError("IPC URL cannot be null if signal mode is false")
+        self.signal_mode = signal_mode
         self.logger = logger
         self.name = name
         self.ipc_url = ipc_url
         self.working_dir = working_dir
         self.config = config
         self.runner: Optional[runner.Runner] = None
+        self.isatty = sys.stdout.isatty()
 
     async def start(self) -> int:
         self.logger.info(
@@ -117,7 +130,10 @@ class FileRunner:
         signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         ready = True
-        self._send_ipc(FileRunner.IPC_READY)
+        if self.signal_mode:
+            self._signal(FileRunner.SIG_READY)
+        else:
+            self._send_ipc(FileRunner.IPC_READY)
         # Go server cannot receive IPC yet when a procedure is starting
         # Write a ready file as signal
         with open(ready_file, 'w') as f:
@@ -127,7 +143,10 @@ class FileRunner:
         while True:
             if not ready and len(pending) < self.config.max_concurrency:
                 ready = True
-                self._send_ipc(FileRunner.IPC_READY)
+                if self.signal_mode:
+                    self._signal(FileRunner.SIG_READY)
+                else:
+                    self._send_ipc(FileRunner.IPC_READY)
 
             if os.path.exists(stop_file):
                 self.logger.info('stopping file runner')
@@ -172,7 +191,10 @@ class FileRunner:
 
                 if ready and len(pending) + 1 == self.config.max_concurrency:
                     ready = False
-                    self._send_ipc(FileRunner.IPC_BUSY)
+                    if self.signal_mode:
+                        self._signal(FileRunner.SIG_BUSY)
+                    else:
+                        self._send_ipc(FileRunner.IPC_BUSY)
                 pending[pid] = asyncio.create_task(self._predict(pid, req))
                 self.logger.info('prediction started: id=%s', pid)
 
@@ -284,7 +306,10 @@ class FileRunner:
         )
         os.rename(temp_path, resp_path)
 
-        self._send_ipc(FileRunner.IPC_OUTPUT)
+        if self.signal_mode:
+            self._signal(FileRunner.SIG_OUTPUT)
+        else:
+            self._send_ipc(FileRunner.IPC_OUTPUT)
 
     def _send_ipc(self, status: str) -> None:
         try:
@@ -297,3 +322,7 @@ class FileRunner:
             urllib.request.urlopen(self.ipc_url, data=data).read()
         except Exception as e:
             self.logger.exception('IPC failed: %s', e)
+
+    def _signal(self, signum: int) -> None:
+        if not self.isatty:
+            os.kill(os.getppid(), signum)

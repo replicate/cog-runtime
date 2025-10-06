@@ -272,6 +272,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	log.Debugw("creating default runner",
 		"working_dir", workingDir,
 		"ipc_url", m.cfg.IPCUrl,
+		"signal_mode", m.cfg.SignalMode,
 		"python_bin", m.cfg.PythonBinPath,
 	)
 
@@ -284,8 +285,13 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		"-u",
 		"-m", "coglet",
 		"--name", DefaultRunnerName,
-		"--ipc-url", m.cfg.IPCUrl,
 		"--working-dir", workingDir,
+	}
+
+	if m.cfg.SignalMode {
+		args = append(args, "--signal-mode")
+	} else {
+		args = append(args, "--ipc-url", m.cfg.IPCUrl)
 	}
 
 	log.Debugw("runner command", "python_path", pythonPath, "args", args, "working_dir", workingDir)
