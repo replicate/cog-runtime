@@ -43,7 +43,7 @@ class FileRunner:
         *,
         logger: logging.Logger,
         name: str,
-        ipc_url: str|None,
+        ipc_url: Optional[str],
         working_dir: str,
         config: Config,
         signal_mode: bool=False,
