@@ -153,8 +153,8 @@ func touchFile(name string) error {
 	return f.Close()
 }
 
-// setStatusReady ensures the ready files exist
-func setStatusReady() error {
+// writeCudaReadyFile ensures the ready files exist
+func writeCudaReadyFile() error {
 	cudaReadyFilePath := os.Getenv(cudaReadyFileEnvVar)
 
 	// Touch CUDA ready file

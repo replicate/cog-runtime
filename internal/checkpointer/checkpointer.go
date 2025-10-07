@@ -52,6 +52,7 @@ type Checkpointer interface {
 	Prepare(ctx context.Context) error
 	Checkpoint(ctx context.Context, cmd *exec.Cmd) error
 	Restore(ctx context.Context) (*exec.Cmd, func(context.Context) error, error)
+	WriteReadyFile() error
 }
 
 type checkpointer struct {
@@ -181,7 +182,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 		}
 	}
 
-	return setStatusReady()
+	return nil
 }
 
 func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Context) error, error) {
@@ -220,20 +221,19 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 			return err
 		}
 
-		err = setStatusReady()
-		if err != nil {
-			// If this command failed, we want to best effort try to kill the started process,
-			// since we'll start a new one
-			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort
-
-			return err
-		}
-
 		return nil
 	}
 
 	// The restored command is a running instance of coglet
 	return restoreCmd, callback, nil
+}
+
+func (c *checkpointer) WriteReadyFile() error {
+	// If it isn't expected, make this a no-op
+	if os.Getenv(shouldCheckpointEnvVar) != "true" {
+		return nil
+	}
+	return writeCudaReadyFile()
 }
 
 func downloadCUDACheckpointBinaries(ctx context.Context) error {

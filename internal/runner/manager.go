@@ -347,7 +347,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 				m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
 			})
 
-			return runner, nil
+			return runner, cp.WriteReadyFile()
 		}
 		// If the error was non-nil, disable the checkpointer and continue
 		cp.Disable()
@@ -393,7 +393,7 @@ commandSetup:
 		// nothing
 	}
 
-	return runner, nil
+	return runner, cp.WriteReadyFile()
 }
 
 func (m *Manager) setupRunner(runtimeContext context.Context, runtimeCancel context.CancelFunc, cmd *exec.Cmd, env []string, runnerCtx RunnerContext, maxConcurrency int) (*Runner, error) {
