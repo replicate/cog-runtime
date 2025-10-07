@@ -12,24 +12,26 @@ import (
 	"time"
 )
 
-var errTimedOutPolling = errors.New("Timed out while polling for file")
+var errTimedOutPolling = errors.New("timed out while polling for file")
 
 // updateEnvVar updates an environment variable in-place, adding an item to it
 // if it exists or creating it if it doesn't exist
-func updateEnvVar(envVarName, newItem string) {
+func updateEnvVar(envVarName, newItem string) error {
 	old := os.Getenv(envVarName)
 	if old == "" {
-		os.Setenv(envVarName, newItem)
-		return
+		return os.Setenv(envVarName, newItem)
 	}
 	path := newItem + string(os.PathListSeparator) + os.Getenv(envVarName)
-	os.Setenv(envVarName, path)
+	return os.Setenv(envVarName, path)
 }
 
 // downloadFile downloads a file from the URL provided to the path provided
 func downloadFile(url, path string) error {
 	filename := filepath.Base(path)
-	os.MkdirAll(filepath.Dir(path), 0o755)
+	err := os.MkdirAll(filepath.Dir(path), 0o600)
+	if err != nil {
+		return err
+	}
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -41,13 +43,13 @@ func downloadFile(url, path string) error {
 		return fmt.Errorf("failed to download %s: %w", filename, err)
 	}
 
-	binary, err := os.Create(path)
+	file, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("failed to touch file: %w", err)
 	}
-	defer binary.Close()
+	defer file.Close() //nolint: errcheck
 
-	_, err = io.Copy(binary, resp.Body)
+	_, err = io.Copy(file, resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to save %s: %w", filename, err)
 	}
@@ -63,7 +65,7 @@ func downloadAndChmod(url, path string) error {
 		return err
 	}
 
-	if err := os.Chmod(path, 0o755); err != nil {
+	if err := os.Chmod(path, 0o600); err != nil {
 		return fmt.Errorf("failed to chmod file: %w", err)
 	}
 	return nil
@@ -116,37 +118,16 @@ func pollForFileDeletion(target string, timeout, pollInterval time.Duration) err
 	}
 }
 
-// pollForFileExistance waits for a file to exist, up until a timeout. It returns an error if the
-// timeout is hit
-func pollForFileExistance(target string, timeout, pollInterval time.Duration) error {
-	deadline := time.After(timeout)
-
-	for {
-		// Check if the file exists, if it doesn't keep looping
-		if _, err := os.Stat(target); err == nil {
-			return nil
-		}
-
-		// Check for timeout before sleeping for the polling interval
-		select {
-		case <-deadline:
-			return errTimedOutPolling
-		default:
-			time.Sleep(pollInterval)
-		}
-	}
-}
-
 // https://stackoverflow.com/a/30708914/30548878
 func isDirEmpty(name string) (bool, error) {
 	f, err := os.Open(name)
 	if err != nil {
 		return false, err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	_, err = f.Readdirnames(1)
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) {
 		return true, nil
 	}
 	return false, err
@@ -155,7 +136,7 @@ func isDirEmpty(name string) (bool, error) {
 // Touch a file if it doesn't exist, otherwise wipes the contents of the file
 func touchFile(name string) error {
 	// Ensure upstream directory exists for file
-	err := os.MkdirAll(filepath.Dir(name), 0o755)
+	err := os.MkdirAll(filepath.Dir(name), 0o644)
 	if err != nil {
 		return err
 	}
@@ -164,8 +145,7 @@ func touchFile(name string) error {
 	if err != nil {
 		return err
 	}
-	f.Close()
-	return nil
+	return f.Close()
 }
 
 // setStatusReady ensures the ready files exist

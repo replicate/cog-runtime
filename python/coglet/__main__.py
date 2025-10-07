@@ -54,7 +54,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument('--name', metavar='NAME', required=True, help='name')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--ipc-url', metavar='URL', required=True, help='IPC URL')
+    group.add_argument('--ipc-url', metavar='URL', help='IPC URL')
     group.add_argument('--signal_mode', action='store_true')
     parser.add_argument(
         '--working-dir', metavar='DIR', required=True, help='working directory'

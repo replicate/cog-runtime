@@ -31,14 +31,14 @@ const (
 	checkpointSubdirName = "checkpoint"
 )
 
-var errNoCheckpointDir = errors.New("Could not find checkpoint directory environment variable")
+var errNoCheckpointDir = errors.New("could not find checkpoint directory environment variable")
 
-type FatalCheckpointErr struct {
+type FatalCheckpointError struct {
 	err error
 }
 
-func (e *FatalCheckpointErr) Error() string {
-	return e.Error()
+func (e *FatalCheckpointError) Error() string {
+	return e.err.Error()
 }
 
 type Checkpointer interface {
@@ -113,7 +113,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 		return errNoCheckpointDir
 	}
 
-	err := os.MkdirAll(filepath.Join(c.checkpointDir, checkpointSubdirName), 0o666)
+	err := os.MkdirAll(filepath.Join(c.checkpointDir, checkpointSubdirName), 0o666) //nolint:gosec // coglet needs to write here
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 	cudaCmd := strings.TrimSpace(string(data))
 
 	// Write said command to a file for later
-	err = os.WriteFile(filepath.Join(c.checkpointDir, cudaCmdFileName), []byte(cudaCmd), 0o666)
+	err = os.WriteFile(filepath.Join(c.checkpointDir, cudaCmdFileName), []byte(cudaCmd), 0o644) //nolint:gosec
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 		cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
 		if cudaErr := cmd.Run(); cudaErr != nil {
 			// Return a fatal error so upstream knows we cannot continue in the current state
-			return &FatalCheckpointErr{
+			return &FatalCheckpointError{
 				err: cudaErr,
 			}
 		}
@@ -171,7 +171,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 	cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
 	if err := cmd.Run(); err != nil {
 		// Return a fatal error so upstream knows we cannot continue in the current state
-		return &FatalCheckpointErr{
+		return &FatalCheckpointError{
 			err: err,
 		}
 	}
@@ -200,7 +200,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		if err != nil {
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
-			restoreCmd.Process.Kill()
+			restoreCmd.Process.Kill() //nolint:errcheck
 
 			return err
 		}
@@ -210,7 +210,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		if err := cmd.Run(); err != nil {
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
-			restoreCmd.Process.Kill()
+			restoreCmd.Process.Kill() //nolint:errcheck
 
 			return err
 		}
@@ -219,7 +219,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		if err != nil {
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
-			restoreCmd.Process.Kill()
+			restoreCmd.Process.Kill() //nolint:errcheck
 
 			return err
 		}
@@ -246,6 +246,5 @@ func downloadCUDACheckpointBinaries(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to download and untar CRIU: %w", err)
 	}
-	updateEnvVar("LD_LIBRARY_PATH", filepath.Join(dir, "criu-lib"))
-	return nil
+	return updateEnvVar("LD_LIBRARY_PATH", filepath.Join(dir, "criu-lib"))
 }

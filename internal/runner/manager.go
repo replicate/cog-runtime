@@ -356,6 +356,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	// Derive the runtime context from the manager's context
 	runtimeContext, runtimeCancel := context.WithCancel(ctx)
 
+commandSetup:
 	cmd := exec.CommandContext(runtimeContext, pythonPath, args...) //nolint:gosec // expected subprocess launched with variable
 	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, cogYaml.Concurrency.Max)
 
@@ -374,12 +375,18 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 
 	if !cp.HasCheckpoint() {
 		err := cp.Checkpoint(ctx, cmd)
-		var fatalCheckpointErr *checkpointer.FatalCheckpointErr
-		if errors.As(err, &fatalCheckpointErr) {
-			return nil, fmt.Errorf("fatal error while trying to checkpoint: %w", err)
+		var FatalCheckpointError *checkpointer.FatalCheckpointError
+		// If we saw an error that would leave the runner unusable, turn off the
+		// checkpointer and recreate the command and runner
+		if errors.As(err, &FatalCheckpointError) {
+			// TODO: Is this bad? Should we just return the error back up?
+			// The main concern is what `runner.Config` does leaving artifacts
+			// between runs, although I think that should be fine?
+			cp.Disable()
+			goto commandSetup
 		}
 		// If the error is not fatal, we failed to create a checkpoint but are still
-		// running the original cog process, so we can just continue as if we did
+		// running the cog process successfully, so we can just continue as if we did
 		// nothing
 	}
 
