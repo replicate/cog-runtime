@@ -2,7 +2,7 @@
 // is a vehicle to let people run their own code... so why go through the hassle of
 // injection? Cog is not run with any more permissions than the user code.
 //
-//nolint:gosec
+//nolint:gosec // See above
 package checkpointer
 
 import (
@@ -148,7 +148,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 	}
 
 	// Toggle CUDA off
-	cmd := exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
+	cmd := exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", cudaPID)
 	if err := cmd.Run(); err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 		// Try to toggle CUDA back on. If we aren't able to restart CUDA, the process
 		// will hang indefinitely, so we should kill it and try to start a new one
 		// without checkpointing
-		cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
+		cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", cudaPID)
 		if cudaErr := cmd.Run(); cudaErr != nil {
 			// Return a fatal error so upstream knows we cannot continue in the current state
 			return &FatalCheckpointError{
@@ -173,7 +173,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 	// Toggle CUDA back on. If we aren't able to restart CUDA, the process
 	// will hang indefinitely, so we should kill it and try to start a new
 	// one without checkpointing
-	cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
+	cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", cudaPID)
 	if err := cmd.Run(); err != nil {
 		// Return a fatal error so upstream knows we cannot continue in the current state
 		return &FatalCheckpointError{

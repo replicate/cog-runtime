@@ -1,3 +1,8 @@
+// There are some commands in here that are susceptible to injection. However, cog
+// is a vehicle to let people run their own code... so why go through the hassle of
+// injection? Cog is not run with any more permissions than the user code.
+//
+//nolint:gosec // See above
 package checkpointer
 
 import (

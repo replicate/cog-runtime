@@ -341,9 +341,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	// If there is an existing checkpoint, try to restore from the checkpoint
 	if cp.HasCheckpoint() {
 		runner, err := m.startRunnerFromCheckpoint(ctx, env, runnerCtx, cogYaml.Concurrency.Max, cp)
-		if err != nil {
-			cp.Disable()
-		} else {
+		if err == nil {
 			m.runners[0] = runner
 			m.monitoringWG.Go(func() {
 				m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
@@ -351,6 +349,8 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 
 			return runner, nil
 		}
+		// If the error was non-nil, disable the checkpointer and continue
+		cp.Disable()
 	}
 
 	// Derive the runtime context from the manager's context
@@ -359,6 +359,9 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 commandSetup:
 	cmd := exec.CommandContext(runtimeContext, pythonPath, args...) //nolint:gosec // expected subprocess launched with variable
 	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, cogYaml.Concurrency.Max)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set up runner: %w", err)
+	}
 
 	if err := runner.Config(ctx); err != nil {
 		if stopErr := runner.Stop(); stopErr != nil {
@@ -417,10 +420,14 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 
 	cmd, callback, err := cp.Restore(runtimeContext)
 	if err != nil {
+		runtimeCancel()
 		return nil, err
 	}
 
 	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, maxConcurrency)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set up runner: %w", err)
+	}
 
 	err = callback(runtimeContext)
 	if err != nil {
