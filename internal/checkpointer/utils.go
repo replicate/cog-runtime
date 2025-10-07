@@ -12,9 +12,7 @@ import (
 	"time"
 )
 
-var (
-	errTimedOutPolling = errors.New("Timed out while polling for file")
-)
+var errTimedOutPolling = errors.New("Timed out while polling for file")
 
 // updateEnvVar updates an environment variable in-place, adding an item to it
 // if it exists or creating it if it doesn't exist
@@ -99,7 +97,7 @@ func downloadAndUntar(ctx context.Context, url, path string) error {
 
 // pollForFileDeletion waits for a file to be deleted, up until a timeout. It returns an error if the
 // timeout is hit
-func pollForFileDeletion(target string, timeout time.Duration, pollInterval time.Duration) error {
+func pollForFileDeletion(target string, timeout, pollInterval time.Duration) error {
 	deadline := time.After(timeout)
 
 	for {
@@ -120,7 +118,7 @@ func pollForFileDeletion(target string, timeout time.Duration, pollInterval time
 
 // pollForFileExistance waits for a file to exist, up until a timeout. It returns an error if the
 // timeout is hit
-func pollForFileExistance(target string, timeout time.Duration, pollInterval time.Duration) error {
+func pollForFileExistance(target string, timeout, pollInterval time.Duration) error {
 	deadline := time.After(timeout)
 
 	for {

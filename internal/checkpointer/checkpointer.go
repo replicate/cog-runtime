@@ -31,9 +31,7 @@ const (
 	checkpointSubdirName = "checkpoint"
 )
 
-var (
-	errNoCheckpointDir = errors.New("Could not find checkpoint directory environment variable")
-)
+var errNoCheckpointDir = errors.New("Could not find checkpoint directory environment variable")
 
 type FatalCheckpointErr struct {
 	err error
