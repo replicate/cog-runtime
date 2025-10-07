@@ -47,7 +47,7 @@ func downloadFile(url, path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to touch file: %w", err)
 	}
-	defer file.Close() //nolint: errcheck
+	defer file.Close() //nolint:errcheck // nothing to do with this error
 
 	_, err = io.Copy(file, resp.Body)
 	if err != nil {
@@ -124,7 +124,7 @@ func isDirEmpty(name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer f.Close() //nolint:errcheck
+	defer f.Close() //nolint:errcheck // nothing to do with this error
 
 	_, err = f.Readdirnames(1)
 	if errors.Is(err, io.EOF) {

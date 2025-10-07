@@ -1,3 +1,8 @@
+// There are some commands in here that are susceptible to injection. However, cog
+// is a vehicle to let people run their own code... so why go through the hassle of
+// injection? Cog is not run with any more permissions than the user code.
+//
+//nolint:gosec
 package checkpointer
 
 import (
@@ -113,7 +118,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 		return errNoCheckpointDir
 	}
 
-	err := os.MkdirAll(filepath.Join(c.checkpointDir, checkpointSubdirName), 0o666) //nolint:gosec // coglet needs to write here
+	err := os.MkdirAll(filepath.Join(c.checkpointDir, checkpointSubdirName), 0o666)
 	if err != nil {
 		return err
 	}
@@ -137,7 +142,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) erro
 	cudaCmd := strings.TrimSpace(string(data))
 
 	// Write said command to a file for later
-	err = os.WriteFile(filepath.Join(c.checkpointDir, cudaCmdFileName), []byte(cudaCmd), 0o644) //nolint:gosec
+	err = os.WriteFile(filepath.Join(c.checkpointDir, cudaCmdFileName), []byte(cudaCmd), 0o644)
 	if err != nil {
 		return err
 	}
@@ -200,7 +205,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		if err != nil {
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
-			restoreCmd.Process.Kill() //nolint:errcheck
+			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort
 
 			return err
 		}
@@ -210,7 +215,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		if err := cmd.Run(); err != nil {
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
-			restoreCmd.Process.Kill() //nolint:errcheck
+			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort
 
 			return err
 		}
@@ -219,7 +224,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		if err != nil {
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
-			restoreCmd.Process.Kill() //nolint:errcheck
+			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort
 
 			return err
 		}
