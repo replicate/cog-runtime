@@ -976,7 +976,7 @@ func (r *Runner) HandleIPC(status string) error {
 
 // HandleSignal does the exact same things as HandleIPC just using signals
 // instead of webhooks. This only can be used in non-pipeline use cases
-func (r *Runner) HandleSignal(status syscall.Signal) error {
+func (r *Runner) HandleSignal(status os.Signal) error {
 	switch status {
 	case SigReady:
 		if r.status == StatusStarting {

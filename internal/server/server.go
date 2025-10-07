@@ -9,9 +9,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/replicate/go/httpclient"
@@ -27,6 +29,10 @@ const (
 	IPCStatusReady  IPCStatus = "READY"
 	IPCStatusBUSY   IPCStatus = "BUSY"
 	IPCStatusOutput IPCStatus = "OUTPUT"
+
+	SigOutput = syscall.SIGHUP
+	SigReady  = syscall.SIGUSR1
+	SigBusy   = syscall.SIGUSR2
 )
 
 type IPC struct {
@@ -98,11 +104,6 @@ func (h *Handler) healthCheck() (*HealthCheck, error) {
 		return nil, err
 	}
 
-	if err := writeCheckpointReadyFile(); err != nil {
-		log.Errorw("failed to write checkpoint ready file", "error", err)
-		return nil, err
-	}
-
 	runnerSetupResult := h.runnerManager.SetupResult()
 	concurrency := h.runnerManager.Concurrency()
 	runnerStatus := h.runnerManager.Status()
@@ -153,6 +154,23 @@ func (h *Handler) Stop() error {
 		return err
 	}
 	return nil
+}
+
+func (h *Handler) HandleSignals() {
+	log := h.logger.Sugar()
+
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, SigOutput, SigReady, SigBusy)
+
+	for {
+		s := <-ch
+		err := h.runnerManager.HandleRunnerSignal(runner.DefaultRunnerName, s)
+		if err != nil {
+			log.Errorw("failed to handle IPC", "signal", s, "error", err)
+			// TODO: What do we do with this error? Put it on some error chan
+			// and ship it somewhere?
+		}
+	}
 }
 
 func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
@@ -399,16 +417,6 @@ func writeReadyFile() error {
 	}
 	dir := "/var/run/cog"
 	file := path.Join(dir, "ready")
-
-	return writeFileIfNotExists(file)
-}
-
-// If the checkpoint flow is turned on, write the ready file for checkpointing
-func writeCheckpointReadyFile() error {
-	file := os.Getenv("ENTRYPOINT_CUDA_READY_LOCK_FILE")
-	if file == "" {
-		return nil
-	}
 
 	return writeFileIfNotExists(file)
 }

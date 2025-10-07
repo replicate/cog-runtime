@@ -15,6 +15,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/replicate/cog-runtime/internal/checkpointer"
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/webhook"
@@ -294,6 +295,13 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		args = append(args, "--ipc-url", m.cfg.IPCUrl)
 	}
 
+	// This returns an object that does nothing if it is not enabled.
+	cp := checkpointer.NewCheckpointer(ctx)
+	err := cp.Prepare(ctx)
+	if err != nil {
+		cp.Disable()
+	}
+
 	log.Debugw("runner command", "python_path", pythonPath, "args", args, "working_dir", workingDir)
 
 	tmpDir, err := os.MkdirTemp("", "cog-runner-tmp-")
@@ -301,11 +309,6 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	// Derive the runtime context from the manager's context
-	runtimeContext, runtimeCancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(runtimeContext, pythonPath, args...) //nolint:gosec // expected subprocess launched with variable
-	cmd.Dir = m.cfg.WorkingDirectory
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	env := mergeEnv(os.Environ(), m.cfg.EnvSet, m.cfg.EnvUnset)
 	env = append(env, "TMPDIR="+tmpDir)
 
@@ -315,8 +318,6 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	} else if logLevel := os.Getenv("LOG_LEVEL"); logLevel == "trace" {
 		env = append(env, "LOG_LEVEL=debug")
 	}
-
-	cmd.Env = env
 
 	// Read cog.yaml for runner configuration (capacity was already set in newManager)
 	cogYaml, err := ReadCogYaml(workingDir)
@@ -336,15 +337,27 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		tmpDir:     tmpDir,
 		uploader:   uploader,
 	}
-	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, cogYaml.Concurrency.Max, m.cfg, m.baseLogger)
-	if err != nil {
-		return nil, err
+
+	// If there is an existing checkpoint, try to restore from the checkpoint
+	if cp.HasCheckpoint() {
+		runner, err := m.startRunnerFromCheckpoint(ctx, env, runnerCtx, cogYaml.Concurrency.Max, cp)
+		if err != nil {
+			cp.Disable()
+		} else {
+			m.runners[0] = runner
+			m.monitoringWG.Go(func() {
+				m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
+			})
+
+			return runner, nil
+		}
 	}
 
-	runner.webhookSender = m.webhookSender
-	if err := runner.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start runner: %w", err)
-	}
+	// Derive the runtime context from the manager's context
+	runtimeContext, runtimeCancel := context.WithCancel(ctx)
+
+	cmd := exec.CommandContext(runtimeContext, pythonPath, args...) //nolint:gosec // expected subprocess launched with variable
+	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, cogYaml.Concurrency.Max)
 
 	if err := runner.Config(ctx); err != nil {
 		if stopErr := runner.Stop(); stopErr != nil {
@@ -358,6 +371,56 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	m.monitoringWG.Go(func() {
 		m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
 	})
+
+	if !cp.HasCheckpoint() {
+		err := cp.Checkpoint(ctx, cmd)
+		var fatalCheckpointErr *checkpointer.FatalCheckpointErr
+		if errors.As(err, &fatalCheckpointErr) {
+			return nil, fmt.Errorf("fatal error while trying to checkpoint: %w", err)
+		}
+		// If the error is not fatal, we failed to create a checkpoint but are still
+		// running the original cog process, so we can just continue as if we did
+		// nothing
+	}
+
+	return runner, nil
+}
+
+func (m *Manager) setupRunner(runtimeContext context.Context, runtimeCancel context.CancelFunc, cmd *exec.Cmd, env []string, runnerCtx RunnerContext, maxConcurrency int) (*Runner, error) {
+	cmd.Dir = m.cfg.WorkingDirectory
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = env
+
+	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, maxConcurrency, m.cfg, m.baseLogger)
+	if err != nil {
+		return nil, err
+	}
+
+	runner.webhookSender = m.webhookSender
+	if err := runner.Start(runtimeContext); err != nil {
+		return nil, fmt.Errorf("failed to start runner: %w", err)
+	}
+
+	return runner, nil
+}
+
+func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, runnerCtx RunnerContext, maxConcurrency int, cp checkpointer.Checkpointer) (*Runner, error) {
+	// Derive the runtime context from the manager's context
+	runtimeContext, runtimeCancel := context.WithCancel(ctx)
+
+	cmd, callback, err := cp.Restore(runtimeContext)
+	if err != nil {
+		return nil, err
+	}
+
+	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, maxConcurrency)
+
+	err = callback(runtimeContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed callback function: %w", err)
+	}
+
+	// TODO: Send ready signal somehow, can we SIGHUP ourselves?
 
 	return runner, nil
 }
@@ -935,6 +998,14 @@ func (m *Manager) HandleRunnerIPC(runnerName, status string) error {
 		return fmt.Errorf("%w: %s", ErrRunnerNotFound, runnerName)
 	}
 	return runner.HandleIPC(status)
+}
+
+func (m *Manager) HandleRunnerSignal(runnerName string, signal os.Signal) error {
+	runner, _, exists := m.findRunner(runnerName)
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrRunnerNotFound, runnerName)
+	}
+	return runner.HandleSignal(signal)
 }
 
 func (m *Manager) cleanupInProgress() bool {

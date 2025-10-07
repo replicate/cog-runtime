@@ -173,6 +173,12 @@ func (s *Service) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to start handler: %w", err)
 	}
 
+	if s.cfg.SignalMode {
+		// This runs an infinite loop for handling signals, so we explicitly
+		// do not want to put it in a wait group of any kind
+		go s.handler.HandleSignals()
+	}
+
 	eg.Go(func() error {
 		log.Info("starting HTTP server")
 		if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
