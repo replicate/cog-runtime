@@ -50,7 +50,7 @@ type Checkpointer interface {
 	Disable()
 	HasCheckpoint() bool
 	Prepare(ctx context.Context) error
-	Checkpoint(ctx context.Context, cmd *exec.Cmd) error
+	Checkpoint(ctx context.Context, cmd *exec.Cmd, waitFunc func() error) error
 	Restore(ctx context.Context) (*exec.Cmd, func(context.Context) error, error)
 	WriteReadyFile() error
 }
@@ -110,13 +110,17 @@ func (c *checkpointer) Prepare(ctx context.Context) error {
 	return nil
 }
 
-func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd) error {
+func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd, waitFunc func() error) error {
 	if !c.enabled {
 		return nil
 	}
 
 	if c.checkpointDir == "" {
 		return errNoCheckpointDir
+	}
+
+	if err := waitFunc(); err != nil {
+		return err
 	}
 
 	err := os.MkdirAll(filepath.Join(c.checkpointDir, checkpointSubdirName), 0o666)

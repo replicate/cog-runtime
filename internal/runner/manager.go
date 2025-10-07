@@ -377,7 +377,7 @@ commandSetup:
 	})
 
 	if !cp.HasCheckpoint() {
-		err := cp.Checkpoint(ctx, cmd)
+		err = cp.Checkpoint(ctx, cmd, func() error { return waitForRunnerSetup(ctx, runner) })
 		var FatalCheckpointError *checkpointer.FatalCheckpointError
 		// If we saw an error that would leave the runner unusable, turn off the
 		// checkpointer and recreate the command and runner
@@ -434,9 +434,12 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 		return nil, fmt.Errorf("failed callback function: %w", err)
 	}
 
-	// TODO: Send ready signal somehow, can we SIGHUP ourselves?
+	// We checkpointed the model after it ran setup, so we need to manually send the ready signal
+	// to the runner. We can do this by sending the SigReady signal to the current PID, as signal
+	// mode should be on if the checkpoint exists
+	err = syscall.Kill(syscall.Getpid(), SigReady)
 
-	return runner, nil
+	return runner, err
 }
 
 // allocatePrediction reserves a slot in the runner for the prediction
