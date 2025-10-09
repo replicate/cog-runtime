@@ -103,6 +103,12 @@ func (s *Service) Initialize(ctx context.Context) error {
 		return err
 	}
 
+	if s.cfg.SignalMode {
+		// This runs an infinite loop for handling signals, so we explicitly
+		// do not want to put it in a wait group of any kind
+		go s.handler.HandleSignals()
+	}
+
 	return nil
 }
 
@@ -150,12 +156,16 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 func (s *Service) Run(ctx context.Context) error {
 	log := s.logger.Sugar()
 
+	log.Infow("started running")
+
 	select {
 	case <-s.started:
 		log.Errorw("service already started")
 		return nil
 	default:
 	}
+
+	log.Infow("channel did not return error")
 
 	if s.httpServer == nil {
 		return fmt.Errorf("service not initialized - call Initialize() first")
@@ -171,12 +181,6 @@ func (s *Service) Run(ctx context.Context) error {
 	// Start handler (which starts its internal runner manager)
 	if err := s.handler.Start(egCtx); err != nil {
 		return fmt.Errorf("failed to start handler: %w", err)
-	}
-
-	if s.cfg.SignalMode {
-		// This runs an infinite loop for handling signals, so we explicitly
-		// do not want to put it in a wait group of any kind
-		go s.handler.HandleSignals()
 	}
 
 	eg.Go(func() error {
