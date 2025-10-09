@@ -875,22 +875,6 @@ func (r *Runner) predict(reqID string) (chan PredictionResponse, *PredictionResp
 
 	log.Tracew("wrote prediction request file", "prediction_id", reqID, "path", requestPath, "working_dir", r.runnerCtx.workingdir, "request_data", string(requestData))
 
-	// Debug: Check if file actually exists and list directory contents
-	if _, err := os.Stat(requestPath); err != nil {
-		log.Tracew("ERROR: written request file does not exist", "prediction_id", reqID, "path", requestPath, "error", err)
-	} else {
-		log.Tracew("confirmed request file exists", "prediction_id", reqID, "path", requestPath)
-	}
-
-	// Debug: List all files in working directory
-	if entries, err := os.ReadDir(r.runnerCtx.workingdir); err == nil {
-		fileNames := make([]string, len(entries))
-		for i, entry := range entries {
-			fileNames[i] = entry.Name()
-		}
-		log.Tracew("working directory contents after write", "prediction_id", reqID, "working_dir", r.runnerCtx.workingdir, "files", fileNames)
-	}
-
 	log.Tracew("returning prediction channel", "prediction_id", reqID)
 	initialResponse := &PredictionResponse{
 		Status: PredictionStarting,

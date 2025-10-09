@@ -115,20 +115,14 @@ func (s *ServerCmd) Run() error {
 	// Create service with base logger
 	svc := service.New(cfg, baseLogger)
 
-	log.Infow("created service")
-
 	// Create root context for the entire service
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	log.Infow("created context")
 
 	// Initialize service components
 	if err := svc.Initialize(ctx); err != nil {
 		return err
 	}
-
-	log.Infow("initialized service")
 
 	return svc.Run(ctx)
 }

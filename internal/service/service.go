@@ -150,16 +150,12 @@ func (s *Service) initializeHTTPServer(ctx context.Context) error {
 func (s *Service) Run(ctx context.Context) error {
 	log := s.logger.Sugar()
 
-	log.Infow("started running")
-
 	select {
 	case <-s.started:
 		log.Errorw("service already started")
 		return nil
 	default:
 	}
-
-	log.Infow("channel did not return error")
 
 	if s.httpServer == nil {
 		return fmt.Errorf("service not initialized - call Initialize() first")
