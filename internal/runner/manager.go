@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"sync"
 	"syscall"
@@ -291,6 +292,10 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 
 	if m.cfg.SignalMode {
 		args = append(args, "--signal-mode")
+		// Make sure the signal handling is running
+		// This runs an infinite loop for handling signals, so we explicitly
+		// do not want to put it in a wait group of any kind
+		go m.HandleSignals()
 	} else {
 		args = append(args, "--ipc-url", m.cfg.IPCUrl)
 	}
@@ -1023,6 +1028,23 @@ func (m *Manager) HandleRunnerSignal(runnerName string, signal os.Signal) error 
 		return fmt.Errorf("%w: %s", ErrRunnerNotFound, runnerName)
 	}
 	return runner.HandleSignal(signal)
+}
+
+func (m *Manager) HandleSignals() {
+	log := m.logger.Sugar()
+
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, SigOutput, SigReady, SigBusy)
+
+	for {
+		s := <-ch
+		err := m.HandleRunnerSignal(DefaultRunnerName, s)
+		if err != nil {
+			log.Errorw("failed to handle IPC", "signal", s, "error", err)
+			// TODO: What do we do with this error? Put it on some error chan
+			// and ship it somewhere?
+		}
+	}
 }
 
 func (m *Manager) cleanupInProgress() bool {

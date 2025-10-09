@@ -95,12 +95,6 @@ func (s *Service) Initialize(ctx context.Context) error {
 		s.cfg.ForceShutdown = s.forceShutdown
 	}
 
-	if s.cfg.SignalMode {
-		// This runs an infinite loop for handling signals, so we explicitly
-		// do not want to put it in a wait group of any kind
-		go s.handler.HandleSignals()
-	}
-
 	if err := s.initializeHandler(ctx); err != nil {
 		return err
 	}

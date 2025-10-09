@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/signal"
 	"path"
 	"path/filepath"
 	"sync/atomic"
@@ -154,23 +153,6 @@ func (h *Handler) Stop() error {
 		return err
 	}
 	return nil
-}
-
-func (h *Handler) HandleSignals() {
-	log := h.logger.Sugar()
-
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, SigOutput, SigReady, SigBusy)
-
-	for {
-		s := <-ch
-		err := h.runnerManager.HandleRunnerSignal(runner.DefaultRunnerName, s)
-		if err != nil {
-			log.Errorw("failed to handle IPC", "signal", s, "error", err)
-			// TODO: What do we do with this error? Put it on some error chan
-			// and ship it somewhere?
-		}
-	}
 }
 
 func (h *Handler) HandleIPC(w http.ResponseWriter, r *http.Request) {
