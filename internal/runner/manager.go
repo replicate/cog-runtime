@@ -1022,12 +1022,12 @@ func (m *Manager) HandleRunnerIPC(runnerName, status string) error {
 	return runner.HandleIPC(status)
 }
 
-func (m *Manager) HandleRunnerSignal(runnerName string, signal os.Signal) error {
+func (m *Manager) HandleRunnerSignal(runnerName string, s os.Signal) error {
 	runner, _, exists := m.findRunner(runnerName)
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrRunnerNotFound, runnerName)
 	}
-	return runner.HandleSignal(signal)
+	return runner.HandleSignal(s)
 }
 
 func (m *Manager) HandleSignals() {
