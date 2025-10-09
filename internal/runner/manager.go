@@ -376,11 +376,6 @@ commandSetup:
 		return nil, fmt.Errorf("failed to config runner: %w", err)
 	}
 
-	m.runners[0] = runner
-	m.monitoringWG.Go(func() {
-		m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
-	})
-
 	if !cp.HasCheckpoint() {
 		err = cp.Checkpoint(ctx, cmd, func() error { return waitForRunnerSetup(ctx, runner) })
 		var FatalCheckpointError *checkpointer.FatalCheckpointError
@@ -397,6 +392,11 @@ commandSetup:
 		// running the cog process successfully, so we can just continue as if we did
 		// nothing
 	}
+
+	m.runners[0] = runner
+	m.monitoringWG.Go(func() {
+		m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
+	})
 
 	return runner, cp.WriteReadyFile()
 }
@@ -423,7 +423,7 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 	// Derive the runtime context from the manager's context
 	runtimeContext, runtimeCancel := context.WithCancel(ctx)
 
-	cmd, callback, err := cp.Restore(runtimeContext)
+	cmd, postSetupCallback, err := cp.Restore(runtimeContext)
 	if err != nil {
 		runtimeCancel()
 		return nil, err
@@ -434,7 +434,7 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 		return nil, fmt.Errorf("failed to set up runner: %w", err)
 	}
 
-	err = callback(runtimeContext)
+	err = postSetupCallback(runtimeContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed callback function: %w", err)
 	}
@@ -1030,19 +1030,23 @@ func (m *Manager) HandleRunnerSignal(runnerName string, s os.Signal) error {
 	return runner.HandleSignal(s)
 }
 
-func (m *Manager) HandleSignals() {
+func (m *Manager) HandleSignals(ctx context.Context) {
 	log := m.logger.Sugar()
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, SigOutput, SigReady, SigBusy)
 
 	for {
-		s := <-ch
-		err := m.HandleRunnerSignal(DefaultRunnerName, s)
-		if err != nil {
-			log.Errorw("failed to handle IPC", "signal", s, "error", err)
-			// TODO: What do we do with this error? Put it on some error chan
-			// and ship it somewhere?
+		select {
+		case s := <-ch:
+			err := m.HandleRunnerSignal(DefaultRunnerName, s)
+			if err != nil {
+				log.Errorw("failed to handle IPC", "signal", s, "error", err)
+				// TODO: What do we do with this error? Put it on some error chan
+				// and ship it somewhere?
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
 }
