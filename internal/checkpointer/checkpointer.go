@@ -154,17 +154,23 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd, wait
 
 	// Toggle CUDA off
 	cmd := exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", cudaPID)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 	if err := cmd.Run(); err != nil {
 		return err
 	}
 
 	// CRIU checkpoint (leaving process running)
 	cmd = exec.CommandContext(ctx, criuPath, "dump", "--leave-running", "--shell-job", "--tcp-close", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName), "--tree", pid)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 	if err := cmd.Run(); err != nil {
 		// Try to toggle CUDA back on. If we aren't able to restart CUDA, the process
 		// will hang indefinitely, so we should kill it and try to start a new one
 		// without checkpointing
 		cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", cudaPID)
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
 		if cudaErr := cmd.Run(); cudaErr != nil {
 			// Return a fatal error so upstream knows we cannot continue in the current state
 			return &FatalCheckpointError{
@@ -179,6 +185,8 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd, wait
 	// will hang indefinitely, so we should kill it and try to start a new
 	// one without checkpointing
 	cmd = exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", cudaPID)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 	if err := cmd.Run(); err != nil {
 		// Return a fatal error so upstream knows we cannot continue in the current state
 		return &FatalCheckpointError{
@@ -217,6 +225,8 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 
 		// Toggle CUDA on for the restored process
 		cmd := exec.CommandContext(con, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
+		cmd.Stderr = os.Stderr
+		cmd.Stdout = os.Stdout
 		if err := cmd.Run(); err != nil {
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one

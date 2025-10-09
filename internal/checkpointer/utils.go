@@ -70,7 +70,7 @@ func downloadAndChmod(url, path string) error {
 		return err
 	}
 
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := os.Chmod(path, 0o700); err != nil {
 		return fmt.Errorf("failed to chmod file: %w", err)
 	}
 	return nil
