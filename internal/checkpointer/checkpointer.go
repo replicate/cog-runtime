@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/replicate/cog-runtime/internal/logging"
 )
 
 const (
@@ -60,13 +62,15 @@ type checkpointer struct {
 	hasCheckpoint bool
 	checkpointDir string
 	leaseFile     string
+	log           *logging.SugaredLogger
 }
 
-func NewCheckpointer(ctx context.Context) Checkpointer {
+func NewCheckpointer(ctx context.Context, log *logging.SugaredLogger) Checkpointer {
 	return &checkpointer{
 		enabled:       os.Getenv(shouldCheckpointEnvVar) == "true",
 		checkpointDir: os.Getenv(cudaCheckpointDirEnvVar),
 		leaseFile:     os.Getenv(leaseFileEnvVar),
+		log:           log,
 	}
 }
 
@@ -208,6 +212,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		// Get the PID for the command
 		cudaPID, err := exec.CommandContext(con, "pgrep", "-fx", string(cudaCmd)).Output()
 		if err != nil {
+			c.log.Errorw("failed to pgrep the CUDA command", "error", err)
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
 			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort
@@ -218,6 +223,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		// Toggle CUDA on for the restored process
 		cmd := exec.CommandContext(con, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
 		if err := cmd.Run(); err != nil {
+			c.log.Errorw("failed to toggle CUDA on", "error", err)
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
 			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort

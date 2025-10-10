@@ -301,7 +301,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	}
 
 	// This returns an object that does nothing if it is not enabled.
-	cp := checkpointer.NewCheckpointer(ctx)
+	cp := checkpointer.NewCheckpointer(ctx, m.logger.Sugar())
 	err := cp.Prepare(ctx)
 	if err != nil {
 		cp.Disable()
@@ -432,6 +432,7 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 
 	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, maxConcurrency)
 	if err != nil {
+		m.logger.Sugar().Errorw("failed to set up runner", "error", err)
 		return nil, fmt.Errorf("failed to set up runner: %w", err)
 	}
 
@@ -444,6 +445,9 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 	// to the runner. We can do this by sending the SigReady signal to the current PID, as signal
 	// mode should be on if the checkpoint exists
 	err = syscall.Kill(syscall.Getpid(), SigReady)
+	if err != nil {
+		m.logger.Sugar().Errorw("failed to send SIGUSR1", "error", err)
+	}
 
 	return runner, err
 }
