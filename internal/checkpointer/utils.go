@@ -92,7 +92,7 @@ func downloadAndUntar(ctx context.Context, url, path string) error {
 	if err != nil {
 		return err
 	}
-	defer devnull.Close()
+	defer devnull.Close() //nolint:errcheck // What would we do with this error anyways
 	cmd.Stdout = devnull
 	cmd.Stderr = devnull
 

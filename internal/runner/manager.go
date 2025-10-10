@@ -295,7 +295,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		// Make sure the signal handling is running
 		// This runs an infinite loop for handling signals, so we explicitly
 		// do not want to put it in a wait group of any kind
-		go m.HandleSignals(m.ctx)
+		go m.HandleSignals(m.ctx) //nolint:contextcheck // We want this to live for the lifetime of the manager
 	} else {
 		args = append(args, "--ipc-url", m.cfg.IPCUrl)
 	}
