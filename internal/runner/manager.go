@@ -376,6 +376,8 @@ commandSetup:
 		return nil, fmt.Errorf("failed to config runner: %w", err)
 	}
 
+	m.runners[0] = runner
+
 	if !cp.HasCheckpoint() {
 		err = cp.Checkpoint(ctx, cmd, func() error { return waitForRunnerSetup(ctx, runner) })
 		var FatalCheckpointError *checkpointer.FatalCheckpointError
@@ -393,7 +395,6 @@ commandSetup:
 		// nothing
 	}
 
-	m.runners[0] = runner
 	m.monitoringWG.Go(func() {
 		m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
 	})
@@ -845,11 +846,7 @@ func (m *Manager) Runners() []*Runner {
 
 // findRunner finds a runner by name in the slice
 func (m *Manager) findRunner(name string) (*Runner, int, bool) {
-	log := m.logger.Sugar()
 	for i, runner := range m.runners {
-		if runner != nil {
-			log.Warnw("Runner", "name", runner.runnerCtx.id)
-		}
 		if runner != nil && runner.runnerCtx.id == name {
 			return runner, i, true
 		}
