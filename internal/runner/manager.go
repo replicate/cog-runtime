@@ -847,7 +847,9 @@ func (m *Manager) Runners() []*Runner {
 func (m *Manager) findRunner(name string) (*Runner, int, bool) {
 	log := m.logger.Sugar()
 	for i, runner := range m.runners {
-		log.Warnw("Runner", "name", runner.runnerCtx.id)
+		if runner != nil {
+			log.Warnw("Runner", "name", runner.runnerCtx.id)
+		}
 		if runner != nil && runner.runnerCtx.id == name {
 			return runner, i, true
 		}
