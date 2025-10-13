@@ -430,13 +430,13 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 		return nil, err
 	}
 
+	time.Sleep(10 * time.Minute)
+
 	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, maxConcurrency)
 	if err != nil {
 		m.logger.Sugar().Errorw("failed to set up runner", "error", err)
 		return nil, fmt.Errorf("failed to set up runner: %w", err)
 	}
-
-	time.Sleep(10 * time.Minute)
 
 	err = postSetupCallback(runtimeContext)
 	if err != nil {
