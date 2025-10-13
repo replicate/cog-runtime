@@ -34,7 +34,6 @@ const (
 	criuPath                = "/tmp/criu"
 
 	// Metadata storage paths
-	cudaCmdFileName      = "cuda-cmd"
 	checkpointSubdirName = "checkpoint"
 )
 
@@ -142,20 +141,6 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd, wait
 
 	cudaPID := strings.TrimSpace(string(cudaPIDBytes))
 
-	// Get the command for this PID - it is _not_ always the root python process
-	data, err := exec.CommandContext(ctx, "ps", "-o", "cmd=", cudaPID).Output()
-	if err != nil {
-		return err
-	}
-
-	cudaCmd := strings.TrimSpace(string(data))
-
-	// Write said command to a file for later
-	err = os.WriteFile(filepath.Join(c.checkpointDir, cudaCmdFileName), []byte(cudaCmd), 0o644)
-	if err != nil {
-		return err
-	}
-
 	// Toggle CUDA off
 	cmd := exec.CommandContext(ctx, cudaCheckpointPath, "--toggle", "--pid", cudaPID)
 	if err := cmd.Run(); err != nil {
@@ -198,35 +183,18 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 		return nil, nil, nil
 	}
 
-	// Read process from sentinel file
-	cudaCmd, err := os.ReadFile(filepath.Join(c.checkpointDir, cudaCmdFileName))
-	if err != nil {
-		return nil, nil, err
-	}
-
 	// Set up restore command
 	restoreCmd := exec.CommandContext(ctx, criuPath, "restore", "--tcp-close", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName))
 
 	// Set up callback function once restore is started
 	callback := func(con context.Context) error {
-		// Get the PID for the command
-		cudaPID, err := exec.CommandContext(con, "pgrep", "-fx", string(cudaCmd)).Output()
-		if err != nil {
-			c.log.Errorw("failed to pgrep the CUDA command", "error", err)
-			// If this command failed, we want to best effort try to kill the started process,
-			// since we'll start a new one
-			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort
-
-			return err
-		}
-
 		// Toggle CUDA on for the restored process
-		cmd := exec.CommandContext(con, cudaCheckpointPath, "--toggle", "--pid", string(cudaPID))
+		cmd := exec.CommandContext(con, cudaCheckpointPath, "--toggle", "--pid", strconv.Itoa(restoreCmd.Process.Pid))
 		if err := cmd.Run(); err != nil {
 			c.log.Errorw("failed to toggle CUDA on", "error", err)
 			// If this command failed, we want to best effort try to kill the started process,
 			// since we'll start a new one
-			restoreCmd.Process.Kill() //nolint:errcheck // This is just best effort
+			killProcess(restoreCmd) //nolint:errcheck // This is just best effort
 
 			return err
 		}
@@ -236,6 +204,24 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 
 	// The restored command is a running instance of coglet
 	return restoreCmd, callback, nil
+}
+
+func killProcess(cmd *exec.Cmd) error {
+	err := cmd.Process.Kill()
+	if err != nil {
+		return err
+	}
+
+	// Wait for the process to exit with a 5 second timeout
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err = <-done:
+		return err
+	case <-time.After(5 * time.Second):
+		return nil
+	}
 }
 
 func (c *checkpointer) WriteReadyFile() error {
