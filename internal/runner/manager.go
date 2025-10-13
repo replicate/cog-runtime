@@ -436,6 +436,8 @@ func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, r
 		return nil, fmt.Errorf("failed to set up runner: %w", err)
 	}
 
+	time.Sleep(10 * time.Minute)
+
 	err = postSetupCallback(runtimeContext)
 	if err != nil {
 		return nil, fmt.Errorf("failed callback function: %w", err)
