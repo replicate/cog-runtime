@@ -148,7 +148,7 @@ func (c *checkpointer) Checkpoint(ctx context.Context, cogletCmd *exec.Cmd, wait
 	}
 
 	// CRIU checkpoint (leaving process running)
-	cmd = exec.CommandContext(ctx, criuPath, "dump", "--leave-running", "--tcp-close", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName), "--tree", pid)
+	cmd = exec.CommandContext(ctx, criuPath, "dump", "--shell-job", "--leave-running", "--tcp-close", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName), "--tree", pid)
 	if err := cmd.Run(); err != nil {
 		// Try to toggle CUDA back on. If we aren't able to restart CUDA, the process
 		// will hang indefinitely, so we should kill it and try to start a new one
@@ -184,7 +184,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 	}
 
 	// Set up restore command
-	restoreCmd := exec.CommandContext(ctx, criuPath, "restore", "--tcp-close", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName))
+	restoreCmd := exec.CommandContext(ctx, criuPath, "restore", "--shell-job", "--tcp-close", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName))
 
 	// Set up callback function once restore is started
 	callback := func(con context.Context) error {
