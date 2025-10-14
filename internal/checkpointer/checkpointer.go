@@ -184,10 +184,16 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 	}
 
 	// Set up restore command
-	restoreCmd := exec.CommandContext(ctx, criuPath, "restore", "--shell-job", "--tcp-close", "-v4", "-o", "/tmp/restore.log", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName))
+	restoreCmd := exec.CommandContext(ctx, criuPath, "restore", "--shell-job", "--tcp-close", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName))
 
 	// Set up callback function once restore is started
 	callback := func(con context.Context) error {
+		out, err := exec.CommandContext(con, "ps", "aux").Output()
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		fmt.Println(out)
+		fmt.Println(strconv.Itoa(restoreCmd.Process.Pid))
 		// Toggle CUDA on for the restored process
 		cmd := exec.CommandContext(con, cudaCheckpointPath, "--toggle", "--pid", strconv.Itoa(restoreCmd.Process.Pid))
 		cmd.Stdout = os.Stdout
