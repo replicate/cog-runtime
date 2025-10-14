@@ -190,6 +190,8 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 	callback := func(con context.Context) error {
 		// Toggle CUDA on for the restored process
 		cmd := exec.CommandContext(con, cudaCheckpointPath, "--toggle", "--pid", strconv.Itoa(restoreCmd.Process.Pid))
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
 			c.log.Errorw("failed to toggle CUDA on", "error", err)
 			// If this command failed, we want to best effort try to kill the started process,
