@@ -184,7 +184,7 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 	}
 
 	// Set up restore command
-	restoreCmd := exec.CommandContext(ctx, criuPath, "restore", "--shell-job", "--tcp-close", "-v4", "--log-file", "restore.log", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName))
+	restoreCmd := exec.CommandContext(ctx, criuPath, "restore", "--shell-job", "--tcp-close", "-v4", "-o", "/tmp/restore.log", "--images-dir", filepath.Join(c.checkpointDir, checkpointSubdirName))
 
 	// Set up callback function once restore is started
 	callback := func(con context.Context) error {
