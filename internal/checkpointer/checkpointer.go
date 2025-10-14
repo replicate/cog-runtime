@@ -190,10 +190,10 @@ func (c *checkpointer) Restore(ctx context.Context) (*exec.Cmd, func(context.Con
 	callback := func(con context.Context) error {
 		out, err := exec.CommandContext(con, "ps", "aux").Output()
 		if err != nil {
-			fmt.Println(err.Error())
+			c.log.Infow(err.Error())
 		}
-		fmt.Println(out)
-		fmt.Println(strconv.Itoa(restoreCmd.Process.Pid))
+		c.log.Infow(string(out))
+		c.log.Infow(strconv.Itoa(restoreCmd.Process.Pid))
 		// Toggle CUDA on for the restored process
 		cmd := exec.CommandContext(con, cudaCheckpointPath, "--toggle", "--pid", strconv.Itoa(restoreCmd.Process.Pid))
 		cmd.Stdout = os.Stdout
