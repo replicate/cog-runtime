@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/alecthomas/kong v1.12.1
-	github.com/gabriel-vasile/mimetype v1.4.10
+	github.com/gabriel-vasile/mimetype v1.4.11
 	github.com/getkin/kin-openapi v0.133.0
 	github.com/replicate/go v0.0.0-20241101110715-45e9ae8c2040
 	github.com/stretchr/testify v1.11.1
