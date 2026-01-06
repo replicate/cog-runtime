@@ -1,5 +1,11 @@
 # Cog Runtime
 
+## COG RUNTIME IS BEING MERGED INTO MAINLINE COG, `cog-runtime` is being archived as we continue that work
+
+Work will continue [COG](https://github.com/replicate/cog)
+
+## Historical Information
+
 New implementation for Cog's production runtime component, which is responsible for:
 
 * Cog HTTP server
@@ -31,4 +37,4 @@ Python model runner that:
 * Inspects Python predictor code for input and output schema
 * Invokes `setup()` and `predict()` methods
 
-[Cog]: <https://github.com/replicate/cog>
+
