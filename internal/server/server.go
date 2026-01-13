@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/replicate/go/httpclient"
@@ -26,6 +28,10 @@ const (
 	IPCStatusReady  IPCStatus = "READY"
 	IPCStatusBUSY   IPCStatus = "BUSY"
 	IPCStatusOutput IPCStatus = "OUTPUT"
+
+	SigOutput = syscall.SIGHUP
+	SigReady  = syscall.SIGUSR1
+	SigBusy   = syscall.SIGUSR2
 )
 
 type IPC struct {
@@ -394,11 +400,16 @@ func writeReadyFile() error {
 	dir := "/var/run/cog"
 	file := path.Join(dir, "ready")
 
-	if _, err := os.Stat(file); os.IsNotExist(err) {
+	return writeFileIfNotExists(file)
+}
+
+func writeFileIfNotExists(fpath string) error {
+	dir := filepath.Dir(fpath)
+	if _, err := os.Stat(fpath); os.IsNotExist(err) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return err
 		}
-		if err := os.WriteFile(file, nil, 0o600); err != nil {
+		if err := os.WriteFile(fpath, nil, 0o600); err != nil {
 			return err
 		}
 	}

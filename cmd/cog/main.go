@@ -23,6 +23,7 @@ type ServerCmd struct {
 	UseProcedureMode          bool          `help:"Enable procedure mode for concurrent predictions" name:"use-procedure-mode" env:"COG_USE_PROCEDURE_MODE"`
 	AwaitExplicitShutdown     bool          `help:"Wait for explicit shutdown signal instead of auto-shutdown" name:"await-explicit-shutdown" env:"COG_AWAIT_EXPLICIT_SHUTDOWN"`
 	OneShot                   bool          `help:"Enable one-shot mode (single runner, wait for cleanup before ready)" name:"one-shot" env:"COG_ONE_SHOT"`
+	SignalMode                bool          `help:"Enable signal mode (use signals instead of webhooks for IPC communication)" name:"signal-mode" env:"COG_SIGNAL_MODE"`
 	UploadURL                 string        `help:"Base URL for uploading prediction output files" name:"upload-url" env:"COG_UPLOAD_URL"`
 	WorkingDirectory          string        `help:"Override the working directory for predictions" name:"working-directory" env:"COG_WORKING_DIRECTORY"`
 	RunnerShutdownGracePeriod time.Duration `help:"Grace period before force-killing prediction runners" name:"runner-shutdown-grace-period" default:"600s" env:"COG_RUNNER_SHUTDOWN_GRACE_PERIOD"`
@@ -78,6 +79,7 @@ func buildServiceConfig(s *ServerCmd) (config.Config, error) {
 		WorkingDirectory:          workingDir,
 		UploadURL:                 s.UploadURL,
 		IPCUrl:                    fmt.Sprintf("http://localhost:%d/_ipc", s.Port),
+		SignalMode:                s.SignalMode,
 		MaxRunners:                s.MaxRunners,
 		RunnerShutdownGracePeriod: s.RunnerShutdownGracePeriod,
 		CleanupTimeout:            s.CleanupTimeout,

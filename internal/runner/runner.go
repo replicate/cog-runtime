@@ -30,6 +30,12 @@ import (
 	"github.com/replicate/cog-runtime/internal/webhook"
 )
 
+const (
+	SigOutput = syscall.SIGHUP
+	SigReady  = syscall.SIGUSR1
+	SigBusy   = syscall.SIGUSR2
+)
+
 var (
 	LogRegex      = regexp.MustCompile(`^\[pid=(?P<pid>[^]]+)] (?P<msg>.*)$`)
 	ResponseRegex = regexp.MustCompile(`^response-(?P<pid>\S+)-(?P<epoch>\d+).json$`)
@@ -869,22 +875,6 @@ func (r *Runner) predict(reqID string) (chan PredictionResponse, *PredictionResp
 
 	log.Tracew("wrote prediction request file", "prediction_id", reqID, "path", requestPath, "working_dir", r.runnerCtx.workingdir, "request_data", string(requestData))
 
-	// Debug: Check if file actually exists and list directory contents
-	if _, err := os.Stat(requestPath); err != nil {
-		log.Tracew("ERROR: written request file does not exist", "prediction_id", reqID, "path", requestPath, "error", err)
-	} else {
-		log.Tracew("confirmed request file exists", "prediction_id", reqID, "path", requestPath)
-	}
-
-	// Debug: List all files in working directory
-	if entries, err := os.ReadDir(r.runnerCtx.workingdir); err == nil {
-		fileNames := make([]string, len(entries))
-		for i, entry := range entries {
-			fileNames[i] = entry.Name()
-		}
-		log.Tracew("working directory contents after write", "prediction_id", reqID, "working_dir", r.runnerCtx.workingdir, "files", fileNames)
-	}
-
 	log.Tracew("returning prediction channel", "prediction_id", reqID)
 	initialResponse := &PredictionResponse{
 		Status: PredictionStarting,
@@ -953,6 +943,47 @@ func (r *Runner) HandleIPC(status string) error {
 			return fmt.Errorf("failed to update status: %w", err)
 		}
 	case "OUTPUT":
+		// Notify all active prediction watchers of OUTPUT event
+		r.mu.RLock()
+		for _, pending := range r.pending {
+			select {
+			case pending.outputNotify <- struct{}{}:
+				// Notification sent
+			default:
+				// Channel full, skip (watcher will poll anyway)
+			}
+		}
+		r.mu.RUnlock()
+	}
+	return nil
+}
+
+// HandleSignal does the exact same things as HandleIPC just using signals
+// instead of webhooks. This only can be used in non-pipeline use cases
+func (r *Runner) HandleSignal(status os.Signal) error {
+	switch status {
+	case SigReady:
+		if r.status == StatusStarting {
+			r.updateSchema()
+			r.updateSetupResult()
+			// Close setupComplete channel to signal first READY after setup
+			r.mu.Lock()
+			select {
+			case <-r.setupComplete:
+				// Already closed
+			default:
+				close(r.setupComplete)
+			}
+			r.mu.Unlock()
+		}
+		if err := r.updateStatus("READY"); err != nil {
+			return fmt.Errorf("failed to update status: %w", err)
+		}
+	case SigBusy:
+		if err := r.updateStatus("BUSY"); err != nil {
+			return fmt.Errorf("failed to update status: %w", err)
+		}
+	case SigOutput:
 		// Notify all active prediction watchers of OUTPUT event
 		r.mu.RLock()
 		for _, pending := range r.pending {

@@ -19,6 +19,7 @@ type Config struct {
 	UseProcedureMode      bool
 	AwaitExplicitShutdown bool
 	OneShot               bool
+	SignalMode            bool
 
 	// Directory configuration
 	WorkingDirectory string

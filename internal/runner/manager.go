@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"sync"
 	"syscall"
@@ -15,6 +16,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/replicate/cog-runtime/internal/checkpointer"
 	"github.com/replicate/cog-runtime/internal/config"
 	"github.com/replicate/cog-runtime/internal/logging"
 	"github.com/replicate/cog-runtime/internal/webhook"
@@ -272,6 +274,7 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	log.Debugw("creating default runner",
 		"working_dir", workingDir,
 		"ipc_url", m.cfg.IPCUrl,
+		"signal_mode", m.cfg.SignalMode,
 		"python_bin", m.cfg.PythonBinPath,
 	)
 
@@ -284,8 +287,24 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		"-u",
 		"-m", "coglet",
 		"--name", DefaultRunnerName,
-		"--ipc-url", m.cfg.IPCUrl,
 		"--working-dir", workingDir,
+	}
+
+	if m.cfg.SignalMode {
+		args = append(args, "--signal-mode")
+		// Make sure the signal handling is running
+		// This runs an infinite loop for handling signals, so we explicitly
+		// do not want to put it in a wait group of any kind
+		go m.HandleSignals(m.ctx) //nolint:contextcheck // We want this to live for the lifetime of the manager
+	} else {
+		args = append(args, "--ipc-url", m.cfg.IPCUrl)
+	}
+
+	// This returns an object that does nothing if it is not enabled.
+	cp := checkpointer.NewCheckpointer(ctx, m.logger.Sugar())
+	err := cp.Prepare(ctx)
+	if err != nil {
+		cp.Disable()
 	}
 
 	log.Debugw("runner command", "python_path", pythonPath, "args", args, "working_dir", workingDir)
@@ -295,11 +314,6 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		return nil, fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	// Derive the runtime context from the manager's context
-	runtimeContext, runtimeCancel := context.WithCancel(ctx)
-	cmd := exec.CommandContext(runtimeContext, pythonPath, args...) //nolint:gosec // expected subprocess launched with variable
-	cmd.Dir = m.cfg.WorkingDirectory
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	env := mergeEnv(os.Environ(), m.cfg.EnvSet, m.cfg.EnvUnset)
 	env = append(env, "TMPDIR="+tmpDir)
 
@@ -309,8 +323,6 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	} else if logLevel := os.Getenv("LOG_LEVEL"); logLevel == "trace" {
 		env = append(env, "LOG_LEVEL=debug")
 	}
-
-	cmd.Env = env
 
 	// Read cog.yaml for runner configuration (capacity was already set in newManager)
 	cogYaml, err := ReadCogYaml(workingDir)
@@ -330,14 +342,30 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 		tmpDir:     tmpDir,
 		uploader:   uploader,
 	}
-	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, cogYaml.Concurrency.Max, m.cfg, m.baseLogger)
-	if err != nil {
-		return nil, err
+
+	// If there is an existing checkpoint, try to restore from the checkpoint
+	if cp.HasCheckpoint() {
+		runner, err := m.startRunnerFromCheckpoint(ctx, env, runnerCtx, cogYaml.Concurrency.Max, cp)
+		if err == nil {
+			m.runners[0] = runner
+			m.monitoringWG.Go(func() {
+				m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
+			})
+
+			return runner, cp.WriteReadyFile()
+		}
+		// If the error was non-nil, disable the checkpointer and continue
+		cp.Disable()
 	}
 
-	runner.webhookSender = m.webhookSender
-	if err := runner.Start(ctx); err != nil {
-		return nil, fmt.Errorf("failed to start runner: %w", err)
+	// Derive the runtime context from the manager's context
+	runtimeContext, runtimeCancel := context.WithCancel(ctx)
+
+commandSetup:
+	cmd := exec.CommandContext(runtimeContext, pythonPath, args...) //nolint:gosec // expected subprocess launched with variable
+	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, cogYaml.Concurrency.Max)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set up runner: %w", err)
 	}
 
 	if err := runner.Config(ctx); err != nil {
@@ -349,11 +377,79 @@ func (m *Manager) createDefaultRunner(ctx context.Context) (*Runner, error) {
 	}
 
 	m.runners[0] = runner
+
+	if !cp.HasCheckpoint() {
+		err = cp.Checkpoint(ctx, cmd, func() error { return waitForRunnerSetup(ctx, runner) })
+		var FatalCheckpointError *checkpointer.FatalCheckpointError
+		// If we saw an error that would leave the runner unusable, turn off the
+		// checkpointer and recreate the command and runner
+		if errors.As(err, &FatalCheckpointError) {
+			// TODO: Is this bad? Should we just return the error back up?
+			// The main concern is what `runner.Config` does leaving artifacts
+			// between runs, although I think that should be fine?
+			cp.Disable()
+			goto commandSetup
+		}
+		// If the error is not fatal, we failed to create a checkpoint but are still
+		// running the cog process successfully, so we can just continue as if we did
+		// nothing
+	}
+
 	m.monitoringWG.Go(func() {
 		m.monitorRunnerSubprocess(m.ctx, DefaultRunnerName, runner)
 	})
 
+	return runner, cp.WriteReadyFile()
+}
+
+func (m *Manager) setupRunner(runtimeContext context.Context, runtimeCancel context.CancelFunc, cmd *exec.Cmd, env []string, runnerCtx RunnerContext, maxConcurrency int) (*Runner, error) {
+	cmd.Dir = m.cfg.WorkingDirectory
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = env
+
+	runner, err := NewRunner(runtimeContext, runtimeCancel, runnerCtx, cmd, maxConcurrency, m.cfg, m.baseLogger)
+	if err != nil {
+		return nil, err
+	}
+
+	runner.webhookSender = m.webhookSender
+	if err := runner.Start(runtimeContext); err != nil {
+		return nil, fmt.Errorf("failed to start runner: %w", err)
+	}
+
 	return runner, nil
+}
+
+func (m *Manager) startRunnerFromCheckpoint(ctx context.Context, env []string, runnerCtx RunnerContext, maxConcurrency int, cp checkpointer.Checkpointer) (*Runner, error) {
+	// Derive the runtime context from the manager's context
+	runtimeContext, runtimeCancel := context.WithCancel(ctx)
+
+	cmd, postSetupCallback, err := cp.Restore(runtimeContext)
+	if err != nil {
+		runtimeCancel()
+		return nil, err
+	}
+
+	runner, err := m.setupRunner(runtimeContext, runtimeCancel, cmd, env, runnerCtx, maxConcurrency)
+	if err != nil {
+		m.logger.Sugar().Errorw("failed to set up runner", "error", err)
+		return nil, fmt.Errorf("failed to set up runner: %w", err)
+	}
+
+	err = postSetupCallback(runtimeContext)
+	if err != nil {
+		return nil, fmt.Errorf("failed callback function: %w", err)
+	}
+
+	// We checkpointed the model after it ran setup, so we need to manually send the ready signal
+	// to the runner. We can do this by sending the SigReady signal to the current PID, as signal
+	// mode should be on if the checkpoint exists
+	err = syscall.Kill(syscall.Getpid(), SigReady)
+	if err != nil {
+		m.logger.Sugar().Errorw("failed to send SIGUSR1", "error", err)
+	}
+
+	return runner, err
 }
 
 // allocatePrediction reserves a slot in the runner for the prediction
@@ -929,6 +1025,35 @@ func (m *Manager) HandleRunnerIPC(runnerName, status string) error {
 		return fmt.Errorf("%w: %s", ErrRunnerNotFound, runnerName)
 	}
 	return runner.HandleIPC(status)
+}
+
+func (m *Manager) HandleRunnerSignal(runnerName string, s os.Signal) error {
+	runner, _, exists := m.findRunner(runnerName)
+	if !exists {
+		return fmt.Errorf("%w: %s", ErrRunnerNotFound, runnerName)
+	}
+	return runner.HandleSignal(s)
+}
+
+func (m *Manager) HandleSignals(ctx context.Context) {
+	log := m.logger.Sugar()
+
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, SigOutput, SigReady, SigBusy)
+
+	for {
+		select {
+		case s := <-ch:
+			err := m.HandleRunnerSignal(DefaultRunnerName, s)
+			if err != nil {
+				log.Errorw("failed to handle IPC", "signal", s, "error", err)
+				// TODO: What do we do with this error? Put it on some error chan
+				// and ship it somewhere?
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (m *Manager) cleanupInProgress() bool {
